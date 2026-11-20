@@ -98,7 +98,9 @@ src/
   vehicles/
     carModels.js           THE FOUR CAR TYPES (sedan, SUV, van, sports coupe), built in code,
                            and how each one drives (top speed, grip ...)
-    vehicle.js             the cars you drive: physics, collisions, get in / out, lights
+    carLibrary.js          loads the car model files from assets/cars/
+    carParts.js            seats, dashboard and driver; cuts car bodies into doors and glass
+    vehicle.js             the cars you drive: physics, collisions, get in / out, doors, lights
   ai/
     traffic.js             the other cars: lanes, traffic lights, turns, braking
     pedestrians.js         the people: sidewalks, crosswalks, red lights
@@ -126,6 +128,7 @@ src/
 assets/
   textures/                the tileable photo textures (see below)
   characters/              put Nate_Calloway.glb here (and Nate_Calloway_rigged.glb with animations)
+  cars/                    car model files: <name>.glb, <name>_lo.glb and cars.json
   buildings/               hero buildings: put .glb model files here (see below)
   hdri/                    optional sky photo for reflections
   reference/               the reference pictures (buildings/b01 ... b11)
@@ -380,6 +383,19 @@ handbrake makes the tail slide. Walls, props and other cars stop it with a bump 
 camera shake. Headlights and tail lights come on at dusk, the brake lights when you brake.
 The numbers for each type are in `CAR_TYPES` in `src/vehicles/carModels.js`.
 
+**Car model files (`assets/cars/`).** Five cars come from model files: police cruiser,
+luxury coupe, hypercar, city hatchback and armored truck (plus a boat that floats off the
+beach). They are parked around the city, drive in the traffic and can be driven like the
+other cars. The original scans were about 60 MB each and one welded shell, so they were
+rebuilt (see `tools/cars/`): every car now has a light version for parked cars and traffic
+(about 100 KB) and a detailed version (about 1.2 MB) that is only downloaded when you get in.
+
+**Doors, glass and interior.** On every car you drive, the driver's door really swings open
+when you get in or out. The glass is see-through: you can look at the seats, the dashboard,
+the steering wheel and the driver inside. A detailed model file has to contain parts with
+these names: `body`, `glass`, `door_l`, `door_r` (with `door_l_glass`, `door_r_glass`
+inside them) and `wheel_fl`, `wheel_fr`, `wheel_rl`, `wheel_rr`.
+
 **Traffic.** 30 cars (12 on Low, 40 on High) drive on the lanes written in `src/city/layout.js`
 (`traffic`). They keep right, stop at red lights, keep a gap, turn left and right at crossings
 (before a left turn they let the other side pass) and brake for you and for people on the road.
@@ -423,6 +439,9 @@ read the dialog. Add `?mission=0` to the address to play without it.
 - People and cars are simple: no crashes between traffic cars and people, people never get run over
   (they jump aside), traffic cars do not avoid a car you leave in their lane - they wait behind it.
 - Car bodies do not get dents. Parked cars are solid and do not move when hit.
+- The car model files were scans without an inside and without separate doors. Doors, glass and
+  wheels were cut out by a script, so their edges are not perfect, and all cars share one simple
+  interior. Only the driver's door opens. Parked and traffic cars keep dark, solid windows.
 - Tested with a software renderer only; real phone frame rates, the feel of the touch buttons, tilt
   steering and the sound still have to be checked on a real phone.
 - Without the rigged model file the player has no animation.

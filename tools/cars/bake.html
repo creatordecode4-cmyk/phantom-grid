@@ -1,0 +1,59 @@
+<!doctype html><html><head><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script></head><body>
+<script type="module">
+// Bakes a model into a clean texture: six straight-on "photos" (left, right, top,
+// bottom, front, back) of its color and of its roughness/metal picture, packed
+// into one square picture. The mapping is plain math, so the build script can
+// compute the same texture coordinates for a new, lighter mesh.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const q = new URLSearchParams(location.search);
+const SIZE = 2048, PAD = 10;
+const g = await new GLTFLoader().loadAsync(q.get('f'));
+let mesh = null; g.scene.traverse((o) => { if (o.isMesh && !mesh) mesh = o; });
+const geo = mesh.geometry; geo.computeBoundingBox();
+const bb = geo.boundingBox, min = bb.min.toArray(), size = bb.getSize(new THREE.Vector3()).toArray();
+// tiles: [name, u axis, v axis, depth axis, depth sign (+1: the bigger value is in front)]
+const defs = [['px', 2, 1, 0, 1], ['nx', 2, 1, 0, -1], ['py', 2, 0, 1, 1], ['ny', 2, 0, 1, -1], ['pz', 0, 1, 2, 1], ['nz', 0, 1, 2, -1]];
+// layout (in meters of the model, then scaled to pixels): sides on the left, top and bottom below them, front and back on the right
+const L = size[2], H = size[1], W = size[0];
+const ppm = Math.min((SIZE - 3 * PAD) / (L + W), (SIZE - 5 * PAD) / (2 * H + 2 * W));
+const Lp = Math.floor(L * ppm), Hp = Math.floor(H * ppm), Wp = Math.floor(W * ppm);
+const rects = { px: [PAD, PAD, Lp, Hp], nx: [PAD, 2 * PAD + Hp, Lp, Hp], py: [PAD, 3 * PAD + 2 * Hp, Lp, Wp], ny: [PAD, 4 * PAD + 2 * Hp + Wp, Lp, Wp], pz: [2 * PAD + Lp, PAD, Wp, Hp], nz: [2 * PAD + Lp, 2 * PAD + Hp, Wp, Hp] };
+const tiles = defs.map(([name, u, v, d, s]) => ({ name, u, v, d, s, rect: rects[name] }));
+const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, preserveDrawingBuffer: true, premultipliedAlpha: false });
+renderer.setPixelRatio(1); renderer.setSize(SIZE, SIZE); renderer.setClearColor(0x000000, 0);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(), cam = new THREE.Camera();
+function bake(tex, srgb, depthMode = false) {
+  renderer.outputColorSpace = srgb ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace;
+  renderer.autoClear = false; renderer.clear();
+  for (const t of tiles) {
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { map: { value: tex }, uMin: { value: new THREE.Vector3(...min) }, uSize: { value: new THREE.Vector3(...size) }, uRect: { value: new THREE.Vector4(...t.rect) }, uAtlas: { value: SIZE },
+        uU: { value: new THREE.Vector3().setComponent(t.u, 1) }, uV: { value: new THREE.Vector3().setComponent(t.v, 1) }, uD: { value: new THREE.Vector3().setComponent(t.d, t.s) } },
+      vertexShader: `uniform vec3 uMin, uSize, uU, uV, uD; uniform vec4 uRect; uniform float uAtlas; varying vec2 vUv; varying float vDepth;
+        void main() { vUv = uv; vec3 n = ( position - uMin ) / uSize;
+          float px = uRect.x + dot( n, uU ) * uRect.z, py = uRect.y + ( 1.0 - dot( n, uV ) ) * uRect.w;
+          float depth = dot( n - 0.5, uD );                       // + = toward this side
+          vDepth = depth;
+          gl_Position = vec4( px / uAtlas * 2.0 - 1.0, 1.0 - py / uAtlas * 2.0, - depth * 1.8, 1.0 ); }`,
+      fragmentShader: depthMode ? `varying float vDepth; void main() { float d = clamp( vDepth + 0.5, 0.0, 1.0 ) * 65535.0; float hi = floor( d / 256.0 ); gl_FragColor = vec4( hi / 255.0, ( d - hi * 256.0 ) / 255.0, 0.0, 1.0 ); }` : `uniform sampler2D map; varying vec2 vUv; void main() { gl_FragColor = vec4( texture2D( map, vUv ).rgb, 1.0 );
+#include <colorspace_fragment>
+ }`,
+      side: THREE.DoubleSide,
+    });
+    const m = new THREE.Mesh(geo, mat); m.frustumCulled = false;
+    scene.clear(); scene.add(m);
+    renderer.setScissorTest(true); renderer.setScissor(t.rect[0] - 2, SIZE - t.rect[1] - t.rect[3] - 2, t.rect[2] + 4, t.rect[3] + 4);
+    renderer.clearDepth(); renderer.render(scene, cam);
+  }
+  renderer.setScissorTest(false);
+  return renderer.domElement.toDataURL('image/png');
+}
+const base = bake(mesh.material.map, true);
+const mrTex = mesh.material.roughnessMap || mesh.material.metalnessMap;
+const mr = mrTex ? bake(mrTex, false) : null;
+const depth = bake(null, false, true);
+window.DONE = { base, mr, depth, layout: { size: SIZE, min, dims: size, tiles } };
+</script></body></html>

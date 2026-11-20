@@ -1,0 +1,283 @@
+{
+ "police": {
+  "label": "POLICE CRUISER",
+  "length": 4.95,
+  "type": {
+   "topSpeed": 190,
+   "accel": 9.5,
+   "grip": 1.08,
+   "roll": 0.9,
+   "mass": 1.1
+  },
+  "halfWidth": 1.096,
+  "roof": 1.65,
+  "wheelR": 0.398,
+  "wheelX": 0.891,
+  "wheelZ": [
+   -1.414,
+   1.319
+  ],
+  "wheels": {
+   "wheel_fl": [
+    0.891,
+    0.404,
+    1.319
+   ],
+   "wheel_fr": [
+    -0.846,
+    0.412,
+    1.317
+   ],
+   "wheel_rl": [
+    0.894,
+    0.391,
+    -1.414
+   ],
+   "wheel_rr": [
+    -0.864,
+    0.393,
+    -1.415
+   ]
+  },
+  "door": {
+   "z0": -0.72,
+   "z1": 0.58,
+   "y0": 0.33,
+   "y1": 1.45
+  },
+  "seat": {
+   "x": 0.46,
+   "y": 0.35,
+   "z": -0.19
+  },
+  "backZ": -2.475,
+  "frontZ": 2.475,
+  "loTriangles": 2995
+ },
+ "luxury": {
+  "label": "LUXURY COUPE",
+  "length": 5,
+  "type": {
+   "topSpeed": 175,
+   "accel": 8.2,
+   "grip": 1,
+   "roll": 1,
+   "mass": 1.15
+  },
+  "halfWidth": 0.948,
+  "roof": 1.51,
+  "wheelR": 0.409,
+  "wheelX": 0.829,
+  "wheelZ": [
+   -1.555,
+   1.479
+  ],
+  "wheels": {
+   "wheel_fl": [
+    0.829,
+    0.413,
+    1.479
+   ],
+   "wheel_fr": [
+    -0.83,
+    0.412,
+    1.464
+   ],
+   "wheel_rl": [
+    0.831,
+    0.406,
+    -1.555
+   ],
+   "wheel_rr": [
+    -0.831,
+    0.418,
+    -1.55
+   ]
+  },
+  "door": {
+   "z0": -0.3,
+   "z1": 0.75,
+   "y0": 0.3,
+   "y1": 1.33
+  },
+  "seat": {
+   "x": 0.4,
+   "y": 0.32,
+   "z": 0.11
+  },
+  "backZ": -2.5,
+  "frontZ": 2.5,
+  "loTriangles": 3000
+ },
+ "hyper": {
+  "label": "HYPERCAR",
+  "length": 4.7,
+  "type": {
+   "topSpeed": 215,
+   "accel": 12.5,
+   "grip": 1.25,
+   "roll": 0.6,
+   "mass": 0.85
+  },
+  "halfWidth": 1.01,
+  "roof": 1.34,
+  "wheelR": 0.397,
+  "wheelX": 0.903,
+  "wheelZ": [
+   -1.379,
+   1.245
+  ],
+  "wheels": {
+   "wheel_fl": [
+    0.903,
+    0.4,
+    1.245
+   ],
+   "wheel_fr": [
+    -0.902,
+    0.393,
+    1.255
+   ],
+   "wheel_rl": [
+    0.91,
+    0.394,
+    -1.379
+   ],
+   "wheel_rr": [
+    -0.905,
+    0.395,
+    -1.385
+   ]
+  },
+  "door": {
+   "z0": -0.6,
+   "z1": 0.62,
+   "y0": 0.25,
+   "y1": 1.2
+  },
+  "seat": {
+   "x": 0.42,
+   "y": 0.27,
+   "z": -0.11
+  },
+  "backZ": -2.35,
+  "frontZ": 2.35,
+  "loTriangles": 3000
+ },
+ "hatch": {
+  "label": "CITY HATCHBACK",
+  "length": 4.05,
+  "type": {
+   "topSpeed": 150,
+   "accel": 6.8,
+   "grip": 0.95,
+   "roll": 1.2,
+   "mass": 0.95
+  },
+  "halfWidth": 0.926,
+  "roof": 1.71,
+  "wheelR": 0.342,
+  "wheelX": 0.765,
+  "wheelZ": [
+   -1.364,
+   1.219
+  ],
+  "wheels": {
+   "wheel_fl": [
+    0.765,
+    0.336,
+    1.219
+   ],
+   "wheel_fr": [
+    -0.765,
+    0.338,
+    1.219
+   ],
+   "wheel_rl": [
+    0.763,
+    0.347,
+    -1.364
+   ],
+   "wheel_rr": [
+    -0.764,
+    0.344,
+    -1.367
+   ]
+  },
+  "door": {
+   "z0": -0.63,
+   "z1": 0.72,
+   "y0": 0.33,
+   "y1": 1.62
+  },
+  "seat": {
+   "x": 0.39,
+   "y": 0.35,
+   "z": -0.08
+  },
+  "backZ": -2.025,
+  "frontZ": 2.025,
+  "loTriangles": 2800
+ },
+ "armored": {
+  "label": "ARMORED TRUCK",
+  "length": 5.4,
+  "type": {
+   "topSpeed": 120,
+   "accel": 4.2,
+   "grip": 0.8,
+   "roll": 1.7,
+   "mass": 2.4
+  },
+  "halfWidth": 1.152,
+  "roof": 3.14,
+  "wheelR": 0.45,
+  "wheelX": 0.994,
+  "wheelZ": [
+   -1.7,
+   1.456
+  ],
+  "wheels": {
+   "wheel_fl": [
+    0.994,
+    0.45,
+    1.456
+   ],
+   "wheel_fr": [
+    -0.994,
+    0.449,
+    1.446
+   ],
+   "wheel_rl": [
+    0.993,
+    0.45,
+    -1.7
+   ],
+   "wheel_rr": [
+    -0.994,
+    0.448,
+    -1.699
+   ]
+  },
+  "door": {
+   "z0": 0.27,
+   "z1": 0.94,
+   "y0": 0.78,
+   "y1": 2.12
+  },
+  "seat": {
+   "x": 0.48,
+   "y": 0.8,
+   "z": 0.48
+  },
+  "backZ": -2.7,
+  "frontZ": 2.7,
+  "loTriangles": 3394
+ },
+ "boat": {
+  "label": "BOAT",
+  "length": 9,
+  "type": null,
+  "loTriangles": 3584
+ }
+}

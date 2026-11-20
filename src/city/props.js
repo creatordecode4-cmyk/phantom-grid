@@ -214,6 +214,11 @@ export function buildProps(ctx) {
   S('barrier', M.makeBarrier(), mats.prop, { maxDistance: 320 });
   // parked cars: four types, metallic paint with a clear coat
   for (const kind of ['sedan', 'suv', 'van', 'coupe']) S(kind, makeCar(kind), mats.carPaint, { maxDistance: 150, useColor: true });
+  // cars from model files (assets/cars): they bring their own colors
+  const modelKinds = ctx.carLib ? ctx.carLib.kinds : [];
+  for (const kind of modelKinds) S(kind, ctx.carLib.geo[kind], mats.carPaint, { maxDistance: 150, useColor: true });
+  // how often each model car is parked somewhere (the rest are the cars made in code)
+  const MODEL_SHARE = { hatch: 0.13, luxury: 0.08, police: 0.045, hyper: 0.045, armored: 0.035 };
   // the soft shadow under every parked car (its own copies, so it can go away when the player takes the car)
   {
     const mb = new MeshBuilder();
@@ -222,10 +227,17 @@ export function buildProps(ctx) {
   }
   // every parked car is remembered: the player can get in and drive it away
   const parkedCars = ctx.parkedCars;
-  const pickKind = () => { const r = rng.next(); return r < 0.45 ? 'sedan' : r < 0.7 ? 'suv' : r < 0.84 ? 'van' : 'coupe'; };
+  const pickKind = () => {
+    let r = rng.next();
+    for (const kind of modelKinds) { const share = MODEL_SHARE[kind] ?? 0.05; if (r < share) return kind; r -= share; }
+    r = rng.next();
+    return r < 0.45 ? 'sedan' : r < 0.7 ? 'suv' : r < 0.84 ? 'van' : 'coupe';
+  };
+  const isModel = (kind) => modelKinds.includes(kind);
   function addParkedCar(kind, x, y, z, rot, color) {
+    if (isModel(kind)) color = [1, 1, 1]; // model cars keep the colors they came with
     const index = sets[kind].add(x, y, z, rot, 1, color);
-    const shadow = sets.carShadow.add(x, y + 0.021, z, rot, kind === 'van' ? [1.09, 1, 1.13] : 1);
+    const shadow = sets.carShadow.add(x, y + 0.021, z, rot, kind === 'van' || kind === 'armored' ? [1.09, 1, 1.13] : 1);
     const fx = Math.sin(rot), fz = Math.cos(rot);
     const own = [-1.45, 0, 1.45].map((o) => ({ x: x + fx * o, z: z + fz * o, r: 1.0 }));
     circles.push(...own);
@@ -642,6 +654,13 @@ export function buildProps(ctx) {
     addParkedCar(pickKind(), c.x, curb + 0.03, c.z, c.rot, lin(rng.pick(CAR_COLORS)));
   }
   for (const l of ctx.lotLamps) addStreetLight(1, l.x, curb, l.z, l.rot);
+
+  // boats on the water in front of the beach (from a model file, if there is one)
+  if (ctx.carLib && ctx.carLib.boat) {
+    S('boat', ctx.carLib.boat, mats.carPaint, { maxDistance: 700 });
+    const sea = L.beach.minZ;
+    for (const [x, off, rot] of [[-150, 26, 1.9], [60, 34, -1.2], [215, 24, 1.4], [-320, 40, 0.4]]) sets.boat.add(x, L.ocean.level - 0.55, sea - off, rot, 1, null, rng.range(-0.02, 0.02), rng.range(-0.03, 0.03));
+  }
 
   // trees on roofs and terraces, in gardens and plazas (collected by the building kit)
   for (const t of ctx.roofTrees) {

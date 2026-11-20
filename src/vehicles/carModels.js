@@ -97,8 +97,22 @@ const CAR_SPECS = {
   },
 };
 
+// Cars that come from model files (see carLibrary.js) are added here when they are loaded.
+const MODEL_INFO = {};
+export function registerCar(name, info) {
+  CAR_TYPES[name] = { label: info.label, ...info.type };
+  const hw = info.halfWidth, r = info.wheelR;
+  MODEL_INFO[name] = {
+    kind: name, model: true, wheelR: r, wheelX: info.wheelX, wheelZ: info.wheelZ, wheelbase: info.wheelZ[1] - info.wheelZ[0],
+    backZ: info.backZ, frontZ: info.frontZ, length: info.length, halfWidth: hw, roof: info.roof,
+    noseY: r * 1.7, noseW: hw * 1.5, tailY: r * 2.15, tailW: hw * 1.45,
+    door: { ...info.door, x: hw + 0.012 }, seat: info.seat, wheels: info.wheels,
+  };
+}
+
 // Sizes of a car type that other files need (wheels, lights, door, length).
 export function carInfo(kind) {
+  if (MODEL_INFO[kind]) return MODEL_INFO[kind];
   const s = CAR_SPECS[kind], first = s.rings[0], last = s.rings[s.rings.length - 1];
   const roof = Math.max(...s.rings.map((r) => r.yt));
   const side = Math.max(...s.rings.map((r) => r.ws));

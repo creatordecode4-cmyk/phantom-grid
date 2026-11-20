@@ -144,12 +144,13 @@ function makeLampLightMap(ctx) {
 // ---------------------------------------------------------------------------
 // MAIN: build everything. Returns the "city" object used by the game.
 // ---------------------------------------------------------------------------
-export async function buildCity(scene, layout, materials, onProgress = () => {}) {
+export async function buildCity(scene, layout, materials, onProgress = () => {}, carLib = null) {
   const group = new THREE.Group();
   group.name = 'city';
   const ctx = {
     layout,
     group,
+    carLib,           // cars from model files (may be empty)
     mats: materials.mats,
     tex: materials.tex,
     rng: new RNG(layout.seed),

@@ -60,11 +60,16 @@ export function createTraffic(ctx, beamTexture) {
   // ---- the meshes: one per car type ----
   const cars = [];
   const meshes = {};
+  // cars from model files join in (about every third car)
+  const modelKinds = ctx.carLib ? ctx.carLib.kinds : [];
+  const kindList = [];
+  for (let i = 0; i < MAX; i++) kindList.push(modelKinds.length && i % 3 === 1 ? modelKinds[Math.floor(i / 3) % modelKinds.length] : KINDS[i % KINDS.length]);
   for (let i = 0; i < MAX; i++) {
-    cars.push({ kind: KINDS[i % KINDS.length], slot: 0, alive: false, turn: null, plan: null, x: 0, z: 0, heading: 0, v: 0, v0: 7, road: null, c: 0, dir: 1, t: 0, still: 0 });
+    cars.push({ kind: kindList[i], slot: 0, alive: false, turn: null, plan: null, x: 0, z: 0, heading: 0, v: 0, v0: 7, road: null, c: 0, dir: 1, t: 0, still: 0 });
   }
-  for (const kind of ['sedan', 'suv', 'van', 'coupe']) {
+  for (const kind of ['sedan', 'suv', 'van', 'coupe', ...modelKinds]) {
     const mine = cars.filter((c) => c.kind === kind);
+    if (!mine.length) continue;
     const mesh = new THREE.InstancedMesh(ctx.sets[kind].geometry, ctx.mats.carPaint, mine.length);
     mesh.name = 'traffic_' + kind;
     mesh.frustumCulled = false;
@@ -74,7 +79,7 @@ export function createTraffic(ctx, beamTexture) {
     mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(mine.length * 3), 3);
     mine.forEach((c, k) => {
       c.slot = k;
-      const col = lin(kind === 'van' && rng.chance(0.6) ? [0.8, 0.8, 0.78] : rng.pick(CAR_COLORS));
+      const col = modelKinds.includes(kind) ? [1, 1, 1] : lin(kind === 'van' && rng.chance(0.6) ? [0.8, 0.8, 0.78] : rng.pick(CAR_COLORS));
       mesh.instanceColor.setXYZ(k, col[0], col[1], col[2]);
     });
     mesh.instanceMatrix.array.fill(0);

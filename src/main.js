@@ -28,6 +28,7 @@ import { createGPS } from './ui/gps.js';
 import { createSound } from './audio/sound.js';
 import { createVehicles } from './vehicles/vehicle.js';
 import { CAR_TYPES } from './vehicles/carModels.js';
+import { loadCarLibrary } from './vehicles/carLibrary.js';
 import { createMissions } from './missions/missionManager.js';
 
 const hud = createHUD();
@@ -81,7 +82,10 @@ async function boot() {
   await nextFrame();
 
   const layout = buildLayout();
-  const city = await buildCity(scene, layout, materials, (p, text) => hud.setProgress(0.34 + 0.4 * p, text));
+  // car model files (assets/cars); without them the game uses only the cars made in code
+  hud.setProgress(0.33, 'Loading cars');
+  const carLib = await loadCarLibrary();
+  const city = await buildCity(scene, layout, materials, (p, text) => hud.setProgress(0.34 + 0.4 * p, text), carLib);
 
   hud.setProgress(0.78, 'Setting up light');
   await nextFrame();
@@ -103,7 +107,7 @@ async function boot() {
   const unlockSound = () => sound.unlock();
   window.addEventListener('pointerdown', unlockSound, { capture: true });
   window.addEventListener('keydown', unlockSound, { capture: true });
-  const vehicles = createVehicles({ scene, city, materials, sound, weather });
+  const vehicles = createVehicles({ scene, city, materials, sound, weather, carLib });
   const gps = createGPS(layout);
   const missions = createMissions({ scene, city, vehicles, hud, sound });
   let waypoint = null;          // a place the player tapped on the big map
@@ -456,7 +460,7 @@ async function boot() {
   // tools for testing from the browser console (and for screenshots)
   window.PG = {
     THREE, CONFIG, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
-    vehicles, missions, gps, sound, hud, minimap,
+    vehicles, missions, gps, sound, hud, minimap, carLib,
     applyQuality, step, draw, carAction, updateGuides,
     get waypoint() { return waypoint; },
     set waypoint(w) { waypoint = w; routeTimer = 0; },

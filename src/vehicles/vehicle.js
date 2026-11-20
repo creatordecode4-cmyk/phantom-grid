@@ -4,8 +4,11 @@
 // HOW IT FITS TOGETHER
 //   * Parked cars are cheap "instanced" copies (see props.js). When the player
 //     gets into one, that copy is hidden and a real car object is put in its
-//     place: body, four turning wheels, a door that opens, brake lights and a
+//     place: body, four turning wheels, real doors that swing open, glass you
+//     can look through, seats and a dashboard inside, brake lights and a
 //     headlight beam on the road.
+//   * Cars made in code are cut into these parts here. Cars from model files
+//     (assets/cars/) come already cut, see carLibrary.js.
 //   * Cars the player leaves behind stay real objects (a few of them at most).
 //
 // DRIVING FEEL (arcade, but with weight)
@@ -18,6 +21,7 @@
 
 import * as THREE from 'three';
 import { CAR_TYPES, carInfo, makeCar, makeWheel } from './carModels.js';
+import { makeInterior, makeDriver, splitBody } from './carParts.js';
 import { clamp, damp, smoothstep } from '../utils/math.js';
 
 const KMH = 3.6;
@@ -47,7 +51,7 @@ export function makeBeamTexture() {
   return tex;
 }
 
-export function createVehicles({ scene, city, materials, sound, weather }) {
+export function createVehicles({ scene, city, materials, sound, weather, carLib = null }) {
   const mats = materials.mats;
   const L = city.layout, B = L.bounds;
   const geo = { body: {}, wheel: {} };
@@ -61,20 +65,42 @@ export function createVehicles({ scene, city, materials, sound, weather }) {
   let hornOn = false;
 
   // ------------------------------------------------------------- build a car
-  function makeVehicle(kind, x, y, z, rot, color) {
+  // glass you can look through (all cars share it)
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color: 0x141c21, transparent: true, opacity: 0.56, roughness: 0.03, metalness: 0.0, envMapIntensity: 2.2,
+    depthWrite: false, side: THREE.DoubleSide,
+  });
+  // the dark inside of the body shell and the doors
+  const liningMat = new THREE.MeshStandardMaterial({ color: 0x0d0e10, roughness: 0.9, side: THREE.BackSide });
+  const addLining = (mesh) => { const m = new THREE.Mesh(mesh.geometry, liningMat); m.name = 'lining'; mesh.add(m); };
+  const interiors = {};   // seats, dashboard ... one geometry per car type
+  const drivers = {};
+
+  // A CAR MADE IN CODE: the body is cut into body, glass and two real doors.
+  function partsFromCode(v) {
+    const { kind, info, color } = v;
     if (!geo.body[kind]) { geo.body[kind] = makeCar(kind, { wheels: false }); geo.wheel[kind] = makeWheel(kind); }
-    const info = carInfo(kind), type = CAR_TYPES[kind];
-    const group = new THREE.Group();   // place and direction
-    const tilt = new THREE.Group();    // body roll and pitch (the wheels stay on the road)
-    group.add(tilt);
-    // the body is an "instanced" mesh with one copy: that is how the shader gets the paint color
-    const body = new THREE.InstancedMesh(geo.body[kind], mats.carPaint, 1);
-    body.setMatrixAt(0, new THREE.Matrix4());
-    body.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(color), 3);
-    body.castShadow = true; body.receiveShadow = true; body.frustumCulled = false;
-    tilt.add(body);
+    const cut = splitBody(geo.body[kind], info, color);
+    const body = new THREE.Mesh(cut.body, mats.carPaint);
+    body.castShadow = true; body.receiveShadow = true;
+    addLining(body);
+    v.tilt.add(body);
+    const glass = new THREE.Mesh(cut.glass, glassMat);
+    glass.renderOrder = 16;
+    v.tilt.add(glass);
+    for (const d of cut.doors) {
+      const door = new THREE.Group();
+      door.position.set(d.origin[0], d.origin[1], d.origin[2]);
+      const skin = new THREE.Mesh(d.paint, mats.carPaint);
+      skin.castShadow = true;
+      addLining(skin);
+      const win = new THREE.Mesh(d.glass, glassMat);
+      win.renderOrder = 16;
+      door.add(skin, win);
+      v.tilt.add(door);
+      if (d.side > 0) v.doorL = door; else v.doorR = door;
+    }
     // wheels: front left, front right, rear left, rear right (the car's left side is +x)
-    const wheels = [];
     for (const wz of [info.wheelZ[1], info.wheelZ[0]]) {
       for (const sx of [1, -1]) {
         const steerNode = new THREE.Group();
@@ -83,20 +109,84 @@ export function createVehicles({ scene, city, materials, sound, weather }) {
         w.castShadow = true;
         if (sx < 0) w.rotation.y = Math.PI; // the same wheel, turned around for the other side
         steerNode.add(w);
-        group.add(steerNode);
-        wheels.push({ steerNode, mesh: w, front: wz > 0, sx });
+        v.group.add(steerNode);
+        v.wheels.push({ steerNode, mesh: w, front: wz > 0, spin: sx > 0 ? 1 : -1 });
       }
     }
-    // driver's door: a painted panel that swings open around its front edge
-    const d = info.door, dLen = d.z1 - d.z0, dH = d.y1 - d.y0;
-    const doorGeo = new THREE.BoxGeometry(0.035, dH, dLen);
-    doorGeo.translate(0, 0, -dLen / 2);
-    const door = new THREE.Mesh(doorGeo, new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color().setRGB(color[0], color[1], color[2]), metalness: 0.55, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.06,
-    }));
-    door.position.set(d.x, (d.y0 + d.y1) / 2, d.z1);
-    door.castShadow = true;
-    tilt.add(door);
+    addInside(v);
+  }
+
+  // A CAR FROM A MODEL FILE. First the light version is shown; the detailed one
+  // (with doors, glass and turning wheels) replaces it as soon as it is loaded.
+  function partsFromModel(v) {
+    const simple = new THREE.Mesh(carLib.geo[v.kind], mats.carPaint);
+    simple.castShadow = true; simple.receiveShadow = true;
+    v.tilt.add(simple);
+    carLib.loadHi(v.kind).then((scene) => {
+      if (!scene || !live.includes(v)) return;
+      const model = scene.clone(true);
+      const take = (name) => model.getObjectByName(name);
+      const paint = (o) => {
+        // (collect the meshes first: the dark lining adds new ones while we work)
+        const meshes = [];
+        o.traverse((m) => { if (m.isMesh) meshes.push(m); });
+        for (const m of meshes) {
+          if (m.name.endsWith('glass')) { m.material = glassMat; m.renderOrder = 16; continue; }
+          m.material = paintFor(m.material);
+          m.castShadow = true; m.receiveShadow = true;
+          if (!m.name.startsWith('wheel')) addLining(m); // wheels are solid, they need no inside
+        }
+      };
+      for (const name of ['body', 'glass', 'door_l', 'door_r']) {
+        const o = take(name);
+        if (!o) continue;
+        paint(o);
+        v.tilt.add(o);
+        if (name === 'door_l') v.doorL = o;
+        if (name === 'door_r') v.doorR = o;
+      }
+      for (const [name, front] of [['wheel_fl', true], ['wheel_fr', true], ['wheel_rl', false], ['wheel_rr', false]]) {
+        const o = take(name);
+        if (!o) continue;
+        paint(o);
+        const steerNode = new THREE.Group();
+        steerNode.position.copy(o.position);
+        o.position.set(0, 0, 0);
+        steerNode.add(o);
+        v.group.add(steerNode);
+        v.wheels.push({ steerNode, mesh: o, front, spin: 1 });
+      }
+      v.tilt.remove(simple);
+      addInside(v);
+    });
+  }
+  // model files bring their own picture; we add a clear coat and the street lamp light at night
+  const paintCache = new Map();
+  function paintFor(src) {
+    if (paintCache.has(src)) return paintCache.get(src);
+    const m = new THREE.MeshPhysicalMaterial({
+      map: src.map, roughnessMap: src.roughnessMap, metalnessMap: src.metalnessMap, roughness: 1, metalness: 1,
+      clearcoat: 0.6, clearcoatRoughness: 0.12, envMapIntensity: 1.2,
+    });
+    materials.lampPatch(m);
+    paintCache.set(src, m);
+    return m;
+  }
+  // seats, dashboard and (while somebody drives) a driver
+  function addInside(v) {
+    const k = v.kind;
+    if (!interiors[k]) { interiors[k] = makeInterior(v.info); drivers[k] = makeDriver(v.info); }
+    v.tilt.add(new THREE.Mesh(interiors[k], mats.prop));
+    v.driver = new THREE.Mesh(drivers[k], mats.prop);
+    v.driver.visible = false;
+    v.tilt.add(v.driver);
+  }
+
+  function makeVehicle(kind, x, y, z, rot, color) {
+    const info = carInfo(kind), type = CAR_TYPES[kind];
+    const group = new THREE.Group();   // place and direction
+    const tilt = new THREE.Group();    // body roll and pitch (the wheels stay on the road)
+    group.add(tilt);
     // brake lights: a red bar that gets very bright when braking
     const brakeMat = new THREE.MeshBasicMaterial({ color: 0x200000 });
     const brake = new THREE.Mesh(new THREE.BoxGeometry(info.tailW * 0.96, 0.055, 0.03), brakeMat);
@@ -119,17 +209,18 @@ export function createVehicles({ scene, city, materials, sound, weather }) {
     group.rotation.y = rot;
     scene.add(group);
     const v = {
-      kind, info, type, group, tilt, body, wheels, door, brakeMat, beam, beamMat, color,
+      kind, info, type, group, tilt, wheels: [], doorL: null, doorR: null, driver: null, brakeMat, beam, beamMat, color,
       x, y, z, heading: rot, vx: 0, vz: 0, steer: 0, roll: 0, pitch: 0, spin: 0, doorOpen: 0,
       forward: 0, slide: 0, braking: false, born: performance.now(),
     };
     live.push(v);
+    if (info.model && carLib && carLib.geo[kind]) partsFromModel(v); else partsFromCode(v);
     return v;
   }
 
   function removeVehicle(v) {
     scene.remove(v.group);
-    v.door.geometry.dispose(); v.door.material.dispose(); v.brakeMat.dispose(); v.beamMat.dispose();
+    v.brakeMat.dispose(); v.beamMat.dispose();
     const i = live.indexOf(v);
     if (i >= 0) live.splice(i, 1);
   }
@@ -333,10 +424,12 @@ export function createVehicles({ scene, city, materials, sound, weather }) {
     v.group.rotation.y = v.heading;
     v.tilt.rotation.set(v.pitch, 0, v.roll);
     for (const w of v.wheels) {
-      if (w.front) w.steerNode.rotation.y = -v.steer;
-      w.mesh.rotation.x = w.sx > 0 ? v.spin : -v.spin;
+      if (w.front) w.steerNode.rotation.y = -v.steer * 0.8;
+      w.mesh.rotation.x = v.spin * w.spin;
     }
-    v.door.rotation.y = -v.doorOpen * 1.15;
+    // the driver's door swings open around its front edge (the other door stays shut)
+    if (v.doorL) v.doorL.rotation.y = -v.doorOpen * 1.15;
+    if (v.driver) v.driver.visible = v === active && (state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3));
     // lights
     const on = v === active && state !== 'none';
     const lamp = on ? night : 0;
@@ -406,7 +499,7 @@ export function createVehicles({ scene, city, materials, sound, weather }) {
       const v = live[i];
       if (v === active) continue;
       const d = Math.hypot(v.x - px, v.z - pz);
-      const extra = live.length - (active ? 1 : 0) > 5;
+      const extra = live.length - (active ? 1 : 0) > 2; // detailed cars cost many draw calls: keep only a few
       if (!v.keep && (d > 320 || (extra && d > 90 && v === live.find((o) => o !== active && !o.keep)))) { removeVehicle(v); continue; }
       if (dyn && d < 40) {
         const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
