@@ -144,6 +144,12 @@ async function boot() {
     rig.rotate(input.lookX, input.lookY);
     player.update(dt, input, rig.yaw);
     rig.update(dt, player);
+    // test tool: PG.freeCam = { pos: [x, y, z], look: [x, y, z] } puts the camera anywhere
+    const fc = window.PG && window.PG.freeCam;
+    if (fc) {
+      camera.position.set(fc.pos[0], fc.pos[1], fc.pos[2]);
+      camera.lookAt(fc.look[0], fc.look[1], fc.look[2]);
+    }
     shared.uPgPlayer.value.copy(player.position);
     weather.update(dt);
     lighting.update(dt, player.position, rig.forwardXZ(camDir));
@@ -277,7 +283,7 @@ async function boot() {
 
   // tools for testing from the browser console (and for screenshots)
   window.PG = {
-    THREE, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
+    THREE, CONFIG, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
     applyQuality, step, draw,
     get quality() { return active; },
     get fps() { return fps; },

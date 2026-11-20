@@ -133,9 +133,9 @@ export function createPostFX(renderer) {
       // ---- film-like grade ----
       float l = dot( col, vec3( 0.2126, 0.7152, 0.0722 ) );
       // a little more contrast in the mid tones
-      col = mix( col, col * col * ( 3.0 - 2.0 * col ), 0.16 );
+      col = mix( col, col * col * ( 3.0 - 2.0 * col ), 0.1 );
       // cool shadows, warm highlights
-      col += vec3( - 0.010, 0.002, 0.016 ) * ( 1.0 - l ) * ( 1.0 - l ) + vec3( 0.014, 0.004, - 0.012 ) * l * l;
+      col += vec3( - 0.004, 0.001, 0.007 ) * ( 1.0 - l ) * ( 1.0 - l ) + vec3( 0.012, 0.004, - 0.010 ) * l * l;
       // slightly muted colors
       col = mix( vec3( dot( col, vec3( 0.2126, 0.7152, 0.0722 ) ) ), col, 0.93 );
       // film never reaches pure black

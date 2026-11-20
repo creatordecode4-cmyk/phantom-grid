@@ -150,7 +150,7 @@ export const CONFIG = {
   // normal: how strong the fake surface bumps are (made from the picture).
   textures: {
     path: 'assets/textures/',
-    asphalt:    { file: 'asphalt.png',       size: 2.6, normal: 2.2, roughness: 0.92 },
+    asphalt:    { file: 'asphalt.png',       size: 2.6, normal: 1.1, roughness: 0.94 },
     sidewalk:   { file: 'sidewalk.png',      size: 3.0, normal: 1.6, roughness: 0.88 },  // 4 slabs across -> 0.75 m slabs
     brick:      { file: 'brick.png',         size: 1.5, normal: 2.4, roughness: 0.9 },   // 6 bricks across -> 1 brick = 25 cm
     plaster:    { file: 'plaster.png',       size: 3.4, normal: 1.2, roughness: 0.93 },

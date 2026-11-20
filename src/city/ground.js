@@ -363,7 +363,19 @@ export function buildGround(ctx) {
     }
   }
 
-  // ---- 8. stains on the sidewalks ---------------------------------------------------------------
+  // ---- 8. back yards: the middle of every block is darker, used ground ---------------------------
+  for (const b of L.blocks) {
+    if (!b.isRect) continue;
+    const bb = b.bounds, w = bb.maxX - bb.minX, d = bb.maxZ - bb.minZ;
+    if (w < 40 || d < 40) continue;
+    addDecal(dc, 'patch', (bb.minX + bb.maxX) / 2, (bb.minZ + bb.maxZ) / 2, w - 22, d - 22, 0, curb + 0.01, 1.0, 0.8);
+    for (let k = 0; k < 5; k++) {
+      addDecal(dc, rng.pick(['oil1', 'dirt', 'leak', 'crack1']), rng.range(bb.minX + 16, bb.maxX - 16), rng.range(bb.minZ + 16, bb.maxZ - 16),
+        rng.range(3, 8), rng.range(3, 8), rng.range(0, 6.28), curb + 0.012, rng.range(0.4, 0.8));
+    }
+  }
+
+  // ---- 9. stains on the sidewalks ---------------------------------------------------------------
   for (const b of L.blocks) {
     if (!b.playable) continue;
     for (const e of blockEdges(b)) {

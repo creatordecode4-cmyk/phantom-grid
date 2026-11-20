@@ -61,7 +61,7 @@ export function createWeather(scene, lighting) {
         gl_Position = projectionMatrix * mv;
         // fade out drops that are very close or at the edge of the box
         float d = length( rel );
-        vFade = smoothstep( 0.6, 2.5, d ) * ( 1.0 - smoothstep( uBox.x * 0.36, uBox.x * 0.5, d ) );
+        vFade = smoothstep( 1.5, 5.0, d ) * ( 1.0 - smoothstep( uBox.x * 0.36, uBox.x * 0.5, d ) );
       }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor;

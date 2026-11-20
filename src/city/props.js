@@ -189,15 +189,15 @@ export function buildProps(ctx) {
 
   const sets = {};
   const S = (name, geom, mat, opts) => (sets[name] = new InstancedSet(name, geom, mat, opts));
-  S('streetLight', mStreet.geometry, mats.prop, { maxDistance: 430 });
-  S('led1', mLed1.geometry, mats.prop, { maxDistance: 500 });
-  S('led2', mLed2.geometry, mats.prop, { maxDistance: 600 });
-  S('traffic', mTraffic.geometry, mats.prop, { maxDistance: 300 });
-  S('pole', mPole.geometry, mats.prop, { maxDistance: 380 });
-  S('treeTrunk', mTree.trunk, mats.prop, { maxDistance: 480 });
-  S('treeCrown', mTree.crown, mats.leaf, { maxDistance: 480 });
-  S('palmTrunk', mPalm.trunk, mats.prop, { maxDistance: 850 });
-  S('palmCrown', mPalm.crown, mats.frond, { maxDistance: 850 });
+  S('streetLight', mStreet.geometry, mats.prop, { maxDistance: 320 });
+  S('led1', mLed1.geometry, mats.prop, { maxDistance: 380 });
+  S('led2', mLed2.geometry, mats.prop, { maxDistance: 480 });
+  S('traffic', mTraffic.geometry, mats.prop, { maxDistance: 260 });
+  S('pole', mPole.geometry, mats.prop, { maxDistance: 320 });
+  S('treeTrunk', mTree.trunk, mats.prop, { maxDistance: 400 });
+  S('treeCrown', mTree.crown, mats.leaf, { maxDistance: 400 });
+  S('palmTrunk', mPalm.trunk, mats.prop, { maxDistance: 620 });
+  S('palmCrown', mPalm.crown, mats.frond, { maxDistance: 620 });
   S('hydrant', M.makeHydrant(), mats.prop, { maxDistance: 95, useColor: true });
   S('bin', M.makeTrashBin(), mats.prop, { maxDistance: 105 });
   S('bench', M.makeBench(), mats.prop, { maxDistance: 120 });
@@ -208,9 +208,9 @@ export function buildProps(ctx) {
   S('sedan', M.makeCar('sedan'), mats.prop, { maxDistance: 200, useColor: true });
   S('suv', M.makeCar('suv'), mats.prop, { maxDistance: 200, useColor: true });
   S('van', M.makeCar('van'), mats.prop, { maxDistance: 200, useColor: true });
-  S('roofAC', M.makeRoofAC(), mats.prop, { maxDistance: 230, castShadow: false });
-  S('tank', M.makeWaterTank(), mats.prop, { maxDistance: 620 });
-  S('solar', M.makeSolarPanels(), mats.prop, { maxDistance: 260, castShadow: false });
+  S('roofAC', M.makeRoofAC(), mats.prop, { maxDistance: 150, castShadow: false });
+  S('tank', M.makeWaterTank(), mats.prop, { maxDistance: 420, castShadow: false });
+  S('solar', M.makeSolarPanels(), mats.prop, { maxDistance: 170, castShadow: false });
   S('winAC', M.makeWindowAC(), mats.prop, { maxDistance: 115, castShadow: false });
   S('fireEscape', M.makeFireEscape(true), mats.prop, { maxDistance: 150, castShadow: false });
   S('fireEscapeTop', M.makeFireEscape(false), mats.prop, { maxDistance: 150, castShadow: false });
@@ -218,7 +218,9 @@ export function buildProps(ctx) {
 
   // lamps of the traffic lights: tiny glowing balls with their own color
   const bitMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const bits = S('signalLamp', new THREE.SphereGeometry(0.105, 7, 5), bitMat, { maxDistance: 280, useColor: true, castShadow: false, receiveShadow: false });
+  const lampDisc = new THREE.CircleGeometry(0.105, 8);
+  lampDisc.rotateY(Math.PI); // the lamps look toward -z, like the signal heads
+  const bits = S('signalLamp', lampDisc, bitMat, { maxDistance: 240, useColor: true, castShadow: false, receiveShadow: false });
   const signalBits = []; // { index, group: 0 north-south / 1 east-west, kind }
 
   const inPlay = (x, z, m = 0) => x > B.minX - m && x < B.maxX + m && z > B.minZ - m && z < B.maxZ + m;
@@ -446,7 +448,7 @@ export function buildProps(ctx) {
       circles.push({ x, z, r: 0.24 });
       for (const lamp of mTraffic.lamps) {
         const p = place(x, curb, z, rot, lamp.pos[0], lamp.pos[1], lamp.pos[2]);
-        const index = bits.add(p[0], p[1], p[2], 0, 1, [0.02, 0.02, 0.02]);
+        const index = bits.add(p[0], p[1], p[2], rot, 1, [0.02, 0.02, 0.02]);
         signalBits.push({ index, group, kind: lamp.kind });
       }
     }
@@ -542,12 +544,12 @@ export function buildProps(ctx) {
     const r = rng.fork();
     const roofY = b.top;
     // air conditioning units
-    const acs = r.int(0, 3);
+    const acs = r.int(0, 2);
     for (let i = 0; i < acs && w > 5 && d > 5; i++) {
       sets.roofAC.add(r.range(b.minX + 1.6, b.maxX - 1.6), roofY, r.range(b.minZ + 1.6, b.maxZ - 1.6), r.int(0, 3) * Math.PI / 2);
     }
     // wooden water tank on older, taller houses
-    if (!b.neonStyle && b.floors >= 4 && w > 7 && d > 7 && r.chance(0.3)) {
+    if (!b.neonStyle && b.floors >= 4 && w > 7 && d > 7 && r.chance(0.22)) {
       sets.tank.add(r.range(b.minX + 2.6, b.maxX - 2.6), roofY, r.range(b.minZ + 2.6, b.maxZ - 2.6), r.range(0, 6.28));
     }
     // solar panels, facing the midday sun in the south

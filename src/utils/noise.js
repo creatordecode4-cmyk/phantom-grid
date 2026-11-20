@@ -124,6 +124,49 @@ function boxBlurWrap(src, w, h, radius) {
 }
 
 // ---------------------------------------------------------------------------
+// Even out a photo texture so that it can repeat without showing a pattern.
+// Big light / dark areas (stains, shadows) are removed, small detail stays.
+// The large variation is added back by the shaders with non-repeating noise.
+//   radiusFrac : size of the areas to even out (part of the picture width)
+//   strength   : 0 = leave the picture alone, 1 = fully even
+//   tame       : 0..1, pull very bright spots (old paint, glare) toward the average
+// Returns a canvas.
+// ---------------------------------------------------------------------------
+export function flattenImage(image, radiusFrac = 0.07, strength = 0.9, tame = 0) {
+  const w = Math.min(image.width, 1024), h = Math.min(image.height, 1024);
+  const [cv, ctx] = makeCanvas(w, h);
+  ctx.drawImage(image, 0, 0, w, h);
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const n = w * h;
+  const radius = Math.max(2, Math.round(w * radiusFrac));
+  const plane = new Float32Array(n);
+  const means = [0, 0, 0];
+  for (let c = 0; c < 3; c++) {
+    let sum = 0;
+    for (let i = 0; i < n; i++) { plane[i] = d[i * 4 + c]; sum += plane[i]; }
+    const mean = sum / n;
+    means[c] = mean;
+    // two box blurs = a soft, round blur
+    const low = boxBlurWrap(boxBlurWrap(plane, w, h, radius), w, h, radius);
+    for (let i = 0; i < n; i++) d[i * 4 + c] = Math.min(255, Math.max(0, plane[i] - (low[i] - mean) * strength));
+  }
+  if (tame > 0) {
+    const meanL = 0.299 * means[0] + 0.587 * means[1] + 0.114 * means[2];
+    const limit = meanL * 1.25;
+    for (let i = 0; i < n; i++) {
+      const l = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+      if (l <= limit) continue;
+      const k = 1 - tame * (1 - limit / l);
+      // move toward the average color while getting darker (covers white paint)
+      for (let c = 0; c < 3; c++) d[i * 4 + c] = (d[i * 4 + c] * k) * (1 - tame * 0.5) + means[c] * (tame * 0.5);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
+// ---------------------------------------------------------------------------
 // Make a NORMAL map (fake small bumps) and a ROUGHNESS value from a color
 // picture. We guess the height of the surface from how bright each pixel
 // is: dark cracks are low, bright stones are high.

@@ -449,7 +449,8 @@ export function createLighting(scene, renderer, city, materials) {
     const ext = skyExtinction(st, Math.max(sunDir.y, 0.02));
     const mx = Math.max(ext[0], ext[1], ext[2], 1e-4);
     const sunCol = [Math.pow(ext[0] / mx, 0.62), Math.pow(ext[1] / mx, 0.62), Math.pow(ext[2] / mx, 0.62)];
-    const sunPower = 6.4 * sunLevel * (0.42 + 0.58 * smoothstep(0, 28, el)) * (1 - 0.86 * rain);
+    // (the sky shader is bright: its blue is about 1.0, so the sun has to be strong to match)
+    const sunPower = 16.0 * sunLevel * (0.4 + 0.6 * smoothstep(0, 28, el)) * (1 - 0.86 * rain);
 
     if (!nightMode) {
       lightDir.copy(sunDir);
@@ -461,7 +462,7 @@ export function createLighting(scene, renderer, city, materials) {
       // moonlight: weak and blue
       lightDir.copy(moonDir);
       sun.color.setRGB(0.55, 0.68, 1.0);
-      sun.intensity = 0.22 * night * (1 - 0.7 * rain);
+      sun.intensity = 0.2 * night * (1 - 0.7 * rain);
     }
     const wantShadows = quality.shadows && !nightMode;
     if (sun.castShadow !== wantShadows) { sun.castShadow = wantShadows; farDirty = true; }
@@ -471,24 +472,25 @@ export function createLighting(scene, renderer, city, materials) {
 
     // ---- sky light and ground bounce ----
     const zen = skyColor(st, -sunDir.x * 0.3, 0.9, -sunDir.z * 0.3);
-    const overcastLum = (0.34 * day + 0.012) ;
+    const overcastLum = 0.78 * day + 0.012;
     const hemiSky = [lerp(zen[0], overcastLum, rain * 0.85), lerp(zen[1], overcastLum * 1.04, rain * 0.85), lerp(zen[2], overcastLum * 1.1, rain * 0.85)];
     // night: a little cold light from the sky so shapes stay readable
-    hemi.color.setRGB(hemiSky[0] + 0.02 * night, hemiSky[1] + 0.028 * night, hemiSky[2] + 0.05 * night);
+    const dusk = smoothstep(-12, -1, el) * (1 - smoothstep(-1, 8, el)); // strongest just after sunset
+    hemi.color.setRGB(hemiSky[0] + 0.02 * night + 0.05 * dusk, hemiSky[1] + 0.028 * night + 0.06 * dusk, hemiSky[2] + 0.05 * night + 0.085 * dusk);
     hemi.groundColor.setRGB(
-      0.2 * day * (0.5 + 0.5 * sunCol[0] * sunLevel) + 0.012 * night,
-      0.17 * day * (0.5 + 0.5 * sunCol[1] * sunLevel) + 0.009 * night,
-      0.14 * day * (0.5 + 0.5 * sunCol[2] * sunLevel) + 0.007 * night
+      0.42 * day * (0.45 + 0.55 * sunCol[0] * sunLevel) + 0.012 * night,
+      0.36 * day * (0.45 + 0.55 * sunCol[1] * sunLevel) + 0.009 * night,
+      0.3 * day * (0.45 + 0.55 * sunCol[2] * sunLevel) + 0.007 * night
     );
-    hemi.intensity = 1.0;
+    hemi.intensity = 1.5;
 
     // ---- clouds / night layer ----
     const ou = overlayMat.uniforms;
     ou.uSunDir.value.copy(sunDir);
     ou.uMoonDir.value.copy(moonDir);
-    const cloudLight = sunLevel * 1.15 + 0.02;
+    const cloudLight = sunLevel * (1.7 + 1.3 * smoothstep(0, 30, el)) + 0.02;
     ou.uSunColor.value.setRGB(sunCol[0] * cloudLight + 0.02 * night, sunCol[1] * cloudLight + 0.024 * night, sunCol[2] * cloudLight + 0.035 * night);
-    ou.uSkyColor.value.setRGB(zen[0] * 0.9 + 0.012 * night, zen[1] * 0.9 + 0.012 * night, zen[2] * 0.9 + 0.016 * night);
+    ou.uSkyColor.value.setRGB(zen[0] * 1.05 + 0.012 * night, zen[1] * 1.05 + 0.012 * night, zen[2] * 1.05 + 0.016 * night);
     ou.uCover.value = quality.skyClouds ? lerp(0.36, 0.9, rain) : 0;
     ou.uOvercast.value = smoothstep(0.15, 0.9, rain);
     const lid = [overcastLum * 1.25 + 0.02 * night, overcastLum * 1.28 + 0.02 * night, overcastLum * 1.34 + 0.022 * night];
@@ -511,9 +513,11 @@ export function createLighting(scene, renderer, city, materials) {
     lastSkyLum = 0.2 * (zen[0] + zen[1] + zen[2]) + 0.25 * (fogHDR[0] + fogHDR[1] + fogHDR[2]) / 3 + 0.004;
 
     // ---- exposure: the "camera" opens up when it gets dark ----
-    const exposure = lerp(1.25, lerp(0.74, 0.56, smoothstep(0, 30, el)), day) * (1 + 0.12 * rain * day);
+    const exposure = lerp(1.25, lerp(0.6, 0.3, smoothstep(2, 34, el)), day) * (1 + 0.5 * rain * day);
     renderer.toneMappingExposure = exposure;
     info.exposure = exposure;
+    info.sunPower = sun.intensity;
+    info.zenith = zen;
 
     if (postActive) scene.fog.color.setRGB(fogHDR[0], fogHDR[1], fogHDR[2]);
     else {
@@ -525,16 +529,20 @@ export function createLighting(scene, renderer, city, materials) {
 
     // ---- reflection strength follows the sky brightness ----
     if (hdriEnv) scene.environmentIntensity = (0.06 + 0.94 * day) * (1 - 0.4 * rain);
-    else scene.environmentIntensity = clamp(lastSkyLum / Math.max(envLum, 1e-4), 0.25, 4) * lerp(0.9, 1.25, rain);
+    else scene.environmentIntensity = clamp(lastSkyLum / Math.max(envLum, 1e-4), 0.25, 4) * lerp(0.8, 0.95, rain);
+    // ground and buildings in the reflection map: lit by the same sun and sky
+    const sunOnGround = (sun.intensity * Math.max(lightDir.y, 0.05)) / Math.PI * (nightMode ? 0 : 1);
+    const amb = lastSkyLum * 1.1;
     envGroundMat.color.setRGB(
-      0.05 + 0.2 * day * (0.35 + 0.65 * sunLevel * sunCol[0]) * dry + fogHDR[0] * 0.25,
-      0.05 + 0.18 * day * (0.35 + 0.65 * sunLevel * sunCol[1]) * dry + fogHDR[1] * 0.25,
-      0.05 + 0.16 * day * (0.35 + 0.65 * sunLevel * sunCol[2]) * dry + fogHDR[2] * 0.25
-    ).multiplyScalar(day * 0.9 + 0.1);
+      0.16 * (sunOnGround * 0.55 * sunCol[0] + amb) + 0.004,
+      0.15 * (sunOnGround * 0.55 * sunCol[1] + amb) + 0.004,
+      0.14 * (sunOnGround * 0.55 * sunCol[2] + amb) + 0.004
+    );
+    const sunOnWall = (sun.intensity / Math.PI) * 0.3 * (nightMode ? 0 : 1);
     envRingMat.color.setRGB(
-      (0.22 + 0.5 * sunLevel * sunCol[0]) * day + fogHDR[0] * 0.5 + 0.004,
-      (0.22 + 0.45 * sunLevel * sunCol[1]) * day + fogHDR[1] * 0.5 + 0.004,
-      (0.23 + 0.4 * sunLevel * sunCol[2]) * day + fogHDR[2] * 0.5 + 0.005
+      0.42 * (sunOnWall * sunCol[0] + amb * 0.7) + fogHDR[0] * 0.35 + 0.004,
+      0.4 * (sunOnWall * sunCol[1] + amb * 0.7) + fogHDR[1] * 0.35 + 0.004,
+      0.38 * (sunOnWall * sunCol[2] + amb * 0.7) + fogHDR[2] * 0.35 + 0.005
     );
     envRingLightsMat.color.setScalar(1.5 * lampLevel);
 

@@ -13,7 +13,7 @@
 
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { makeNoiseTexture, makeNormalRoughTexture, canvasTexture } from '../utils/noise.js';
+import { makeNoiseTexture, makeNormalRoughTexture, flattenImage } from '../utils/noise.js';
 import * as TX from './textures.js';
 
 // ---------------------------------------------------------------------------
@@ -143,7 +143,13 @@ varying vec3 vPgWorld;
 varying vec3 vPgNormal;
 #ifdef PG_USE_DATA
 	attribute vec4 aData;
-	varying vec4 vPgData;
+	#ifdef PG_SHOP
+		// "flat" = not blended between the corners, so every pixel of one shop
+		// gets exactly the same numbers (its type and its random seed)
+		flat varying vec4 vPgData;
+	#else
+		varying vec4 vPgData;
+	#endif
 #endif
 #if defined( PG_SHOP ) || defined( PG_TOWER )
 	varying vec2 vPgUv;
@@ -217,7 +223,11 @@ uniform float uPgShoreZ;
 varying vec3 vPgWorld;
 varying vec3 vPgNormal;
 #ifdef PG_USE_DATA
-	varying vec4 vPgData;
+	#ifdef PG_SHOP
+		flat varying vec4 vPgData;
+	#else
+		varying vec4 vPgData;
+	#endif
 #endif
 #if defined( PG_SHOP ) || defined( PG_TOWER )
 	varying vec2 vPgUv;
@@ -271,9 +281,9 @@ void pgShopFront( vec2 p, vec2 size, float type, float seed,
 		vec3 frame = h1 < 0.3 ? vec3( 0.03, 0.03, 0.034 ) : h1 < 0.55 ? vec3( 0.12, 0.085, 0.06 )
 			: h1 < 0.75 ? vec3( 0.42, 0.43, 0.44 ) : h1 < 0.9 ? vec3( 0.5, 0.48, 0.43 ) : vec3( 0.07, 0.14, 0.11 );
 		alb = frame;
-		rough = 0.42;
-		metal = ( h1 > 0.55 && h1 < 0.75 ) ? 0.85 : 0.15;
-		float fw = 0.05;
+		rough = 0.6;
+		metal = ( h1 > 0.55 && h1 < 0.75 ) ? 0.6 : 0.1;
+		float fw = 0.065;
 		float plinthH = 0.32 + 0.3 * h2;
 		float transomY = min( 2.38, size.y - 0.35 );
 		float doorW = min( 1.0, size.x * 0.4 );
@@ -367,15 +377,18 @@ vec3 pgShopInterior( vec2 p, vec2 size, float seed, float lit ) {
 	vec3 col;
 	if ( t == tBack ) {
 		// back wall with shelves of boxes
-		vec2 cell = floor( vec2( hit.x / 0.28, hit.y / 0.46 ) );
+		vec2 cell = floor( vec2( hit.x / 0.42, hit.y / 0.46 ) );
 		float shelf = smoothstep( 0.0, 0.06, fract( hit.y / 0.46 ) );
 		float k = pgHash( cell + seed * 7.0 );
-		vec3 item = 0.25 + 0.5 * vec3( pgHash( cell + 1.3 ), pgHash( cell + 4.1 ), pgHash( cell + 8.7 ) );
+		vec3 item = mix( wall, 0.2 + 0.5 * vec3( pgHash( cell + 1.3 ), pgHash( cell + 4.1 ), pgHash( cell + 8.7 ) ), 0.55 );
+		// far away the small boxes would flicker: blend them into one calm color
+		float sharp = clamp( 1.0 - fwidth( hit.x ) * 5.0, 0.0, 1.0 );
 		col = mix( wall, item, step( 0.35, k ) * step( hit.y, 2.3 ) ) * ( 0.35 + 0.65 * shelf );
+		col = mix( wall * 0.62, col, sharp );
 	} else if ( t == tY ) {
 		// ceiling with light panels, or dark floor
 		float lights = smoothstep( 0.6, 0.8, sin( hit.z * 2.4 ) * 0.5 + 0.5 );
-		col = d.y > 0.0 ? mix( wall * 0.8, vec3( 1.6, 1.5, 1.3 ), lights * lit ) : vec3( 0.12, 0.11, 0.1 );
+		col = d.y > 0.0 ? mix( wall * 0.8, vec3( 3.2, 3.0, 2.6 ), lights * lit ) : vec3( 0.16, 0.15, 0.13 );
 	} else {
 		col = wall * 0.75; // side walls
 	}
@@ -673,7 +686,8 @@ const PG_FRAGMENT_EMISSIVE = /* glsl */ `
 		// shops with a seed below 0.62 keep their lights on at night
 		float lit = step( pgShopSeed, 0.62 ) * uPgNight;
 		vec3 room = pgShopInterior( pgShopP, pgShopSize, vPgData.y, lit );
-		totalEmissiveRadiance += room * pgGlass * ( uPgDay * 0.2 + lit * 1.5 + 0.004 );
+		// by day a shop is much darker inside than the street outside
+		totalEmissiveRadiance += room * pgGlass * ( uPgDay * 0.07 + lit * 0.5 + 0.004 );
 	}
 #endif
 `;
@@ -745,8 +759,12 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   };
   const tex = {};
   const sources = {};
+  // Photos repeat every few meters. Evening out their big stains hides the
+  // repetition (the shaders add new, non-repeating variation instead).
+  const even = { asphalt: [0.06, 0.92, 0], plaster: [0.09, 0.85, 0], brick: [0.08, 0.6, 0.75], sidewalk: [0.14, 0.45, 0], sand: [0.1, 0.7, 0] };
   for (const n of ['asphalt', 'sidewalk', 'brick', 'plaster', 'sand', 'glassTower']) {
-    const src = images[n] || fallback[n]();
+    let src = images[n] || fallback[n]();
+    if (even[n]) src = flattenImage(src, even[n][0], even[n][1], even[n][2]);
     sources[n] = src;
     const t = new THREE.Texture(src);
     t.colorSpace = THREE.SRGBColorSpace;
@@ -796,7 +814,7 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   const mats = {};
 
   // Road asphalt (also used for flat roofs).
-  mats.asphalt = patch(std({ map: tex.asphalt, normalMap: nr.asphalt }), ['PG_GROUND', 'PG_ANTITILE', 'PG_ROUGH_FROM_NORMAL']);
+  mats.asphalt = patch(std({ map: tex.asphalt, normalMap: nr.asphalt, color: 0xb9b9b9 }), ['PG_GROUND', 'PG_ANTITILE', 'PG_ROUGH_FROM_NORMAL']);
   // Sidewalk slabs and curbs.
   mats.sidewalk = patch(std({ map: tex.sidewalk, normalMap: nr.sidewalk }), ['PG_GROUND', 'PG_ROUGH_FROM_NORMAL']);
   // Beach sand.
@@ -815,7 +833,7 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   mats.brick = patch(std({ map: tex.brick, normalMap: nr.brick }), ['PG_WALL', 'PG_WINDOWS', 'PG_ROUGH_FROM_NORMAL']);
   mats.plaster = patch(std({ map: tex.plaster, normalMap: nr.plaster }), ['PG_WALL', 'PG_WINDOWS', 'PG_ROUGH_FROM_NORMAL']);
   // Glass towers of The Crown.
-  mats.tower = patch(std({ map: tex.glassTower, roughness: 0.16, metalness: 0.55 }), ['PG_TOWER']);
+  mats.tower = patch(std({ map: tex.glassTower, roughness: 0.14, metalness: 0.82, color: 0x9aa4ad }), ['PG_TOWER']);
   // Ground floor shop fronts (drawn by the shader).
   mats.shop = patch(std({ roughness: 0.5 }), ['PG_SHOP']);
   // Shop signs.

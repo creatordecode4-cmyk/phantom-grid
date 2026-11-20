@@ -55,14 +55,15 @@ function buildHills(ctx) {
         const profile = Math.max(0, Math.sin(Math.min(1, t * 1.25) * Math.PI)) ** 0.8; // rises, then falls behind
         const n = noise(i / count * 2.2 + seedOff, t * 0.9 + seedOff);
         const n2 = noise2(i / count * 3.1, t * 2.0 + seedOff);
+        const n3 = noise2(i / count * 9.7 + 0.3, t * 5.0 + seedOff); // small gullies
         // lower at both ends of the ridge so it fades out
         const ends = Math.max(0, Math.sin((i / count) * Math.PI)) ** 0.35;
-        const h = profile * (150 + 330 * n + 60 * n2) * (0.45 + 0.55 * ends);
+        const h = profile * (150 + 330 * n + 60 * n2 + 46 * (n3 - 0.5)) * (0.45 + 0.55 * ends);
         pos.push(x, t === 0 ? -4 : h - 2, z);
         // dry earth with darker patches of brush
-        const brush = Math.max(0, n2 - 0.5) * 1.3;
-        const shade = 0.78 + 0.5 * n;
-        col.push((0.62 - 0.2 * brush) * shade, (0.5 - 0.1 * brush) * shade, (0.36 - 0.08 * brush) * shade, 1);
+        const brush = Math.max(0, n2 - 0.45) * 1.6 + Math.max(0, 0.5 - n3) * 0.7;
+        const shade = 0.7 + 0.45 * n;
+        col.push((0.4 - 0.16 * brush) * shade, (0.335 - 0.1 * brush) * shade, (0.25 - 0.08 * brush) * shade, 1);
         uv.push(x / 90, z / 90);
       }
     }
@@ -75,9 +76,9 @@ function buildHills(ctx) {
     }
   }
   // north ridge: runs east-west, far behind The Crown
-  ridge(80, 7, (a, r) => [-3200 + a * 6600, L.hills.northZ + r * 1700], 0.1);
+  ridge(110, 9, (a, r) => [-3200 + a * 6600, L.hills.northZ + r * 1700], 0.1);
   // east ridge: runs north-south and reaches down into the sea
-  ridge(70, 7, (a, r) => [L.hills.eastX - r * 1600, -1700 + a * 5200], 0.6);
+  ridge(96, 9, (a, r) => [L.hills.eastX - r * 1600, -1700 + a * 5200], 0.6);
 
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
@@ -106,7 +107,7 @@ function buildCrown(ctx) {
   const rng = new RNG(L.seed + 77);
   const mb = ctx.mb.tower;
   const tile = T.glassTower.size;
-  const tints = [[0.8, 0.9, 1.0], [1, 1, 1], [0.85, 1.0, 0.96], [0.55, 0.6, 0.68], [1.0, 0.86, 0.72], [0.7, 0.78, 0.9]];
+  const tints = [[0.8, 0.88, 0.96], [1, 1, 1], [0.84, 0.96, 0.92], [0.5, 0.54, 0.6], [1.0, 0.86, 0.7], [0.66, 0.72, 0.82], [0.38, 0.42, 0.48], [0.9, 0.92, 0.9]];
   const placed = [{ x: C.kvi.x, z: C.kvi.z, r: 40 }];
 
   const tower = (x, z, w, d, h, tint) => {

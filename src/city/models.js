@@ -31,6 +31,8 @@ function P(geom, pos, color, rough, metal, more = {}) {
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 const cyl = (rTop, rBot, h, seg = 8) => new THREE.CylinderGeometry(rTop, rBot, h, seg, 1);
 const sph = (r, ws = 8, hs = 6) => new THREE.SphereGeometry(r, ws, hs);
+// tube without end caps (for poles: the ends are never seen)
+const openCyl = (rTop, rBot, h, seg = 6) => new THREE.CylinderGeometry(rTop, rBot, h, seg, 1, true);
 const HALF_PI = Math.PI / 2;
 
 // Materials (as colors + shininess) used again and again.
@@ -47,12 +49,12 @@ const LED = [1.0, 0.88, 0.72];         // warm white lamp
 // lampPos = where the bulb is (used for glow and light).
 export function makeStreetLight() {
   const geometry = mergeParts([
-    P(cyl(0.2, 0.22, 0.08, 10), [0, 0.04, 0], GALV, 0.55, 0.85),
-    P(cyl(0.065, 0.11, 8.2, 8), [0, 4.1, 0], GALV, 0.5, 0.85),
+    P(cyl(0.2, 0.22, 0.08, 6), [0, 0.04, 0], GALV, 0.55, 0.85),
+    P(openCyl(0.065, 0.11, 8.2, 6), [0, 4.1, 0], GALV, 0.5, 0.85),
     // arm: rises a little toward the street
-    P(cyl(0.04, 0.05, 2.5, 6), [0, 8.42, 1.2], GALV, 0.5, 0.85, { rot: [HALF_PI - 0.2, 0, 0] }),
+    P(openCyl(0.04, 0.05, 2.5, 4), [0, 8.42, 1.2], GALV, 0.5, 0.85, { rot: [HALF_PI - 0.2, 0, 0] }),
     // lamp head
-    P(sph(0.5, 8, 5), [0, 8.62, 2.5], [0.4, 0.41, 0.42], 0.45, 0.8, { scale: [0.3, 0.14, 0.76] }),
+    P(sph(0.5, 6, 3), [0, 8.62, 2.5], [0.4, 0.41, 0.42], 0.45, 0.8, { scale: [0.3, 0.14, 0.76] }),
     // glowing glass under the head
     P(box(0.2, 0.03, 0.44), [0, 8.535, 2.56], SODIUM, 0.3, 0, { glow: 1 }),
   ]);
@@ -63,8 +65,8 @@ export function makeStreetLight() {
 export function makeLedLight(arms) {
   const col = [0.14, 0.15, 0.16];
   const parts = [
-    P(cyl(0.16, 0.19, 0.5, 10), [0, 0.25, 0], col, 0.4, 0.7),
-    P(cyl(0.07, 0.1, 9.0, 8), [0, 4.5, 0], col, 0.4, 0.7),
+    P(cyl(0.16, 0.19, 0.5, 6), [0, 0.25, 0], col, 0.4, 0.7),
+    P(openCyl(0.07, 0.1, 9.0, 6), [0, 4.5, 0], col, 0.4, 0.7),
   ];
   const lamps = [];
   for (let i = 0; i < arms; i++) {
@@ -84,9 +86,9 @@ export function makeLedLight(arms) {
 export function makeTrafficLight() {
   const col = [0.07, 0.09, 0.08];
   const parts = [
-    P(cyl(0.2, 0.24, 0.3, 10), [0, 0.15, 0], col, 0.5, 0.6),
-    P(cyl(0.085, 0.11, 6.1, 8), [0, 3.05, 0], col, 0.5, 0.6),
-    P(cyl(0.05, 0.075, 6.8, 6), [3.3, 5.9, 0], col, 0.5, 0.6, { rot: [0, 0, HALF_PI] }),
+    P(cyl(0.2, 0.24, 0.3, 6), [0, 0.15, 0], col, 0.5, 0.6),
+    P(openCyl(0.085, 0.11, 6.1, 6), [0, 3.05, 0], col, 0.5, 0.6),
+    P(openCyl(0.05, 0.075, 6.8, 5), [3.3, 5.9, 0], col, 0.5, 0.6, { rot: [0, 0, HALF_PI] }),
     // small box with the walk signal on the pole
     P(box(0.3, 0.34, 0.2), [0.2, 2.7, -0.16], [0.03, 0.03, 0.03], 0.6, 0.2),
   ];
@@ -179,16 +181,16 @@ export function makeBusStop() {
 export function makePowerPole() {
   const wood = [0.27, 0.21, 0.16];
   const parts = [
-    P(cyl(0.1, 0.15, 9.6, 8), [0, 4.8, 0], wood, 0.95, 0),
+    P(openCyl(0.1, 0.15, 9.6, 6), [0, 4.8, 0], wood, 0.95, 0),
     P(box(2.4, 0.1, 0.12), [0, 8.9, 0], wood, 0.95, 0),
     P(box(1.5, 0.09, 0.1), [0, 7.7, 0], wood, 0.95, 0),
     // grey transformer can
-    P(cyl(0.27, 0.27, 0.85, 10), [0.42, 7.0, 0], [0.42, 0.44, 0.45], 0.5, 0.6),
+    P(cyl(0.27, 0.27, 0.85, 7), [0.42, 7.0, 0], [0.42, 0.44, 0.45], 0.5, 0.6),
     P(cyl(0.05, 0.05, 0.16, 6), [0.42, 7.5, 0], [0.75, 0.74, 0.7], 0.4, 0),
   ];
   const wirePoints = [];
   for (const x of [-1.1, -0.4, 0.4, 1.1]) {
-    parts.push(P(cyl(0.035, 0.045, 0.14, 6), [x, 9.02, 0], [0.5, 0.52, 0.5], 0.35, 0));
+    parts.push(P(box(0.07, 0.14, 0.07), [x, 9.02, 0], [0.5, 0.52, 0.5], 0.35, 0));
     wirePoints.push([x, 9.09, 0]);
   }
   wirePoints.push([-0.65, 7.75, 0], [0.65, 7.75, 0], [0.16, 6.2, 0]);
@@ -237,12 +239,10 @@ export function makeBarrier() {
 export function makeRoofAC() {
   const m = [0.62, 0.63, 0.62];
   return mergeParts([
-    P(box(1.2, 0.85, 0.95), [0, 0.5, 0], m, 0.5, 0.7),
-    P(box(1.26, 0.06, 1.0), [0, 0.95, 0], [0.45, 0.46, 0.46], 0.5, 0.7),
-    P(cyl(0.36, 0.36, 0.03, 12), [0, 0.99, 0], [0.05, 0.05, 0.05], 0.6, 0.4),   // fan
-    P(box(1.21, 0.5, 0.7), [0, 0.5, 0.14], [0.2, 0.21, 0.21], 0.7, 0.5),        // dark vents
-    P(box(1.0, 0.08, 0.1), [0, 0.04, -0.35], [0.3, 0.3, 0.3], 0.7, 0.5),
-    P(box(1.0, 0.08, 0.1), [0, 0.04, 0.35], [0.3, 0.3, 0.3], 0.7, 0.5),
+    P(box(1.2, 0.9, 0.95), [0, 0.5, 0], m, 0.5, 0.7),
+    P(box(1.26, 0.06, 1.0), [0, 0.98, 0], [0.45, 0.46, 0.46], 0.5, 0.7),
+    P(cyl(0.36, 0.36, 0.03, 8), [0, 1.02, 0], [0.05, 0.05, 0.05], 0.6, 0.4),   // fan
+    P(box(1.21, 0.5, 0.7), [0, 0.5, 0.14], [0.2, 0.21, 0.21], 0.7, 0.5),       // dark vents
   ]);
 }
 
@@ -250,18 +250,15 @@ export function makeRoofAC() {
 export function makeWaterTank() {
   const wood = [0.33, 0.24, 0.17], steel = [0.12, 0.11, 0.1];
   const parts = [
-    P(cyl(1.45, 1.5, 2.7, 14), [0, 3.75, 0], wood, 0.9, 0),
-    P(new THREE.ConeGeometry(1.65, 0.8, 14), [0, 5.5, 0], [0.2, 0.17, 0.14], 0.85, 0),
-    P(cyl(1.52, 1.52, 0.07, 14), [0, 3.0, 0], steel, 0.6, 0.7),
-    P(cyl(1.5, 1.5, 0.07, 14), [0, 4.4, 0], steel, 0.6, 0.7),
+    P(openCyl(1.45, 1.5, 2.7, 9), [0, 3.75, 0], wood, 0.9, 0),
+    P(new THREE.ConeGeometry(1.65, 0.8, 9, 1, true), [0, 5.5, 0], [0.2, 0.17, 0.14], 0.85, 0),
+    P(openCyl(1.53, 1.53, 0.09, 9), [0, 4.3, 0], steel, 0.6, 0.7),
     P(box(2.6, 0.14, 2.6), [0, 2.33, 0], steel, 0.7, 0.6),
   ];
   for (const [x, z] of [[-1.1, -1.1], [1.1, -1.1], [-1.1, 1.1], [1.1, 1.1]]) {
     parts.push(P(box(0.12, 2.3, 0.12), [x, 1.15, z], steel, 0.7, 0.6));
   }
   parts.push(P(box(3.1, 0.07, 0.07), [0, 1.2, -1.1], steel, 0.7, 0.6, { rot: [0, 0, 0.72] }));
-  parts.push(P(box(3.1, 0.07, 0.07), [0, 1.2, 1.1], steel, 0.7, 0.6, { rot: [0, 0, -0.72] }));
-  parts.push(P(box(0.07, 0.07, 3.1), [-1.1, 1.2, 0], steel, 0.7, 0.6, { rot: [0.72, 0, 0] }));
   parts.push(P(box(0.07, 0.07, 3.1), [1.1, 1.2, 0], steel, 0.7, 0.6, { rot: [-0.72, 0, 0] }));
   return mergeParts(parts);
 }
@@ -359,10 +356,10 @@ export function makeTree(seed = 1) {
   const rng = new RNG(seed);
   const bark = [0.22, 0.18, 0.15];
   const trunkParts = [
-    P(cyl(0.11, 0.19, 3.4, 7), [0, 1.7, 0], bark, 0.95, 0),
-    P(cyl(0.06, 0.1, 2.2, 5), [0.45, 4.1, 0.15], bark, 0.95, 0, { rot: [0.1, 0, -0.5] }),
-    P(cyl(0.06, 0.1, 2.2, 5), [-0.4, 4.1, -0.25], bark, 0.95, 0, { rot: [-0.2, 0, 0.45] }),
-    P(cyl(0.05, 0.09, 2.0, 5), [0.05, 4.2, 0.4], bark, 0.95, 0, { rot: [0.5, 0, 0.05] }),
+    P(openCyl(0.11, 0.19, 3.4, 6), [0, 1.7, 0], bark, 0.95, 0),
+    P(openCyl(0.06, 0.1, 2.2, 4), [0.45, 4.1, 0.15], bark, 0.95, 0, { rot: [0.1, 0, -0.5] }),
+    P(openCyl(0.06, 0.1, 2.2, 4), [-0.4, 4.1, -0.25], bark, 0.95, 0, { rot: [-0.2, 0, 0.45] }),
+    P(openCyl(0.05, 0.09, 2.0, 4), [0.05, 4.2, 0.4], bark, 0.95, 0, { rot: [0.5, 0, 0.05] }),
   ];
   const trunk = mergeParts(trunkParts);
 
@@ -404,7 +401,7 @@ export function makePalm(seed = 2) {
   const H = 10.5;
   // the trunk leans a little: stack short pieces along a soft curve
   const trunkParts = [];
-  const seg = 6;
+  const seg = 5;
   const curve = (t) => [0.55 * t * t, H * t, 0.25 * Math.sin(t * 2.2)];
   for (let i = 0; i < seg; i++) {
     const t0 = i / seg, t1 = (i + 1) / seg;
@@ -413,21 +410,21 @@ export function makePalm(seed = 2) {
     const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
     const len = Math.hypot(dx, dy, dz);
     const r0 = 0.24 - 0.1 * t0, r1 = 0.24 - 0.1 * t1;
-    trunkParts.push(P(cyl(r1, r0, len * 1.02, 7), mid, bark, 0.95, 0, { rot: [Math.atan2(dz, dy), 0, -Math.atan2(dx, dy)] }));
+    trunkParts.push(P(openCyl(r1, r0, len * 1.03, 6), mid, bark, 0.95, 0, { rot: [Math.atan2(dz, dy), 0, -Math.atan2(dx, dy)] }));
   }
   const top = curve(1);
-  trunkParts.push(P(sph(0.32, 7, 5), [top[0], top[1] - 0.05, top[2]], [0.3, 0.27, 0.2], 0.95, 0));
+  trunkParts.push(P(sph(0.32, 6, 4), [top[0], top[1] - 0.05, top[2]], [0.3, 0.27, 0.2], 0.95, 0));
   const trunk = mergeParts(trunkParts);
 
   const mb = new MeshBuilder();
-  const fronds = 15;
+  const fronds = 13;
   for (let k = 0; k < fronds; k++) {
     const az = (k / fronds) * Math.PI * 2 + rng.range(-0.2, 0.2);
     const len = rng.range(3.1, 4.0);
     const rise = rng.range(0.1, 2.0);            // young fronds point up, old ones hang
     const droop = rise + rng.range(1.4, 2.6);
     const hx = Math.cos(az), hz = Math.sin(az);
-    const S = 5;
+    const S = 4;
     const pt = (t) => new THREE.Vector3(top[0] + hx * len * t, top[1] + rise * t - droop * t * t, top[2] + hz * len * t);
     for (const half of [-1, 1]) {
       let prev = null;
@@ -549,8 +546,8 @@ export function makeCar(kind) {
   for (const [ring, dir] of [[rings[0], -1], [rings[rings.length - 1], 1]]) {
     use(PAINT);
     const cy = (ring[0][1] + ring[5][1]) / 2, z = ring[0][2];
-    for (let j = 0; j < n - 1; j++) {
-      const a = ring[j], b = ring[j + 1];
+    for (let j = 0; j < n; j++) {
+      const a = ring[j], b = ring[(j + 1) % n]; // (the last piece closes the bottom)
       const i0 = mb.vertex(0, cy, z + dir * 0.03, 0, 0, dir, 0, 0);
       const i1 = mb.vertex(a[0], a[1], a[2], 0, 0, dir, 0, 0);
       const i2 = mb.vertex(b[0], b[1], b[2], 0, 0, dir, 0, 0);
@@ -566,10 +563,12 @@ export function makeCar(kind) {
   for (const z of spec.wheelZ) {
     for (const sx of [-1, 1]) {
       const x = sx * spec.wheelX;
-      extra.push(P(cyl(spec.wheelR, spec.wheelR, 0.23, 14), [x, spec.wheelR, z], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }));
-      extra.push(P(cyl(spec.wheelR * 0.6, spec.wheelR * 0.6, 0.24, 10), [x, spec.wheelR, z], [0.6, 0.61, 0.63], 0.3, 0.9, { rot: [0, 0, HALF_PI] }));
+      // tyre: a tube, closed on the outside by a rubber disc and a metal hub cap
+      extra.push(P(openCyl(spec.wheelR, spec.wheelR, 0.23, 10), [x, spec.wheelR, z], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }));
+      extra.push(P(new THREE.CircleGeometry(spec.wheelR, 10), [x + sx * 0.115, spec.wheelR, z], RUBBER, 0.9, 0, { rot: [0, sx * HALF_PI, 0] }));
+      extra.push(P(new THREE.CircleGeometry(spec.wheelR * 0.62, 8), [x + sx * 0.122, spec.wheelR, z], [0.6, 0.61, 0.63], 0.3, 0.9, { rot: [0, sx * HALF_PI, 0] }));
       // dark half circle behind the wheel = the wheel arch
-      const arch = new THREE.CircleGeometry(spec.wheelR + 0.08, 12, 0, Math.PI);
+      const arch = new THREE.CircleGeometry(spec.wheelR + 0.08, 7, 0, Math.PI);
       extra.push(P(arch, [sx * (spec.wheelX + 0.097), spec.wheelR - 0.02, z], [0.02, 0.02, 0.02], 0.9, 0, { rot: [0, sx * HALF_PI, 0] }));
     }
   }
@@ -673,7 +672,7 @@ export function makeMannequin() {
     // legs
     parts.push(P(cap(0.075, 0.33), [s * 0.095, 0.69, 0], jeans, cloth, 0));
     parts.push(P(cap(0.056, 0.36), [s * 0.1, 0.3, -0.01], jeans, cloth, 0));
-    parts.push(P(box(0.095, 0.075, 0.26), [s * 0.1, 0.038, 0.045], shoe, 0.6, 0));
+    parts.push(P(sph(0.05, 8, 5), [s * 0.1, 0.042, 0.045], shoe, 0.9, 0, { scale: [1.0, 0.85, 2.7] }));
   }
   return mergeParts(parts);
 }

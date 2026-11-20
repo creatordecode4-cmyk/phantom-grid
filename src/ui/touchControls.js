@@ -36,7 +36,7 @@ export function createControls(dom) {
     base.style.top = `${e.clientY}px`;
     base.classList.add('active');
     knob.style.transform = 'translate(-50%, -50%)';
-    dom.zoneMove.setPointerCapture(e.pointerId);
+    try { dom.zoneMove.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
     e.preventDefault();
   }
   function joyMove(e) {
@@ -69,7 +69,7 @@ export function createControls(dom) {
   function lookStart(e) {
     if (e.pointerType === 'mouse' && document.pointerLockElement) return;
     lookPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    dom.zoneLook.setPointerCapture(e.pointerId);
+    try { dom.zoneLook.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
     e.preventDefault();
   }
   function lookMove(e) {
