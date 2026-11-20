@@ -1229,6 +1229,8 @@ function patch(material, defs) {
     }
     fs = fs.replace('#include <normal_fragment_maps>', normalChunk + '\n' + PG_FRAGMENT_NORMAL);
     fs = fs.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n' + PG_FRAGMENT_EMISSIVE);
+    // cars: only the painted parts get the clear coat (not the tires)
+    if (defs.includes('PG_CAR')) fs = fs.replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n#ifdef USE_CLEARCOAT\n\tmaterial.clearcoat *= vPgData.z;\n#endif');
     shader.fragmentShader = head + fs;
   };
   // three.js re-uses compiled shaders between materials with the same key
@@ -1425,6 +1427,8 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   // All small objects: color, roughness and metal come from the vertices.
   mats.prop = patch(std({}), ['PG_PROP']);
   mats.propDouble = patch(std({ side: THREE.DoubleSide }), ['PG_PROP']);
+  // Cars: the prop shader + a clear coat over the paint (a second, mirror-like layer).
+  mats.carPaint = patch(new THREE.MeshPhysicalMaterial({ vertexColors: true, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1.25 }), ['PG_PROP', 'PG_CAR']);
   // People on the sidewalks: the prop shader + swinging arms and legs.
   mats.ped = patch(std({}), ['PG_PROP', 'PG_PED']);
   // Leaves and palm fronds.

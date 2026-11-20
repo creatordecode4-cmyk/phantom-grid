@@ -5,6 +5,12 @@
 // layout data (blocks, roads, beach, ocean, highway, rail line).
 // Every few frames we copy the part around the player onto the screen and
 // draw the player arrow on top. North is always up.
+//
+// On top of the map picture we draw: the GPS route, the waypoint, the mission
+// marker, dots for the traffic and an arrow (on foot) or a car shape (driving).
+//
+// The same hidden picture is used for the FULL-SCREEN MAP: it shows the whole
+// walkable city with the district names; a tap sets a waypoint.
 // ---------------------------------------------------------------------------
 
 const SCALE = 0.5;   // pixels per meter in the hidden picture
@@ -82,7 +88,8 @@ export function createMinimap(canvas, layout) {
   resize();
 
   // Draw the minimap. heading: the player's angle (0 = north).
-  function draw(x, z, heading) {
+  //   extra: { inCar, cars: [{x, z, alive}], waypoint: {x, z}, marker: {x, z}, route: [{x, z}] }
+  function draw(x, z, heading, extra = {}) {
     const s = size * dpr;
     const zoom = (VIEW / SCALE) * dpr;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -100,22 +107,76 @@ export function createMinimap(canvas, layout) {
     ctx.drawImage(map, -PX(x), -PY(z));
     ctx.restore();
 
-    // player arrow in the middle (turned to the walking direction)
+    // world -> minimap pixels (east is on the right, north at the top)
+    const k = VIEW * dpr;
+    const MX = (wx) => s / 2 + (x - wx) * k, MY = (wz) => s / 2 + (z - wz) * k;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
+    ctx.clip();
+    // GPS route along the roads
+    if (extra.route && extra.route.length > 1) {
+      ctx.beginPath();
+      extra.route.forEach((p, i) => (i === 0 ? ctx.moveTo(MX(p.x), MY(p.z)) : ctx.lineTo(MX(p.x), MY(p.z))));
+      ctx.strokeStyle = '#ffc94a';
+      ctx.lineWidth = 3 * dpr;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+    }
+    // the other cars: small dots
+    if (extra.cars) {
+      ctx.fillStyle = 'rgba(190,215,255,0.9)';
+      for (const c of extra.cars) {
+        if (!c.alive) continue;
+        const cx = MX(c.x), cy = MY(c.z);
+        if (cx < 0 || cx > s || cy < 0 || cy > s) continue;
+        ctx.fillRect(cx - 1.4 * dpr, cy - 1.4 * dpr, 2.8 * dpr, 2.8 * dpr);
+      }
+    }
+    ctx.restore();
+    // waypoint and mission marker: when they are outside the map they stick to its edge
+    const pin = (p, color, square) => {
+      let px = MX(p.x) - s / 2, py = MY(p.z) - s / 2;
+      const len = Math.hypot(px, py), max = s / 2 - 6 * dpr;
+      if (len > max) { px *= max / len; py *= max / len; }
+      ctx.save();
+      ctx.translate(s / 2 + px, s / 2 + py);
+      if (square) ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.lineWidth = 1.5 * dpr;
+      const q = 4.2 * dpr;
+      ctx.beginPath();
+      if (square) ctx.rect(-q, -q, q * 2, q * 2); else ctx.arc(0, 0, q * 1.15, 0, 7);
+      ctx.stroke(); ctx.fill();
+      ctx.restore();
+    };
+    if (extra.marker) pin(extra.marker, '#ffc94a', true);
+    if (extra.waypoint) pin(extra.waypoint, '#ff5a4a', false);
+
+    // the player in the middle: an arrow on foot, a car shape when driving
     ctx.save();
     ctx.translate(s / 2, s / 2);
     ctx.rotate(-heading);
     const a = 6.5 * dpr;
     ctx.beginPath();
-    ctx.moveTo(0, -a * 1.25);
-    ctx.lineTo(a * 0.8, a * 0.9);
-    ctx.lineTo(0, a * 0.45);
-    ctx.lineTo(-a * 0.8, a * 0.9);
+    if (extra.inCar) {
+      // small car seen from above, the nose a little narrower
+      ctx.moveTo(-a * 0.5, -a * 1.25); ctx.lineTo(a * 0.5, -a * 1.25); ctx.lineTo(a * 0.68, -a * 0.5);
+      ctx.lineTo(a * 0.68, a * 1.2); ctx.lineTo(-a * 0.68, a * 1.2); ctx.lineTo(-a * 0.68, -a * 0.5);
+    } else {
+      ctx.moveTo(0, -a * 1.25);
+      ctx.lineTo(a * 0.8, a * 0.9);
+      ctx.lineTo(0, a * 0.45);
+      ctx.lineTo(-a * 0.8, a * 0.9);
+    }
     ctx.closePath();
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = 'rgba(0,0,0,0.65)';
     ctx.lineWidth = 1.5 * dpr;
     ctx.stroke();
     ctx.fill();
+    if (extra.inCar) { ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(-a * 0.46, -a * 0.5, a * 0.92, a * 0.55); } // windscreen
     ctx.restore();
 
     // thin ring and a small "N"
@@ -131,5 +192,74 @@ export function createMinimap(canvas, layout) {
     ctx.fillText('N', s / 2, 4 * dpr);
   }
 
-  return { draw, resize };
+  // =========================================================================
+  // THE FULL-SCREEN MAP
+  // =========================================================================
+  // It shows the walkable city, fitted into the screen. bigToWorld() turns a
+  // tap into a place in the world.
+  let big = null; // { cx, cy, k } after the last drawBig
+  const midX = (B.minX + B.maxX) / 2, midZ = (B.minZ + B.maxZ) / 2;
+  const NAMES = [
+    { text: 'THE GRID', x: -120, z: 110 },
+    { text: 'NEON MILE', x: -20, z: L.neon.centerZ + 40 },
+    { text: 'THE CROWN', x: 360, z: 400 },
+  ];
+  function drawBig(cv, x, z, heading, extra = {}) {
+    const d = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.round(cv.clientWidth * d), h = Math.round(cv.clientHeight * d);
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    const c = cv.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, w, h);
+    // leave room for the title (top) and the buttons (bottom)
+    const k = Math.min((w - 20 * d) / (B.maxX - B.minX + 40), (h - 120 * d) / (B.maxZ - B.minZ + 40));
+    const cx = w / 2, cy = h / 2 - 6 * d;
+    big = { cx: cx / d, cy: cy / d, k: k / d };
+    const BX = (wx) => cx + (midX - wx) * k, BY = (wz) => cy + (midZ - wz) * k;
+    c.save();
+    c.beginPath();
+    c.rect(BX(B.maxX + 20), BY(B.maxZ + 20), (B.maxX - B.minX + 40) * k, (B.maxZ - B.minZ + 40) * k);
+    c.clip();
+    c.drawImage(map, BX(maxX), BY(maxZ), (maxX - minX) * k, (maxZ - minZ) * k);
+    c.restore();
+    // district names
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.font = `${Math.round(Math.max(11, 26 * k / d) * d)}px "Helvetica Neue", Roboto, Arial, sans-serif`;
+    for (const n of NAMES) {
+      c.fillStyle = 'rgba(0,0,0,0.55)';
+      c.fillText(n.text, BX(n.x) + d, BY(n.z) + d);
+      c.fillStyle = 'rgba(255,255,255,0.82)';
+      c.fillText(n.text, BX(n.x), BY(n.z));
+    }
+    if (extra.route && extra.route.length > 1) {
+      c.beginPath();
+      extra.route.forEach((p, i) => (i === 0 ? c.moveTo(BX(p.x), BY(p.z)) : c.lineTo(BX(p.x), BY(p.z))));
+      c.strokeStyle = '#ffc94a'; c.lineWidth = 3 * d; c.lineJoin = 'round'; c.stroke();
+    }
+    if (extra.cars) {
+      c.fillStyle = 'rgba(190,215,255,0.85)';
+      for (const car of extra.cars) if (car.alive) c.fillRect(BX(car.x) - 1.5 * d, BY(car.z) - 1.5 * d, 3 * d, 3 * d);
+    }
+    const dot = (p, color, r) => { c.beginPath(); c.arc(BX(p.x), BY(p.z), r * d, 0, 7); c.fillStyle = color; c.strokeStyle = 'rgba(0,0,0,0.7)'; c.lineWidth = 1.5 * d; c.stroke(); c.fill(); };
+    if (extra.marker) dot(extra.marker, '#ffc94a', 6);
+    if (extra.waypoint) dot(extra.waypoint, '#ff5a4a', 6);
+    // the player
+    c.save();
+    c.translate(BX(x), BY(z));
+    c.rotate(-heading);
+    const a = 8 * d;
+    c.beginPath(); c.moveTo(0, -a * 1.25); c.lineTo(a * 0.8, a * 0.9); c.lineTo(0, a * 0.45); c.lineTo(-a * 0.8, a * 0.9); c.closePath();
+    c.fillStyle = '#fff'; c.strokeStyle = 'rgba(0,0,0,0.7)'; c.lineWidth = 1.5 * d; c.stroke(); c.fill();
+    c.restore();
+  }
+  // screen position of a tap (CSS pixels inside the map canvas) -> place in the world, or null outside the city
+  function bigToWorld(px, py) {
+    if (!big) return null;
+    const wx = midX - (px - big.cx) / big.k, wz = midZ - (py - big.cy) / big.k;
+    if (wx < B.minX || wx > B.maxX || wz < B.minZ || wz > B.maxZ) return null;
+    return { x: wx, z: wz };
+  }
+
+  return { draw, resize, drawBig, bigToWorld };
 }

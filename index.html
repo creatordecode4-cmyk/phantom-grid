@@ -112,6 +112,90 @@
       width: 76px; height: 76px; min-width: 0; border-radius: 50%; font-size: 11px; letter-spacing: 0.2em; padding: 0;
     }
 
+    /* ---------- CAR button (walking) and the driving controls ---------- */
+    .round { border-radius: 50%; min-width: 0; padding: 0; font-size: 11px; letter-spacing: 0.16em; }
+    #btn-car {
+      position: absolute; right: calc(118px + env(safe-area-inset-right)); bottom: calc(58px + env(safe-area-inset-bottom));
+      width: 64px; height: 64px; background: rgba(255, 255, 255, 0.86); color: #0b0d10; border-color: transparent;
+    }
+    #btn-car[hidden] { display: none; }
+    #drive-ui { display: none; }
+    body.driving #drive-ui { display: block; }
+    body.driving #joy-base, body.driving #btn-run, body.driving #btn-car { display: none; }
+    body.driving #zone-move { pointer-events: none; }
+    #drive-ui .btn { position: absolute; user-select: none; -webkit-user-select: none; }
+    #drv-left, #drv-right { width: 84px; height: 84px; font-size: 22px; bottom: calc(40px + env(safe-area-inset-bottom)); }
+    #drv-left { left: calc(18px + env(safe-area-inset-left)); }
+    #drv-right { left: calc(112px + env(safe-area-inset-left)); }
+    #drv-gas { width: 92px; height: 92px; right: calc(18px + env(safe-area-inset-right)); bottom: calc(40px + env(safe-area-inset-bottom)); }
+    #drv-brake { width: 80px; height: 80px; right: calc(120px + env(safe-area-inset-right)); bottom: calc(40px + env(safe-area-inset-bottom)); }
+    #drv-hand { width: 62px; height: 62px; font-size: 9px; line-height: 1.3; right: calc(26px + env(safe-area-inset-right)); bottom: calc(144px + env(safe-area-inset-bottom)); }
+    #drv-horn { width: 58px; height: 58px; font-size: 9px; right: calc(104px + env(safe-area-inset-right)); bottom: calc(132px + env(safe-area-inset-bottom)); }
+    #drv-exit { width: 58px; height: 58px; font-size: 9px; right: calc(178px + env(safe-area-inset-right)); bottom: calc(126px + env(safe-area-inset-bottom)); }
+    #drv-tilt { width: 58px; height: 58px; font-size: 9px; left: calc(26px + env(safe-area-inset-left)); bottom: calc(136px + env(safe-area-inset-bottom)); }
+    #hud-speed {
+      position: absolute; left: 50%; bottom: calc(58px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+      text-align: center; pointer-events: none; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+    }
+    #speed-num { font-size: 34px; font-weight: 200; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+    #hud-speed .unit { font-size: 10px; letter-spacing: 0.2em; opacity: 0.75; margin-left: 6px; }
+    #speed-car { font-size: 9px; letter-spacing: 0.3em; opacity: 0.6; margin-top: 2px; }
+    /* narrow screens (phone held upright): smaller driving buttons, so they do not touch */
+    @media (max-width: 480px) {
+      #drv-left, #drv-right { width: 70px; height: 70px; }
+      #drv-left { left: calc(10px + env(safe-area-inset-left)); }
+      #drv-right { left: calc(86px + env(safe-area-inset-left)); }
+      #drv-gas { width: 82px; height: 82px; right: calc(10px + env(safe-area-inset-right)); }
+      #drv-brake { width: 70px; height: 70px; right: calc(98px + env(safe-area-inset-right)); }
+      #drv-hand { right: calc(14px + env(safe-area-inset-right)); bottom: calc(132px + env(safe-area-inset-bottom)); }
+      #drv-horn { right: calc(84px + env(safe-area-inset-right)); bottom: calc(122px + env(safe-area-inset-bottom)); }
+      #drv-exit { right: calc(150px + env(safe-area-inset-right)); bottom: calc(118px + env(safe-area-inset-bottom)); }
+      #drv-tilt { left: calc(14px + env(safe-area-inset-left)); bottom: calc(122px + env(safe-area-inset-bottom)); }
+      #hud-speed { bottom: calc(200px + env(safe-area-inset-bottom)); }
+    }
+    /* with a mouse and keyboard the touch buttons are not needed */
+    @media (pointer: fine) and (hover: hover) { #drive-ui .btn { display: none; } }
+
+    /* ---------- mission text, GPS arrow, floating marker, dialog ---------- */
+    #hud-mission {
+      margin-top: 12px; max-width: min(250px, 56vw); padding: 7px 10px; border-radius: 8px;
+      background: rgba(8, 10, 12, 0.5); border-left: 2px solid #ffc94a;
+    }
+    #hud-mission[hidden] { display: none; }
+    #mission-title { font-size: 9px; letter-spacing: 0.3em; color: #ffc94a; }
+    #mission-text { margin-top: 4px; font-size: 12px; letter-spacing: 0.04em; line-height: 1.4; }
+    #mission-dist { margin-top: 3px; font-size: 10px; letter-spacing: 0.16em; opacity: 0.8; font-variant-numeric: tabular-nums; }
+    #gps-arrow {
+      position: absolute; left: 50%; top: calc(12px + env(safe-area-inset-top)); transform: translateX(-50%);
+      text-align: center; pointer-events: none; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+    }
+    #gps-arrow[hidden] { display: none; }
+    #gps-arrow-icon { width: 34px; height: 34px; margin: 0 auto; }
+    #gps-arrow-icon svg { width: 100%; height: 100%; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8)); }
+    #gps-dist { font-size: 10px; letter-spacing: 0.18em; margin-top: 1px; font-variant-numeric: tabular-nums; }
+    #marker { position: absolute; left: 0; top: 0; pointer-events: none; text-align: center; will-change: transform; }
+    #marker[hidden] { display: none; }
+    #marker .dot { width: 14px; height: 14px; margin: 0 auto; background: #ffc94a; transform: rotate(45deg); box-shadow: 0 0 10px rgba(255, 201, 74, 0.8); border: 2px solid rgba(0, 0, 0, 0.5); }
+    #marker-dist { margin-top: 6px; font-size: 10px; letter-spacing: 0.14em; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; }
+    #dialog {
+      position: absolute; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+      width: min(520px, 88vw); padding: 13px 16px 11px; border-radius: 12px; cursor: pointer;
+      background: rgba(8, 10, 12, 0.82); border: 1px solid rgba(255, 255, 255, 0.16);
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    }
+    #dialog[hidden] { display: none; }
+    #dialog-name { font-size: 10px; letter-spacing: 0.3em; color: #ffc94a; }
+    #dialog-text { margin-top: 7px; font-size: 14px; line-height: 1.5; letter-spacing: 0.02em; }
+    #dialog-next { margin-top: 9px; font-size: 9px; letter-spacing: 0.28em; opacity: 0.55; text-align: right; }
+
+    /* ---------- full-screen map ---------- */
+    #bigmap { position: absolute; inset: 0; background: rgba(8, 10, 12, 0.93); }
+    #bigmap[hidden] { display: none; }
+    #bigmap-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+    #bigmap-title { position: absolute; left: 0; right: 0; top: calc(12px + env(safe-area-inset-top)); text-align: center; font-size: 10px; letter-spacing: 0.3em; opacity: 0.8; pointer-events: none; }
+    #bigmap-buttons { position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 8px; }
+    #bigmap-buttons .btn { height: 40px; min-width: 120px; }
+
     /* ---------- small messages ---------- */
     #toast {
       position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateX(-50%);
@@ -133,8 +217,9 @@
        (this keeps them clear of the RUN button in the corner) */
     @media (orientation: landscape) and (max-height: 520px) {
       #hud-top-right { flex-direction: row-reverse; align-items: flex-start; }
-      #hud-buttons { flex-direction: row; }
-      .btn { min-width: 64px; }
+      #hud-buttons { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: 300px; }
+      #hud-buttons .btn { min-width: 56px; padding: 0 6px; }
+      #dialog { bottom: calc(18px + env(safe-area-inset-bottom)); }
       #minimap { width: 104px; height: 104px; }
     }
     body.nohud #ui { display: none; }
@@ -165,7 +250,18 @@
       <div id="hud-location">THE GRID</div>
       <div id="hud-sub"><span id="hud-clock">18:09</span><span id="hud-weather">CLEAR</span></div>
       <div id="hud-stats" hidden></div>
+      <div id="hud-mission" hidden>
+        <div id="mission-title"></div>
+        <div id="mission-text"></div>
+        <div id="mission-dist"></div>
+      </div>
     </div>
+
+    <div id="gps-arrow" hidden>
+      <div id="gps-arrow-icon"><svg viewBox="0 0 24 24"><path d="M12 2 L20 21 L12 16.5 L4 21 Z" fill="#ffc94a" stroke="rgba(0,0,0,0.6)" stroke-width="1"/></svg></div>
+      <div id="gps-dist"></div>
+    </div>
+    <div id="marker" hidden><div class="dot"></div><div id="marker-dist"></div></div>
 
     <div id="hud-top-right">
       <canvas id="minimap"></canvas>
@@ -175,6 +271,8 @@
         <button class="btn" id="btn-quality" aria-label="Graphics quality">QUALITY</button>
         <button class="btn" id="btn-stats" aria-label="Show frames per second">FPS</button>
         <button class="btn" id="btn-full" aria-label="Full screen">FULL</button>
+        <button class="btn" id="btn-map" aria-label="Open the map">MAP</button>
+        <button class="btn on" id="btn-sound" aria-label="Sound on or off">SOUND</button>
       </div>
     </div>
 
@@ -199,8 +297,37 @@
 
     <div id="joy-base"><div id="joy-knob"></div></div>
     <button class="btn" id="btn-run" aria-label="Run">RUN</button>
+    <button class="btn round" id="btn-car" aria-label="Get into the car" hidden>CAR</button>
+
+    <!-- shown while driving -->
+    <div id="drive-ui">
+      <button class="btn round" id="drv-left" aria-label="Steer left">&#9664;</button>
+      <button class="btn round" id="drv-right" aria-label="Steer right">&#9654;</button>
+      <button class="btn round" id="drv-gas" aria-label="Gas">GAS</button>
+      <button class="btn round" id="drv-brake" aria-label="Brake and reverse">BRAKE</button>
+      <button class="btn round" id="drv-hand" aria-label="Handbrake">HAND<br>BRAKE</button>
+      <button class="btn round" id="drv-horn" aria-label="Horn">HORN</button>
+      <button class="btn round" id="drv-exit" aria-label="Get out of the car">EXIT</button>
+      <button class="btn round" id="drv-tilt" aria-label="Steer by tilting the phone">TILT</button>
+      <div id="hud-speed"><span id="speed-num">0</span><span class="unit">KM/H</span><div id="speed-car"></div></div>
+    </div>
+
+    <div id="dialog" hidden>
+      <div id="dialog-name"></div>
+      <div id="dialog-text"></div>
+      <div id="dialog-next">TAP TO CONTINUE</div>
+    </div>
+
+    <div id="bigmap" hidden>
+      <canvas id="bigmap-canvas"></canvas>
+      <div id="bigmap-title">PORT MERIDIAN &nbsp;·&nbsp; TAP THE MAP TO SET A WAYPOINT</div>
+      <div id="bigmap-buttons">
+        <button class="btn" id="bigmap-clear">CLEAR WAYPOINT</button>
+        <button class="btn" id="bigmap-close">CLOSE</button>
+      </div>
+    </div>
     <div id="toast"></div>
-    <div id="hint">W A S D &nbsp;MOVE &nbsp;·&nbsp; MOUSE &nbsp;LOOK &nbsp;·&nbsp; SHIFT &nbsp;RUN</div>
+    <div id="hint">W A S D &nbsp;MOVE &nbsp;·&nbsp; MOUSE &nbsp;LOOK &nbsp;·&nbsp; SHIFT &nbsp;RUN &nbsp;·&nbsp; E &nbsp;CAR &nbsp;·&nbsp; M &nbsp;MAP</div>
   </div>
 
   <div id="loading">

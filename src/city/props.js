@@ -12,16 +12,17 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
-import { InstancedSet } from '../utils/geometry.js';
+import { InstancedSet, MeshBuilder } from '../utils/geometry.js';
 import { blockEdges, addDecal } from './ground.js';
 import * as M from './models.js';
+import { makeCar } from '../vehicles/carModels.js';
 import { shared } from './materials.js';
 
 // Car paint colors (screen colors). Common colors appear more often.
 const CAR_COLORS = [
   [0.82, 0.82, 0.8], [0.82, 0.82, 0.8], [0.6, 0.61, 0.62], [0.6, 0.61, 0.62], [0.3, 0.31, 0.33], [0.3, 0.31, 0.33],
   [0.05, 0.05, 0.055], [0.05, 0.05, 0.055], [0.08, 0.13, 0.26], [0.45, 0.07, 0.06], [0.52, 0.47, 0.38],
-  [0.09, 0.18, 0.13], [0.42, 0.52, 0.6], [0.36, 0.22, 0.12], [0.7, 0.66, 0.5],
+  [0.09, 0.18, 0.13], [0.42, 0.52, 0.6], [0.36, 0.22, 0.12], [0.7, 0.66, 0.5], [0.62, 0.3, 0.05], [0.1, 0.32, 0.42],
 ];
 const HYDRANT_COLORS = [[0.78, 0.6, 0.1], [0.78, 0.6, 0.1], [0.6, 0.1, 0.07]];
 const DUMPSTER_COLORS = [[0.1, 0.22, 0.14], [0.12, 0.2, 0.36], [0.3, 0.3, 0.3], [0.35, 0.16, 0.1]];
@@ -211,9 +212,25 @@ export function buildProps(ctx) {
   S('ev', M.makeEvPost(), mats.prop, { maxDistance: 110 });
   S('dumpster', M.makeDumpster(), mats.prop, { maxDistance: 130, useColor: true });
   S('barrier', M.makeBarrier(), mats.prop, { maxDistance: 320 });
-  S('sedan', M.makeCar('sedan'), mats.prop, { maxDistance: 150, useColor: true });
-  S('suv', M.makeCar('suv'), mats.prop, { maxDistance: 150, useColor: true });
-  S('van', M.makeCar('van'), mats.prop, { maxDistance: 150, useColor: true });
+  // parked cars: four types, metallic paint with a clear coat
+  for (const kind of ['sedan', 'suv', 'van', 'coupe']) S(kind, makeCar(kind), mats.carPaint, { maxDistance: 150, useColor: true });
+  // the soft shadow under every parked car (its own copies, so it can go away when the player takes the car)
+  {
+    const mb = new MeshBuilder();
+    addDecal(mb, 'blobRect', 0, 0, 2.3, 5.2, 0, 0, 0.92);
+    S('carShadow', mb.build(false), mats.decal, { maxDistance: 150, castShadow: false, receiveShadow: false, renderOrder: 10 });
+  }
+  // every parked car is remembered: the player can get in and drive it away
+  const parkedCars = ctx.parkedCars;
+  const pickKind = () => { const r = rng.next(); return r < 0.45 ? 'sedan' : r < 0.7 ? 'suv' : r < 0.84 ? 'van' : 'coupe'; };
+  function addParkedCar(kind, x, y, z, rot, color) {
+    const index = sets[kind].add(x, y, z, rot, 1, color);
+    const shadow = sets.carShadow.add(x, y + 0.021, z, rot, kind === 'van' ? [1.09, 1, 1.13] : 1);
+    const fx = Math.sin(rot), fz = Math.cos(rot);
+    const own = [-1.45, 0, 1.45].map((o) => ({ x: x + fx * o, z: z + fz * o, r: 1.0 }));
+    circles.push(...own);
+    parkedCars.push({ kind, index, shadow, x, y, z, rot, color, circles: own, taken: false });
+  }
   S('lifeguard', M.makeLifeguardTower(), mats.prop, { maxDistance: 700 });
   S('newsBox', M.makeNewsBox(), mats.prop, { maxDistance: 90, useColor: true });
   S('meter', M.makeParkingMeter(), mats.prop, { maxDistance: 80, castShadow: false });
@@ -454,14 +471,11 @@ export function buildProps(ctx) {
       }
       if (noPark.some(([a, b]) => sc > a && sc < b)) continue;
       if (rng.chance(fill)) {
-        const r = rng.next();
-        const kind = r < 0.55 ? 'sedan' : r < 0.85 ? 'suv' : 'van';
+        const kind = pickKind();
         const out = (kind === 'van' ? 1.36 : 1.26) + rng.range(-0.1, 0.1);
         const p = P(sc + rng.range(-0.3, 0.3), -out);
         const rot = carRot + rng.range(-0.035, 0.035);
-        sets[kind].add(p[0], 0, p[1], rot, 1, lin(kind === 'van' && rng.chance(0.6) ? [0.8, 0.8, 0.78] : rng.pick(CAR_COLORS)));
-        for (const o of [-1.45, 0, 1.45]) circles.push({ x: p[0] + fx * o, z: p[1] + fz * o, r: 1.0 });
-        blob(p[0], p[1], kind === 'van' ? 2.5 : 2.3, kind === 'van' ? 5.9 : 5.2, rot, 0.021, 0.92);
+        addParkedCar(kind, p[0], 0, p[1], rot, lin(kind === 'van' && rng.chance(0.6) ? [0.8, 0.8, 0.78] : rng.pick(CAR_COLORS)));
         // oil drips under parked cars
         if (rng.chance(0.4)) addDecal(dc, 'oil2', p[0] + fx * 0.9, p[1] + fz * 0.9, 1.0, 1.0, rng.range(0, 6.28), 0.017, 0.7);
       }
@@ -625,12 +639,7 @@ export function buildProps(ctx) {
 
   // cars in the parking lots and the lamps that light them
   for (const c of ctx.parked) {
-    const r = rng.next();
-    const kind = r < 0.55 ? 'sedan' : r < 0.85 ? 'suv' : 'van';
-    sets[kind].add(c.x, curb + 0.03, c.z, c.rot, 1, lin(rng.pick(CAR_COLORS)));
-    const fx = Math.sin(c.rot), fz = Math.cos(c.rot);
-    for (const o of [-1.45, 0, 1.45]) circles.push({ x: c.x + fx * o, z: c.z + fz * o, r: 1.0 });
-    blob(c.x, c.z, 2.3, 5.2, c.rot, curb + 0.05, 0.9);
+    addParkedCar(pickKind(), c.x, curb + 0.03, c.z, c.rot, lin(rng.pick(CAR_COLORS)));
   }
   for (const l of ctx.lotLamps) addStreetLight(1, l.x, curb, l.z, l.rot);
 
@@ -756,5 +765,8 @@ export function buildProps(ctx) {
     lampGlow.material.uniforms.uPixel.value = (2 * Math.tan((fovDeg * Math.PI) / 360)) / heightPx;
   }
 
-  return { sets, lampGlow, cull, update, setViewport, setDetail };
+  // draw the copies again after something was changed by hand (a parked car was taken)
+  const recull = () => cull(cullX > 1e8 ? 0 : cullX, cullZ > 1e8 ? 0 : cullZ, cullMul, true);
+
+  return { sets, lampGlow, cull, recull, update, setViewport, setDetail };
 }

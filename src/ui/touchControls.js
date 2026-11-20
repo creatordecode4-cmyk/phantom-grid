@@ -19,6 +19,10 @@ export function createControls(dom) {
     moveX: 0, moveY: 0,   // -1..1 (x: left/right, y: back/forward)
     run: false,
     lookX: 0, lookY: 0,   // how far the camera should turn this frame (radians)
+    action: false,        // true for one frame when E was pressed (get into / out of a car)
+    map: false,           // true for one frame when M was pressed
+    // driving: steer -1 (left) .. 1 (right), gas / brake 0..1
+    drive: { steer: 0, gas: 0, brake: 0, handbrake: false, horn: false },
   };
 
   // ------------------------------------------------------------------ joystick
@@ -95,9 +99,48 @@ export function createControls(dom) {
     e.stopPropagation();
   });
 
+  // ------------------------------------------------------- driving buttons (phone)
+  // a button is "down" while at least one finger is on it
+  const held = { left: false, right: false, gas: false, brake: false, hand: false, horn: false };
+  if (dom.drive) {
+    for (const name of Object.keys(held)) {
+      const node = dom.drive[name];
+      if (!node) continue;
+      const set = (v) => (e) => { held[name] = v; node.classList.toggle('on', v); e.preventDefault(); e.stopPropagation(); };
+      node.addEventListener('pointerdown', (e) => { try { node.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ } set(true)(e); });
+      node.addEventListener('pointerup', set(false));
+      node.addEventListener('pointercancel', set(false));
+      node.addEventListener('lostpointercapture', () => { held[name] = false; node.classList.remove('on'); });
+    }
+  }
+  // ---- TILT: steer by tilting the phone like a steering wheel ----
+  let tiltOn = false, tiltSteer = 0;
+  function onTilt(e) {
+    if (e.beta === null || e.gamma === null) return;
+    // which way is the screen turned? (0 = upright, 90 / -90 = on its side)
+    const a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+    const lean = a === 90 ? e.beta : a === 270 || a === -90 ? -e.beta : e.gamma;
+    tiltSteer = clamp(lean / 28, -1, 1);
+  }
+  if (dom.drive && dom.drive.tilt) {
+    dom.drive.tilt.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const turnOn = () => { tiltOn = true; window.addEventListener('deviceorientation', onTilt); dom.drive.tilt.classList.add('on'); };
+      if (tiltOn) { tiltOn = false; tiltSteer = 0; window.removeEventListener('deviceorientation', onTilt); dom.drive.tilt.classList.remove('on'); return; }
+      // iPhones ask the user for permission first
+      const D = window.DeviceOrientationEvent;
+      if (D && typeof D.requestPermission === 'function') D.requestPermission().then((r) => { if (r === 'granted') turnOn(); }).catch(() => {});
+      else if (D) turnOn();
+    });
+  }
+
   // -------------------------------------------------------------------- keyboard
   const keys = new Set();
+  let actionPressed = false, mapPressed = false;
+  let steerKey = 0; // keyboard steering moves smoothly, like a hand on a wheel
   window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyE' && !e.repeat) actionPressed = true;
+    if (e.code === 'KeyM' && !e.repeat) mapPressed = true;
     keys.add(e.code);
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   });
@@ -144,6 +187,17 @@ export function createControls(dom) {
     input.lookX = lookDX * C.touchSensitivity + mouseDX * C.mouseSensitivity;
     input.lookY = lookDY * C.touchSensitivity + mouseDY * C.mouseSensitivity;
     lookDX = lookDY = mouseDX = mouseDY = 0;
+
+    input.action = actionPressed; actionPressed = false;
+    input.map = mapPressed; mapPressed = false;
+    // ---- driving: keys and buttons together ----
+    const d = input.drive;
+    const kl = keys.has('KeyA') || keys.has('ArrowLeft') || held.left, kr = keys.has('KeyD') || keys.has('ArrowRight') || held.right;
+    d.steer = tiltOn ? tiltSteer : (kr ? 1 : 0) - (kl ? 1 : 0);
+    d.gas = keys.has('KeyW') || keys.has('ArrowUp') || held.gas ? 1 : 0;
+    d.brake = keys.has('KeyS') || keys.has('ArrowDown') || held.brake ? 1 : 0;
+    d.handbrake = keys.has('Space') || held.hand;
+    d.horn = keys.has('KeyH') || held.horn;
     return input;
   }
 

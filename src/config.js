@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 1.3',
+  version: 'Phase 2.0',
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {
@@ -35,6 +35,9 @@ export const CONFIG = {
   // ----- PLAYER ------------------------------------------------------------
   player: {
     model: 'assets/characters/Nate_Calloway.glb',
+    // if this file exists it is used instead: a model with a skeleton and the
+    // animations "idle", "walk" and "run"
+    riggedModel: 'assets/characters/Nate_Calloway_rigged.glb',
     height: 1.8,       // the model is scaled to this height (meters)
     radius: 0.35,      // body radius used for collisions
     walkSpeed: 1.6,    // meters per second
@@ -96,7 +99,7 @@ export const CONFIG = {
       anisotropy: 2,
       envMapSize: 64,
       propDistance: 0.55,   // multiplier for how far props are drawn
-      people: 60, traffic: 12, // walking people and driving cars around the player
+      people: 20, traffic: 12, // walking people and driving cars around the player
       buildingDetail: false, // no fins, no plants on facades, no 3D windows (the glass shader paints lines instead)
       fogMultiplier: 1.7,   // thicker fog hides the short draw distance
       cameraFar: 2600,
@@ -119,7 +122,7 @@ export const CONFIG = {
       anisotropy: 4,
       envMapSize: 64,
       propDistance: 1.0,
-      people: 130, traffic: 24,
+      people: 60, traffic: 30,
       buildingDetail: true, // fins, floor slabs, plants near the player (about 150 m)
       fogMultiplier: 1.0,
       cameraFar: 9000,
@@ -142,7 +145,7 @@ export const CONFIG = {
       anisotropy: 8,
       envMapSize: 128,
       propDistance: 1.35,
-      people: 170, traffic: 32,
+      people: 80, traffic: 40,
       buildingDetail: true,
       fogMultiplier: 1.0,
       cameraFar: 9000,

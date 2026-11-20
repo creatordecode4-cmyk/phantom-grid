@@ -4,7 +4,7 @@ An open-world 3D web game set in **Port Meridian**, a fictional American coastal
 A realistic city of the future: sculpted glass towers, hanging gardens, sky bridges,
 electric cars and a maglev line. No cartoon look, no neon-toy look.
 
-This is **Phase 1**: a playable, realistic first area of the city that runs in a phone browser.
+This is **Phase 2, "Life and Driving"**: a playable, realistic first area of the city that runs in a phone browser, with cars to drive, traffic, people, a map with GPS and a first mission.
 Since version 1.2 all buildings are **futuristic** and are put together from a
 **kit of parts** (twisted tower bodies, glass curtain walls with fins, ribbon frames,
 garden terraces, helipads ...). Eleven **hero buildings** follow the reference pictures
@@ -35,6 +35,12 @@ Open the GitHub Pages address of this repository (see "Publish on GitHub Pages" 
 | Quality | Quality button, then Auto / Low / Medium / High | same |
 | FPS + draw calls | `FPS` button | same, or key `F` |
 | Full screen | `FULL` button | same |
+| Get into / out of a car | `CAR` button (shows up next to a car), `EXIT` while driving | `E` |
+| Drive | `◀` `▶` steer (or `TILT`: steer by tilting the phone), `GAS`, `BRAKE` (hold = reverse), `HANDBRAKE`, `HORN` | `W` gas, `S` brake / reverse, `A` `D` steer, `Space` handbrake, `H` horn |
+| Look around the car | Drag on the screen | Mouse |
+| Big map + waypoint | `MAP` button or tap the minimap, then tap a place | `M`, then click a place |
+| Sound on / off | `SOUND` button | same |
+| Dialog | Tap the box | Click the box |
 
 One game day lasts 12 real minutes. The game starts at golden hour.
 
@@ -42,9 +48,9 @@ One game day lasts 12 real minutes. The game starts at golden hour.
 
 | Level | What you get |
 |---|---|
-| **Low** | No shadows, no bloom, no sun glow, 0.75 pixel ratio, short draw distance, thicker haze, no fins and no plants on the facades, 60 people and 12 driving cars |
-| **Medium** | Shadows, light bloom, sun glow, film-like color grade, fins, floor plates, plants and small parts within about 150 m, 130 people and 24 driving cars |
-| **High** | Sharper shadows, more detail further away, subtle vignette and film grain, 170 people and 32 driving cars |
+| **Low** | No shadows, no bloom, no sun glow, 0.75 pixel ratio, short draw distance, thicker haze, no fins and no plants on the facades, 20 people and 12 driving cars |
+| **Medium** | Shadows, light bloom, sun glow, film-like color grade, fins, floor plates, plants and small parts within about 150 m, 60 people and 30 driving cars |
+| **High** | Sharper shadows, more detail further away, subtle vignette and film grain, 80 people and 40 driving cars |
 | **Auto** | Picks a level for your phone, and goes one level down if the game runs slowly |
 
 ### Address options (handy for testing)
@@ -87,27 +93,39 @@ src/
                            sky bridges, loads model files (.glb)
     props.js               smart street lights, trees, parked cars, planters, benches, bike racks,
                            EV posts ... (instanced)
-    streetLife.js          things that move: people on the sidewalks, cars on the lanes
     models.js              the small 3D models, built in code
     backdrop.js            ocean, hills, far Crown towers, highway, maglev line
+  vehicles/
+    carModels.js           THE FOUR CAR TYPES (sedan, SUV, van, sports coupe), built in code,
+                           and how each one drives (top speed, grip ...)
+    vehicle.js             the cars you drive: physics, collisions, get in / out, lights
+  ai/
+    traffic.js             the other cars: lanes, traffic lights, turns, braking
+    pedestrians.js         the people: sidewalks, crosswalks, red lights
+  missions/
+    missions.js            THE MISSIONS AS DATA - add your story here
+    missionManager.js      runs the mission steps
+  audio/
+    sound.js               all sounds, made in code (engine, tires, horn, crash, footsteps)
   world/
     lighting.js            sky, sun, day / night, shadows, haze, reflections, street lamps
     weather.js             rain and wet streets
     postfx.js              bloom, film color grade, vignette, grain
   player/
-    player.js              the character: loading, walking, collisions
-    camera.js              third-person camera that never goes through walls
+    player.js              the character: loading, walking, collisions, animations
+    camera.js              third-person camera (on foot) and chase camera (driving)
   ui/
-    touchControls.js       joystick, camera drag, run button, keyboard and mouse
-    minimap.js             the round map (drawn from layout.js)
-    hud.js                 text, buttons, menus, loading screen
+    touchControls.js       joystick, camera drag, driving buttons, tilt steering, keyboard, mouse
+    minimap.js             the round map and the full-screen map (drawn from layout.js)
+    gps.js                 finds a route along the roads
+    hud.js                 text, buttons, menus, mission box, dialog, loading screen
   utils/
     math.js                small math helpers, seeded random numbers, polygons
     geometry.js            MeshBuilder (many shapes -> one mesh), InstancedSet, DetailSet
     noise.js               noise, normal maps made from photos, canvas helpers
 assets/
   textures/                the tileable photo textures (see below)
-  characters/              put Nate_Calloway.glb here
+  characters/              put Nate_Calloway.glb here (and Nate_Calloway_rigged.glb with animations)
   buildings/               hero buildings: put .glb model files here (see below)
   hdri/                    optional sky photo for reflections
   reference/               the reference pictures (buildings/b01 ... b11)
@@ -335,14 +353,16 @@ the recipe, and give it a weight in `pickType()` at the bottom of that file.
 
 - Almost all of the city is drawn with a handful of big merged meshes and
   instanced meshes. A whole frame uses well under 200 draw calls
-  (about 65 on Low, about 125 on Medium, at most about 170; tap `FPS` to see it).
+  (about 75 on Low, about 130 on Medium, about 150 while you drive; the limit is 250; tap `FPS` to see it).
 - All glass of all buildings is ONE mesh with one glass shader that paints floor
   lines, mullions and lit rooms. All panels (concrete, metal, wood, solar) are one more.
 - Fins, floor plates and plants are instanced copies of a few small models, drawn
   only near the player.
 - Props are only drawn near the player (bins 105 m, cars 150 m, trees 290 m ...).
-- All people are ONE instanced mesh; arms and legs swing in the shader. Only the
-  people and cars near the player exist - far ones are moved to a new place nearby.
+- All people are ONE instanced mesh; arms and legs swing in the shader. All traffic cars of
+  one type are one instanced mesh. Only the people and cars near the player exist - far
+  ones are moved to a new place nearby.
+- Parked cars are instanced copies; only the car you take becomes a real object with turning wheels.
 - One sun casts shadows: a sharp shadow map follows the player, a second soft one
   covers the far city and is only redrawn when the sun has moved.
 - At night only the 6 street lamps nearest to the player are real lights. All the
@@ -351,10 +371,60 @@ the recipe, and give it a weight in `pickType()` at the bottom of that file.
 
 ---
 
-## Known limits of Phase 1
+## Phase 2: Life and Driving
 
-- No missions yet. People and cars are simple: people walk around the blocks and never cross the street, cars only turn right. The highway and the maglev are scenery.
-- Tested with a software renderer only; real phone frame rates still have to be checked on a device.
-- The player has no animation (the model has no skeleton yet).
+**Cars you can drive.** Every parked car can be driven: stand next to it and press `CAR` (or `E`).
+Four types: sedan (165 km/h), SUV (150), van (125) and the sports coupe (182). The car has
+weight: the body leans in corners and dips when braking, steering gets calmer at speed, the
+handbrake makes the tail slide. Walls, props and other cars stop it with a bump and a short
+camera shake. Headlights and tail lights come on at dusk, the brake lights when you brake.
+The numbers for each type are in `CAR_TYPES` in `src/vehicles/carModels.js`.
+
+**Traffic.** 30 cars (12 on Low, 40 on High) drive on the lanes written in `src/city/layout.js`
+(`traffic`). They keep right, stop at red lights, keep a gap, turn left and right at crossings
+(before a left turn they let the other side pass) and brake for you and for people on the road.
+Only cars within 250 m exist.
+
+**People.** 60 people (20 on Low, 80 on High; about half at night, fewer in rain) with
+different clothes and heights. They walk around the blocks, wait at red lights and cross on the
+crosswalks, and step out of your way.
+
+**Animated player (optional).** Put a model with a skeleton at
+`assets/characters/Nate_Calloway_rigged.glb`. If it has animations whose names contain `idle`,
+`walk` and `run`, the game blends between them by speed. Without that file the current model
+is used and slides.
+
+**Sound.** All sounds are made in code with Web Audio (no sound files): engine, tire screech,
+horn, crash, door, footsteps (different on sand). Sound starts after your first tap.
+
+**Map and GPS.** The minimap shows a car shape when you drive, dots for the traffic, the mission
+marker and your waypoint. `MAP` opens the big map with the district names; tap to set a waypoint.
+A yellow line then shows the way along the roads and an arrow at the top points along it.
+
+**Missions.** `src/missions/missions.js` is a plain data file. A mission is a list of steps:
+
+| Step type | What the player has to do |
+|---|---|
+| `goto` | reach a place (on foot or by car) |
+| `enterCar` | get into a car (a certain mission car, or any car) |
+| `driveTo` | reach a place while sitting in a car |
+| `wait` | stay for some seconds |
+| `timer` | reach a place before the time runs out |
+| `dialog` | read a box with a name and some lines of text |
+
+The placeholder mission "Meet at Neon Mile" starts by itself: walk to the orange sports car
+across the start street, get in, drive south to Neon Mile, turn right, stop at the marker and
+read the dialog. Add `?mission=0` to the address to play without it.
+
+---
+
+## Known limits
+
+- People and cars are simple: no crashes between traffic cars and people, people never get run over
+  (they jump aside), traffic cars do not avoid a car you leave in their lane - they wait behind it.
+- Car bodies do not get dents. Parked cars are solid and do not move when hit.
+- Tested with a software renderer only; real phone frame rates, the feel of the touch buttons, tilt
+  steering and the sound still have to be checked on a real phone.
+- Without the rigged model file the player has no animation.
 - Buildings cannot be entered.
 - Shop names, signs and adverts are invented. No real brands are used.

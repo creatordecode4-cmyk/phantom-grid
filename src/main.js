@@ -6,7 +6,8 @@
 //   2. load textures and build the city
 //   3. create lighting, weather, the player, the camera and the controls
 //   4. pick a quality level that fits this device
-//   5. loop forever: read input -> move player -> update world -> draw
+//   5. loop forever: read input -> move player or car -> traffic and people
+//      -> missions, map and GPS -> update world -> draw
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
@@ -23,6 +24,11 @@ import { createCameraRig } from './player/camera.js';
 import { createControls } from './ui/touchControls.js';
 import { createMinimap } from './ui/minimap.js';
 import { createHUD } from './ui/hud.js';
+import { createGPS } from './ui/gps.js';
+import { createSound } from './audio/sound.js';
+import { createVehicles } from './vehicles/vehicle.js';
+import { CAR_TYPES } from './vehicles/carModels.js';
+import { createMissions } from './missions/missionManager.js';
 
 const hud = createHUD();
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -91,6 +97,22 @@ async function boot() {
   const controls = createControls(hud.dom);
   const minimap = createMinimap(hud.dom.minimap, layout);
 
+  // ------------------------------------------------- Phase 2: cars, sound, GPS, missions
+  const sound = createSound();
+  // browsers only allow sound after the first tap or key press
+  const unlockSound = () => sound.unlock();
+  window.addEventListener('pointerdown', unlockSound, { capture: true });
+  window.addEventListener('keydown', unlockSound, { capture: true });
+  const vehicles = createVehicles({ scene, city, materials, sound, weather });
+  const gps = createGPS(layout);
+  const missions = createMissions({ scene, city, vehicles, hud, sound });
+  let waypoint = null;          // a place the player tapped on the big map
+  let route = null;             // list of points along the roads (for the minimap)
+  let routeTimer = 0, nearTimer = 0, lastSteps = 0, wasDriving = false;
+  let missionState = missions.state;
+  const obstacles = [];         // what the traffic must not hit: the player or the player's car
+  const _mark = new THREE.Vector3();
+
   // -------------------------------------------------------------------- quality
   let mode = 'auto';            // what the player picked: auto / low / medium / high
   let active = 'medium';        // the preset that is running now
@@ -143,9 +165,52 @@ async function boot() {
     time += dt;
     shared.uPgTime.value = time;
     const input = controls.update();
+    // ---- E key / CAR button: get in, or stop and get out ----
+    if (input.action) carAction();
+    if (input.map) hud.actions.map();
     rig.rotate(input.lookX, input.lookY);
-    player.update(dt, input, rig.yaw);
-    rig.update(dt, player);
+    const onFoot = vehicles.state === 'none';
+    if (onFoot) player.update(dt, input, rig.yaw);
+    const px = player.position.x, pz = player.position.z;
+    const night = shared.uPgNight.value, rain = weather.amount;
+
+    // ---- traffic and people (they keep away from the player and the player's car) ----
+    obstacles.length = 0;
+    const car = vehicles.active;
+    if (car && !onFoot) {
+      const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
+      for (const k of [-1.4, 0, 1.4]) obstacles.push({ x: car.x + fx * k, z: car.z + fz * k, r: 1.0 });
+    } else obstacles.push({ x: px, z: pz, r: 0.4 });
+    city.traffic.update(dt, time, px, pz, obstacles, city.people.people, night);
+    city.people.update(dt, time, px, pz, obstacles, night, rain > 0.3 ? 1 : 0);
+
+    // ---- the player's car (after the traffic, so it can bump into it) ----
+    vehicles.update(dt, input.drive, player, night);
+    const driving = vehicles.driving;
+    if (driving !== wasDriving) {
+      wasDriving = driving;
+      hud.setDriving(driving, driving && vehicles.active ? CAR_TYPES[vehicles.active.kind].label : '');
+      if (driving) rig.startChase(); else rig.endChase();
+    }
+    if (driving && vehicles.active) rig.updateChase(dt, vehicles.active, vehicles.shake);
+    else rig.update(dt, player);
+
+    // ---- footsteps: a different sound on sand ----
+    if (player.steps !== lastSteps) {
+      lastSteps = player.steps;
+      if (onFoot) sound.footstep(pz < layout.neon.promenadeMinZ ? 'sand' : 'concrete', player.speed > 3);
+    }
+
+    // ---- mission, waypoint, GPS route ----
+    missionState = missions.update(dt, { x: px, z: pz, inCar: vehicles.state === 'driving', car: vehicles.active, speed: car ? Math.hypot(car.vx, car.vz) : player.speed });
+    if (waypoint && Math.hypot(waypoint.x - px, waypoint.z - pz) < 14) { waypoint = null; hud.toast('YOU HAVE ARRIVED'); sound.chime(); }
+    const goal = waypoint || missionState.marker;
+    routeTimer -= dt;
+    if (!goal) route = null;
+    else if (routeTimer <= 0) { routeTimer = 0.6; route = gps.route(px, pz, goal.x, goal.z); }
+    // the CAR button shows up next to a car
+    nearTimer -= dt;
+    if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !!vehicles.nearest(px, pz)); }
     // test tool: PG.freeCam = { pos: [x, y, z], look: [x, y, z] } puts the camera anywhere
     const fc = window.PG && window.PG.freeCam;
     if (fc) {
@@ -158,6 +223,33 @@ async function boot() {
     city.update(dt, time, player.position.x, player.position.z, quality.propDistance);
     updateSunGlow(dt);
   }
+  // Get into the nearest car, or (when driving) stop and get out.
+  function carAction() {
+    if (vehicles.state === 'none') {
+      if (!vehicles.tryEnter(player)) hud.toast('NO CAR NEAR YOU', 1200);
+    } else if (vehicles.state === 'driving') vehicles.requestExit();
+  }
+
+  // ---- HUD things that follow the world: GPS arrow, floating marker, speed ----
+  function updateGuides() {
+    hud.setSpeed(vehicles.speedKmh);
+    hud.setMission(missionState.active ? missionState : null);
+    const goal = waypoint || missionState.marker;
+    if (!goal) { hud.setArrow(null); hud.setMarker(null); return; }
+    const px = player.position.x, pz = player.position.z;
+    const dist = Math.hypot(goal.x - px, goal.z - pz);
+    // the arrow points along the route (about 28 m ahead), seen from the camera
+    const aim = route && route.length > 1 && dist > 34 ? gps.pointAhead(route, 28) : goal;
+    const dx = aim.x - px, dz = aim.z - pz;
+    const fx = Math.sin(rig.yaw), fz = Math.cos(rig.yaw);
+    hud.setArrow(Math.atan2(dx * -fz + dz * fx, dx * fx + dz * fz), route && route.length > 1 ? gps.length(route) : dist);
+    // the marker floats over the goal (hidden when it is behind the camera)
+    _mark.set(goal.x, city.groundHeight(goal.x, goal.z) + 2.6, goal.z).project(camera);
+    if (_mark.z < 1 && Math.abs(_mark.x) < 1.05 && Math.abs(_mark.y) < 1.05) hud.setMarker((_mark.x * 0.5 + 0.5) * window.innerWidth, (-_mark.y * 0.5 + 0.5) * window.innerHeight, dist);
+    else hud.setMarker(null);
+  }
+  const mapExtra = () => ({ inCar: vehicles.driving, cars: city.traffic.cars, waypoint, marker: missionState.marker, route });
+
   // ---- sun glow: is the sun on the screen, and do buildings hide it? ----
   const _sun = new THREE.Vector3(), _camFwd = new THREE.Vector3(), _ray = new THREE.Vector3();
   let sunSeen = 0; // 0 = hidden .. 1 = fully visible (changes smoothly)
@@ -277,6 +369,32 @@ async function boot() {
     statsOn = !statsOn;
     hud.showStats(statsOn);
   };
+  hud.actions.car = carAction;
+  hud.actions.sound = () => {
+    sound.setMuted(!sound.muted);
+    hud.setSoundButton(!sound.muted);
+    hud.toast(sound.muted ? 'SOUND OFF' : 'SOUND ON', 1000);
+  };
+  hud.actions.dialog = () => missions.advanceDialog();
+  // ---- the big map: tap to set a waypoint ----
+  const drawBigMap = () => minimap.drawBig(hud.dom.bigmapCanvas, player.position.x, player.position.z, player.heading, mapExtra());
+  hud.actions.map = () => {
+    hud.showBigMap(!hud.bigMapOpen);
+    if (hud.bigMapOpen) requestAnimationFrame(drawBigMap);
+  };
+  hud.actions.mapClose = () => hud.showBigMap(false);
+  hud.actions.mapClear = () => { waypoint = null; route = null; routeTimer = 0; drawBigMap(); };
+  hud.dom.bigmapCanvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const box = hud.dom.bigmapCanvas.getBoundingClientRect();
+    const w = minimap.bigToWorld(e.clientX - box.left, e.clientY - box.top);
+    if (!w) return;
+    waypoint = w;
+    route = gps.route(player.position.x, player.position.z, w.x, w.z);
+    routeTimer = 0.6;
+    drawBigMap();
+    hud.toast('WAYPOINT SET', 1000);
+  });
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyT') {
       const order = ['morning', 'noon', 'sunset', 'night'];
@@ -309,8 +427,10 @@ async function boot() {
     sinceChange += dt;
     if (mapTimer > 0.066) {
       mapTimer = 0;
-      minimap.draw(player.position.x, player.position.z, player.heading);
+      minimap.draw(player.position.x, player.position.z, player.heading, mapExtra());
+      if (hud.bigMapOpen) drawBigMap();
     }
+    updateGuides();
     if (fpsTimer >= 0.5) {
       fps = frames / fpsTimer;
       frames = 0;
@@ -336,12 +456,19 @@ async function boot() {
   // tools for testing from the browser console (and for screenshots)
   window.PG = {
     THREE, CONFIG, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
-    applyQuality, step, draw,
+    vehicles, missions, gps, sound, hud, minimap,
+    applyQuality, step, draw, carAction, updateGuides,
+    get waypoint() { return waypoint; },
+    set waypoint(w) { waypoint = w; routeTimer = 0; },
+    get route() { return route; },
     get quality() { return active; },
     get fps() { return fps; },
     get time() { return time; },
     ready: true,
   };
+
+  // the placeholder mission starts by itself (add "?mission=0" to the address to play without it)
+  if (urlOption('mission') !== '0') missions.start('meet-at-neon-mile');
 
   hud.hideLoading();
   requestAnimationFrame((t) => { last = t; loop(t); });

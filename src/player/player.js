@@ -4,7 +4,9 @@
 //   * tries to load assets/characters/Nate_Calloway.glb and scales it to 1.8 m
 //   * if that file is missing, a simple mannequin with real human
 //     proportions is used instead
-//   * the model has no skeleton yet, so we only move and turn it
+//   * if assets/characters/Nate_Calloway_rigged.glb exists (a model with a
+//     skeleton and the animations idle, walk, run) it is used and animated;
+//     without it the plain model is moved and turned, and it slides a little
 //   * walks 1.6 m/s, runs 5 m/s, turns smoothly
 //   * cannot walk through buildings, cars, poles or out of the map
 // ---------------------------------------------------------------------------
@@ -27,6 +29,7 @@ async function loadCharacter(url) {
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder); // the models are meshopt-compressed
     const gltf = await loader.loadAsync(url);
+    gltf.scene.userData.animations = gltf.animations || [];
     return gltf.scene;
   } catch (e) {
     console.warn('[player] could not load the character model, using the mannequin.', e);
@@ -45,7 +48,23 @@ export async function createPlayer(scene, city, materials) {
 
   // ---- the model ----
   let usingMannequin = false;
-  const model = await loadCharacter(P.model);
+  // first choice: the model with a skeleton and animations, then the plain model
+  let model = P.riggedModel ? await loadCharacter(P.riggedModel) : null;
+  const rigged = !!model;
+  if (!model) model = await loadCharacter(P.model);
+  // ---- animations (only the rigged model has them): idle, walk, run ----
+  let mixer = null;
+  const anim = { idle: null, walk: null, run: null };
+  if (rigged && model.userData.animations.length) {
+    mixer = new THREE.AnimationMixer(model);
+    for (const clip of model.userData.animations) {
+      const name = clip.name.toLowerCase();
+      for (const key of ['idle', 'walk', 'run']) {
+        if (!anim[key] && name.includes(key)) { anim[key] = mixer.clipAction(clip); anim[key].play(); anim[key].setEffectiveWeight(key === 'idle' ? 1 : 0); }
+      }
+    }
+    if (!anim.idle && !anim.walk && !anim.run) mixer = null; // no clip with a name we know
+  }
   if (model) {
     // scale to exactly 1.8 m and stand it on the ground, centered
     const box = new THREE.Box3().setFromObject(model);
@@ -89,6 +108,7 @@ export async function createPlayer(scene, city, materials) {
   heading = compassToAngle(layout.spawn.facingDeg);
   let speed = 0;
   let stepPhase = 0;
+  let stepDist = 0, steps = 0;
   const vel = new THREE.Vector2();
   pos.set(layout.spawn.x, city.groundHeight(layout.spawn.x, layout.spawn.z), layout.spawn.z);
   root.rotation.y = heading;
@@ -173,12 +193,57 @@ export async function createPlayer(scene, city, materials) {
     pos.y = damp(pos.y, city.groundHeight(pos.x, pos.z), 14, dt);
     root.rotation.y = heading;
 
-    // tiny up-down bob and a forward lean, so it does not look like sliding
-    stepPhase += dt * (4.5 + speed * 2.2);
-    const k = clamp(speed / P.walkSpeed, 0, 1);
-    body.position.y = Math.abs(Math.sin(stepPhase)) * 0.022 * k;
-    body.rotation.x = damp(body.rotation.x, clamp(speed / P.runSpeed, 0, 1) * 0.09, 6, dt);
+    if (mixer) animate(dt);
+    else {
+      // no skeleton: a tiny up-down bob and a forward lean, so it does not look like sliding
+      stepPhase += dt * (4.5 + speed * 2.2);
+      const k = clamp(speed / P.walkSpeed, 0, 1);
+      body.position.y = Math.abs(Math.sin(stepPhase)) * 0.022 * k;
+      body.rotation.x = damp(body.rotation.x, clamp(speed / P.runSpeed, 0, 1) * 0.09, 6, dt);
+    }
+    // count the steps (main.js plays a footstep sound for each one)
+    stepDist += speed * dt;
+    const stride = speed > 3 ? 1.25 : 0.72;
+    if (stepDist > stride) { stepDist = 0; steps++; }
 
+    blob.position.set(pos.x, pos.y + 0.02, pos.z);
+  }
+
+  // Blend idle / walk / run by how fast the player moves.
+  const weights = { idle: 1, walk: 0, run: 0 };
+  function animate(dt) {
+    const run = clamp((speed - 2.2) / 2.0, 0, 1);
+    const move = clamp(speed / 0.9, 0, 1);
+    const want = { idle: 1 - move, walk: move * (1 - run), run: move * run };
+    // a missing clip gives its share to the nearest one we have
+    if (!anim.run) { want.walk += want.run; want.run = 0; }
+    if (!anim.walk) { want.run += want.walk; want.walk = 0; }
+    if (!anim.idle) want.idle = 0;
+    for (const key of ['idle', 'walk', 'run']) {
+      if (!anim[key]) continue;
+      weights[key] = damp(weights[key], want[key], 8, dt);
+      anim[key].setEffectiveWeight(weights[key]);
+    }
+    // the feet should not slide: play the clips faster when the player is faster
+    if (anim.walk) anim.walk.setEffectiveTimeScale(clamp(speed / P.walkSpeed, 0.6, 1.6));
+    if (anim.run) anim.run.setEffectiveTimeScale(clamp(speed / P.runSpeed, 0.7, 1.3));
+    mixer.update(dt);
+  }
+
+  // ---- used by the cars: hide the player, put them somewhere, walk them to a door ----
+  let hidden = false;
+  function setHidden(h) { hidden = h; root.visible = !h; blob.visible = !h; }
+  function place(x, z, angle) {
+    pos.set(x, city.groundHeight(x, z), z);
+    vel.set(0, 0); speed = 0;
+    heading = angle;
+    root.rotation.y = heading;
+    blob.position.set(pos.x, pos.y + 0.02, pos.z);
+  }
+  function glideTo(x, z, angle, dt) {
+    pos.x = damp(pos.x, x, 12, dt); pos.z = damp(pos.z, z, 12, dt);
+    heading += angleDelta(heading, angle) * (1 - Math.exp(-10 * dt));
+    root.rotation.y = heading;
     blob.position.set(pos.x, pos.y + 0.02, pos.z);
   }
 
@@ -196,6 +261,10 @@ export async function createPlayer(scene, city, materials) {
     update,
     teleport,
     usingMannequin,
+    rigged, animated: !!mixer,
+    setHidden, place, glideTo,
+    get hidden() { return hidden; },
+    get steps() { return steps; },   // goes up by one with every footstep
     get heading() { return heading; },
     get speed() { return speed; },
   };

@@ -23,6 +23,15 @@ export const LAYOUT = {
   // The player cannot walk outside this rectangle (about 1000 m x 1000 m).
   bounds: { minX: -497, maxX: 472.4, minZ: -476, maxZ: 495.4 },
 
+  // ----- TRAFFIC ---------------------------------------------------------------
+  // Cars drive on the right, in the inner lane of every street.
+  traffic: {
+    laneOffset: 1.75,      // the inner lane is this far from the middle of a street
+    neonLaneOffset: 1.9,   // on Neon Mile: this far from the edge of the palm strip
+    turnRight: 4.5,        // radius of a right turn (meters)
+    turnLeft: 8.0,         // radius of a left turn
+  },
+
   // ----- THE GRID: street grid ------------------------------------------------
   street: {
     width: 14,        // curb to curb (2 lanes each way, 3.5 m per lane)
@@ -488,8 +497,26 @@ export function buildLayout(L = LAYOUT) {
     return 'THE GRID';
   }
 
+  // ---- Driving lanes (used by src/ai/traffic.js and the GPS) -----------------------
+  // "roads" = the streets cars may use. Each road has two lanes (one per direction):
+  //   north-south road: north-bound cars drive on the east side (x = center - laneOffset)
+  //   east-west road:   cars going west (+x) drive on the north side (z = center + laneOffset)
+  //   Neon Mile:        the north half goes west, the half next to the beach goes east
+  const TR = L.traffic;
+  const traffic = {
+    ...TR,
+    ns: streetsNS.filter((s) => s.playable).map((s) => ({ axis: 'ns', index: s.index, center: s.center, neon: false })),
+    ew: streetsEW.filter((s) => s.playable).map((s) => ({ axis: 'ew', index: s.index, center: s.center, neon: false })),
+    neon: {
+      axis: 'ew', index: -1, center: neon.centerZ, neon: true,
+      laneWest: neon.centerZ + nm.medianWidth / 2 + TR.neonLaneOffset,
+      laneEast: neon.centerZ - nm.medianWidth / 2 - TR.neonLaneOffset,
+    },
+  };
+
   return {
     raw: L,
+    traffic,
     seed: L.seed,
     bounds: L.bounds,
     street: S,

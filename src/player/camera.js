@@ -108,8 +108,46 @@ export function createCameraRig(camera, city) {
     camera.lookAt(look);
   }
 
+  // ---- CHASE CAMERA (driving): behind the car, further back the faster it goes ----
+  // Dragging looks around the car; a moment later the camera swings back behind it.
+  let lookAround = 0;      // extra angle from dragging
+  let chaseDist = 6.5;
+  let chaseFirst = true;
+  function updateChase(dt, car, shake = 0) {
+    idle += dt;
+    const speed = Math.hypot(car.vx, car.vz);
+    // "yaw" was changed by rotate(): keep it as an offset to the car's direction
+    if (chaseFirst) { lookAround = 0; chaseFirst = false; chaseDist = 6.5; pivot.set(car.x, car.y + 1.25, car.z); }
+    else lookAround = angleDelta(car.heading, yaw);
+    if (idle > 1.1) lookAround *= Math.exp(-3.2 * dt);
+    // when reversing for a while the camera stays behind the car (no flipping)
+    yaw = car.heading + lookAround;
+    pitch = idle > 1.1 ? damp(pitch, 0.2, 2.5, dt) : clamp(pitch, -0.1, 0.9);
+
+    pivot.x = damp(pivot.x, car.x, 14, dt);
+    pivot.y = damp(pivot.y, car.y + 1.25, 8, dt);
+    pivot.z = damp(pivot.z, car.z, 14, dt);
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    dir.set(Math.sin(yaw) * cp, -sp, Math.cos(yaw) * cp);
+    const wantDist = 6.3 + Math.min(4.8, speed * 0.085);
+    const free = castRay(pivot.x, pivot.y, pivot.z, -dir.x, -dir.y, -dir.z, wantDist);
+    const want = Math.max(1.6, free);
+    chaseDist = want < chaseDist ? want : damp(chaseDist, want, 3, dt);
+    let cx = pivot.x - dir.x * chaseDist, cy = pivot.y - dir.y * chaseDist + 0.55, cz = pivot.z - dir.z * chaseDist;
+    // a crash shakes the camera for a moment
+    if (shake > 0.001) { cx += (Math.random() - 0.5) * shake * 0.5; cy += (Math.random() - 0.5) * shake * 0.4; cz += (Math.random() - 0.5) * shake * 0.5; }
+    cy = Math.max(cy, city.groundHeight(cx, cz) + 0.5);
+    camera.position.set(cx, cy, cz);
+    look.set(pivot.x + dir.x * 6, pivot.y + 0.2 + dir.y * 6, pivot.z + dir.z * 6);
+    camera.lookAt(look);
+  }
+
   return {
     update,
+    updateChase,
+    // call when the player gets into / out of a car
+    startChase() { chaseFirst = true; idle = 10; },
+    endChase() { first = true; idle = 10; pitch = C.startPitch; },
     rotate,
     get yaw() { return yaw; },
     get pitch() { return pitch; },

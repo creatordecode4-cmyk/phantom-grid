@@ -15,7 +15,9 @@ import { MeshBuilder } from '../utils/geometry.js';
 import { shared } from './materials.js';
 import { buildGround, blockEdges } from './ground.js';
 import { buildBuildings, loadHeroModels } from './buildings.js';
-import { createStreetLife } from './streetLife.js';
+import { createTraffic } from '../ai/traffic.js';
+import { createPedestrians } from '../ai/pedestrians.js';
+import { makeBeamTexture } from '../vehicles/vehicle.js';
 import { buildProps, makeHoloMaterial } from './props.js';
 import { buildBackdrop } from './backdrop.js';
 
@@ -167,6 +169,7 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
     shopLights: [],   // light from shop windows: { x, z, r, power }
     buildings: [],
     parked: [],       // cars standing in parking lots: { x, z, rot }
+    parkedCars: [],   // every parked car (the player can drive them): filled by props.js
     lotLamps: [],     // lamps in plazas: { x, z, rot }
     roofTrees: [],    // trees on roofs, terraces and in gardens: { x, y, z, s, trunk }
     evPosts: [],      // EV charging posts in front of buildings: { x, z, rot }
@@ -260,11 +263,12 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
   }
 
   // people and traffic (they need the car models from the props and the walls of the buildings)
-  const life = createStreetLife(ctx);
+  const traffic = createTraffic(ctx, makeBeamTexture());
+  const people = createPedestrians(ctx);
   lap('meshes');
   makeLampLightMap(ctx);
   const colliders = makeCollisionGrid(ctx.colliders.boxes, ctx.colliders.circles);
-  colliders.dynamic = life.dynamicCircles; // moving cars near the player
+  colliders.dynamic = traffic.dynamicCircles; // moving cars near the player
   lap('lightMap');
   scene.add(group);
   onProgress(1, 'City ready');
@@ -274,7 +278,9 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
     layout,
     meshes,
     props,
-    life,
+    traffic,
+    people,
+    parkedCars: ctx.parkedCars,
     colliders,
     lamps: ctx.lamps,
     buildings: ctx.buildings,
@@ -285,13 +291,13 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
     setQuality(q) {
       const on = q.buildingDetail !== false;
       props.setDetail(on);
-      life.setQuality(q);
+      traffic.setQuality(q);
+      people.setQuality(q);
       if (meshes.hedge) meshes.hedge.visible = on; // LOW: no plants on the facades
     },
     // called every frame
     update(dt, time, x, z, propDistance) {
       props.update(dt, time, x, z, propDistance);
-      life.update(dt, time, x, z);
       backdrop.rail.update(dt);
     },
   };
