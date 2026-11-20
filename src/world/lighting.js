@@ -66,6 +66,9 @@ function skyColor(st, x, y, z) {
   return out;
 }
 
+// Color of the night sky near the horizon (light from the city in the haze).
+const CITY_GLOW = [0.06, 0.035, 0.02];
+
 // ---------------------------------------------------------------------------
 // Cloud / night layer: a big dome drawn over the sky.
 // ---------------------------------------------------------------------------
@@ -82,7 +85,7 @@ function makeSkyOverlayMaterial(noiseTex) {
       uOvercast: { value: 0 },                            // 1 = grey rain sky
       uOvercastColor: { value: new THREE.Color(0.5, 0.52, 0.55) },
       uNight: { value: 0 },                               // 1 = night
-      uGlowColor: { value: new THREE.Color(0.06, 0.035, 0.02) }, // city glow at the horizon
+      uGlowColor: { value: new THREE.Color(CITY_GLOW[0], CITY_GLOW[1], CITY_GLOW[2]) }, // city glow at the horizon
       uZenithColor: { value: new THREE.Color(0.004, 0.007, 0.016) },
     },
     side: THREE.BackSide,
@@ -488,7 +491,8 @@ export function createLighting(scene, renderer, city, materials) {
     ou.uSkyColor.value.setRGB(zen[0] * 0.9 + 0.012 * night, zen[1] * 0.9 + 0.012 * night, zen[2] * 0.9 + 0.016 * night);
     ou.uCover.value = quality.skyClouds ? lerp(0.36, 0.9, rain) : 0;
     ou.uOvercast.value = smoothstep(0.15, 0.9, rain);
-    ou.uOvercastColor.value.setRGB(overcastLum * 1.25 + 0.02 * night, overcastLum * 1.28 + 0.02 * night, overcastLum * 1.34 + 0.022 * night);
+    const lid = [overcastLum * 1.25 + 0.02 * night, overcastLum * 1.28 + 0.02 * night, overcastLum * 1.34 + 0.022 * night];
+    ou.uOvercastColor.value.setRGB(lid[0], lid[1], lid[2]);
     ou.uNight.value = night;
 
     // ---- haze color = color of the sky at the horizon ----
@@ -500,8 +504,8 @@ export function createLighting(scene, renderer, city, materials) {
     const h3 = skyColor(st, hx * 0.7 - hz * 0.7, 0.04, hz * 0.7 + hx * 0.7);
     for (let i = 0; i < 3; i++) {
       let f = (h1[i] * 0.4 + h2[i] * 0.4 + h3[i] * 0.2) * 0.92;
-      f = lerp(f, ou.uOvercastColor.value.getComponent(i) * 0.78, ou.uOvercast.value * 0.97);
-      f += ou.uGlowColor.value.getComponent(i) * night * 0.9;
+      f = lerp(f, lid[i] * 0.78, ou.uOvercast.value * 0.97);
+      f += CITY_GLOW[i] * night * 0.9;
       fogHDR[i] = f;
     }
     lastSkyLum = 0.2 * (zen[0] + zen[1] + zen[2]) + 0.25 * (fogHDR[0] + fogHDR[1] + fogHDR[2]) / 3 + 0.004;

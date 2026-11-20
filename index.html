@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d10">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Phantom Grid - an open-world game set in Port Meridian, 2090.">
+  <title>Phantom Grid</title>
+
+  <!--
+    PHANTOM GRID - Phase 1
+    No build step: plain HTML + JavaScript modules.
+    three.js comes from a CDN. The "import map" below tells the browser
+    where to find it when the code says:  import * as THREE from 'three'
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <style>
+    /* ---------- page ---------- */
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden; background: #0b0d10; color: #fff;
+      position: fixed; inset: 0;
+      overscroll-behavior: none; touch-action: none;
+      -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+      font-weight: 300;
+    }
+    #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+
+    /* ---------- layer with all controls ---------- */
+    #ui { position: fixed; inset: 0; pointer-events: none; }
+    #ui > * { pointer-events: auto; }
+    /* invisible areas that catch the fingers */
+    #zone-look { position: absolute; inset: 0; touch-action: none; }
+    #zone-move { position: absolute; left: 0; bottom: 0; width: 46%; height: 62%; touch-action: none; }
+
+    /* ---------- text, top left ---------- */
+    #hud-top-left {
+      position: absolute; pointer-events: none;
+      left: calc(14px + env(safe-area-inset-left)); top: calc(12px + env(safe-area-inset-top));
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+    }
+    #hud-location { font-size: 13px; letter-spacing: 0.3em; font-weight: 400; }
+    #hud-sub { margin-top: 5px; font-size: 11px; letter-spacing: 0.18em; opacity: 0.82; }
+    #hud-sub span + span::before { content: "·"; margin: 0 7px; opacity: 0.6; }
+    #hud-stats {
+      margin-top: 8px; font-size: 10px; letter-spacing: 0.1em; line-height: 1.55;
+      font-variant-numeric: tabular-nums; opacity: 0.9;
+      background: rgba(8, 10, 12, 0.45); padding: 5px 8px; border-radius: 6px; display: inline-block;
+    }
+
+    /* ---------- minimap and buttons, top right ---------- */
+    #hud-top-right {
+      position: absolute; pointer-events: none;
+      right: calc(12px + env(safe-area-inset-right)); top: calc(12px + env(safe-area-inset-top));
+      display: flex; flex-direction: column; align-items: flex-end; gap: 9px;
+    }
+    #minimap { width: 116px; height: 116px; border-radius: 50%; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); }
+    #hud-buttons { display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
+    .btn {
+      font: inherit; font-size: 10px; letter-spacing: 0.16em; color: #fff;
+      background: rgba(10, 12, 14, 0.46); border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px; padding: 0 10px; min-width: 76px; height: 34px;
+      -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+      touch-action: manipulation; cursor: pointer; outline: none;
+    }
+    .btn:active { background: rgba(255, 255, 255, 0.22); }
+    .btn.on { background: rgba(255, 255, 255, 0.86); color: #0b0d10; border-color: transparent; }
+
+    /* ---------- pop-up menus (time of day, quality) ---------- */
+    .menu {
+      position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%);
+      background: rgba(10, 12, 14, 0.72); border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px; padding: 12px 12px 10px; text-align: center;
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    }
+    .menu[hidden] { display: none; }
+    .menu-title { font-size: 10px; letter-spacing: 0.3em; opacity: 0.7; margin-bottom: 9px; }
+    .menu-row { display: flex; gap: 6px; }
+    .menu .btn { min-width: 72px; height: 40px; }
+
+    /* ---------- joystick ---------- */
+    #joy-base {
+      position: absolute; pointer-events: none;
+      left: calc(96px + env(safe-area-inset-left)); top: calc(100% - 104px - env(safe-area-inset-bottom));
+      width: 124px; height: 124px; border-radius: 50%; transform: translate(-50%, -50%);
+      background: rgba(10, 12, 14, 0.22); border: 1px solid rgba(255, 255, 255, 0.24);
+      transition: opacity 0.2s; opacity: 0.75;
+    }
+    #joy-base.active { opacity: 1; }
+    #joy-knob {
+      position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 255, 255, 0.32); border: 1px solid rgba(255, 255, 255, 0.55);
+    }
+    #btn-run {
+      position: absolute; right: calc(26px + env(safe-area-inset-right)); bottom: calc(52px + env(safe-area-inset-bottom));
+      width: 76px; height: 76px; min-width: 0; border-radius: 50%; font-size: 11px; letter-spacing: 0.2em; padding: 0;
+    }
+
+    /* ---------- small messages ---------- */
+    #toast {
+      position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+      font-size: 11px; letter-spacing: 0.2em; padding: 8px 14px; border-radius: 8px;
+      background: rgba(10, 12, 14, 0.6); opacity: 0; transition: opacity 0.35s; pointer-events: none; white-space: nowrap;
+    }
+    #toast.show { opacity: 1; }
+    #hint {
+      position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%);
+      font-size: 11px; letter-spacing: 0.18em; opacity: 0.8; pointer-events: none;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); transition: opacity 1.2s; white-space: nowrap;
+    }
+    #hint.gone { opacity: 0; }
+    /* on phones: no keyboard hint. on desktops: no joystick. */
+    @media (pointer: coarse) { #hint { display: none; } }
+    @media (pointer: fine) and (hover: hover) { #joy-base { display: none; } #btn-run { display: none; } }
+    @media (min-width: 720px) { #minimap { width: 138px; height: 138px; } }
+    body.nohud #ui { display: none; }
+
+    /* ---------- loading screen ---------- */
+    #loading {
+      position: fixed; inset: 0; background: #0b0d10; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      transition: opacity 0.9s; text-align: center; padding: 24px;
+    }
+    #loading.done { opacity: 0; pointer-events: none; }
+    #loading h1 { margin: 0; font-weight: 200; font-size: clamp(22px, 6vw, 44px); letter-spacing: 0.48em; padding-left: 0.48em; }
+    #loading .sub { margin-top: 12px; font-size: 11px; letter-spacing: 0.42em; opacity: 0.6; }
+    #bar { margin-top: 34px; width: min(240px, 60vw); height: 2px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+    #bar-fill { width: 0%; height: 100%; background: #fff; transition: width 0.25s; }
+    #load-text { margin-top: 12px; font-size: 10px; letter-spacing: 0.24em; opacity: 0.55; min-height: 14px; }
+    #load-error { margin-top: 18px; max-width: 420px; font-size: 12px; line-height: 1.6; letter-spacing: 0.04em; color: #ffb4a8; display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="ui">
+    <div id="zone-look"></div>
+    <div id="zone-move"></div>
+
+    <div id="hud-top-left">
+      <div id="hud-location">THE GRID</div>
+      <div id="hud-sub"><span id="hud-clock">18:09</span><span id="hud-weather">CLEAR</span></div>
+      <div id="hud-stats" hidden></div>
+    </div>
+
+    <div id="hud-top-right">
+      <canvas id="minimap"></canvas>
+      <div id="hud-buttons">
+        <button class="btn" id="btn-time" aria-label="Time of day">TIME</button>
+        <button class="btn" id="btn-rain" aria-label="Rain on or off">RAIN</button>
+        <button class="btn" id="btn-quality" aria-label="Graphics quality">QUALITY</button>
+        <button class="btn" id="btn-stats" aria-label="Show frames per second">FPS</button>
+        <button class="btn" id="btn-full" aria-label="Full screen">FULL</button>
+      </div>
+    </div>
+
+    <div class="menu" id="menu-time" hidden>
+      <div class="menu-title">TIME OF DAY</div>
+      <div class="menu-row">
+        <button class="btn" data-time="morning">MORNING</button>
+        <button class="btn" data-time="noon">NOON</button>
+        <button class="btn" data-time="sunset">SUNSET</button>
+        <button class="btn" data-time="night">NIGHT</button>
+      </div>
+    </div>
+    <div class="menu" id="menu-quality" hidden>
+      <div class="menu-title">QUALITY</div>
+      <div class="menu-row">
+        <button class="btn" data-quality="auto">AUTO</button>
+        <button class="btn" data-quality="low">LOW</button>
+        <button class="btn" data-quality="medium">MEDIUM</button>
+        <button class="btn" data-quality="high">HIGH</button>
+      </div>
+    </div>
+
+    <div id="joy-base"><div id="joy-knob"></div></div>
+    <button class="btn" id="btn-run" aria-label="Run">RUN</button>
+    <div id="toast"></div>
+    <div id="hint">W A S D &nbsp;MOVE &nbsp;·&nbsp; MOUSE &nbsp;LOOK &nbsp;·&nbsp; SHIFT &nbsp;RUN</div>
+  </div>
+
+  <div id="loading">
+    <h1>PHANTOM GRID</h1>
+    <div class="sub">PORT MERIDIAN · 2090</div>
+    <div id="bar"><div id="bar-fill"></div></div>
+    <div id="load-text">STARTING</div>
+    <div id="load-error"></div>
+  </div>
+
+  <script>
+    // If the game code cannot even start (for example no internet, so three.js
+    // could not be downloaded), show a clear message instead of a black screen.
+    window.__pgFail = function (msg) {
+      var el = document.getElementById('load-error');
+      if (!el) return;
+      el.style.display = 'block';
+      el.textContent = msg;
+      document.getElementById('load-text').textContent = 'COULD NOT START';
+    };
+  </script>
+  <script type="module" src="./src/main.js"
+    onerror="window.__pgFail('The game files could not be loaded. Check your internet connection and reload the page.')"></script>
+</body>
+</html>

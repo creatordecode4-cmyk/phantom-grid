@@ -1,0 +1,117 @@
+// ---------------------------------------------------------------------------
+// weather.js - rain.
+//
+// When rain is switched on:
+//   * thin rain streaks fall around the camera (one instanced mesh)
+//   * the sky turns grey and the fog gets thicker (done in lighting.js)
+//   * roads slowly get wet and puddles appear (done by the ground shaders,
+//     we only raise the "wetness" number here)
+// After the rain stops the streets dry slowly.
+// ---------------------------------------------------------------------------
+
+import * as THREE from 'three';
+import { damp } from '../utils/math.js';
+import { shared } from '../city/materials.js';
+
+const MAX_STREAKS = 3000;
+
+export function createWeather(scene, lighting) {
+  // ---- rain streaks: copies of one small quad, moved on the GPU ----
+  const base = new THREE.PlaneGeometry(1, 1);
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.index = base.index;
+  geo.setAttribute('position', base.attributes.position);
+  geo.setAttribute('uv', base.attributes.uv);
+  const seeds = new Float32Array(MAX_STREAKS * 3);
+  for (let i = 0; i < seeds.length; i++) seeds[i] = Math.random(); // rain may be truly random
+  geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 3));
+  geo.instanceCount = 1400;
+
+  const uniforms = {
+    uTime: shared.uPgTime,
+    uBox: { value: new THREE.Vector3(46, 26, 46) },        // rain exists only in this box around the camera
+    uFall: { value: new THREE.Vector3(1.6, -15.0, 0.8) },  // meters per second (a bit of wind)
+    uColor: { value: new THREE.Color(0.6, 0.65, 0.7) },
+    uOpacity: { value: 0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    transparent: true,
+    depthWrite: false,
+    vertexShader: /* glsl */ `
+      attribute vec3 aSeed;
+      uniform float uTime;
+      uniform vec3 uBox;
+      uniform vec3 uFall;
+      varying vec2 vUv;
+      varying float vFade;
+      void main() {
+        vUv = uv;
+        // each drop starts at a random place and falls; when it leaves the
+        // box around the camera it comes back in on the other side
+        vec3 p = aSeed * uBox + uFall * uTime * ( 0.85 + 0.3 * aSeed.y );
+        vec3 rel = mod( p - cameraPosition, uBox ) - uBox * 0.5;
+        vec3 world = cameraPosition + rel;
+        vec3 dir = normalize( uFall );
+        vec3 toCam = normalize( cameraPosition - world );
+        vec3 side = normalize( cross( dir, toCam ) );
+        float len = 0.5 + 0.5 * aSeed.z;
+        world += dir * ( position.y * len ) + side * ( position.x * 0.016 );
+        vec4 mv = viewMatrix * vec4( world, 1.0 );
+        gl_Position = projectionMatrix * mv;
+        // fade out drops that are very close or at the edge of the box
+        float d = length( rel );
+        vFade = smoothstep( 0.6, 2.5, d ) * ( 1.0 - smoothstep( uBox.x * 0.36, uBox.x * 0.5, d ) );
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      varying vec2 vUv;
+      varying float vFade;
+      void main() {
+        float across = 1.0 - abs( vUv.x - 0.5 ) * 2.0;
+        float along = smoothstep( 0.0, 0.25, vUv.y ) * ( 1.0 - smoothstep( 0.6, 1.0, vUv.y ) );
+        gl_FragColor = vec4( uColor, across * along * vFade * uOpacity );
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'rain';
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 30;
+  mesh.visible = false;
+  scene.add(mesh);
+
+  let raining = false;
+  let rain = 0;     // how hard it rains right now (0..1)
+  let wet = 0;      // how wet the ground is (0..1)
+
+  function update(dt) {
+    // rain starts and stops over a few seconds
+    rain = damp(rain, raining ? 1 : 0, raining ? 0.5 : 0.8, dt);
+    if (rain < 0.002 && !raining) rain = 0;
+    // the ground gets wet in about 10 seconds and dries much more slowly
+    if (rain > wet) wet = Math.min(1, wet + dt * 0.11 * rain);
+    else wet = Math.max(0, wet - dt * 0.022);
+    shared.uPgWet.value = wet;
+    lighting.setRain(rain);
+
+    mesh.visible = rain > 0.01;
+    uniforms.uOpacity.value = rain * 0.42;
+    // drops take the color of the hazy sky, a bit brighter so they can be seen
+    const f = lighting.fogHDR;
+    uniforms.uColor.value.setRGB(f[0] * 1.5 + 0.02, f[1] * 1.5 + 0.022, f[2] * 1.5 + 0.026);
+  }
+
+  return {
+    update,
+    toggle() { raining = !raining; return raining; },
+    setRaining(v) { raining = !!v; },
+    // skip the slow start (used by the test tools): rain and wet ground at once
+    setInstant(v) { raining = !!v; rain = v ? 1 : 0; wet = v ? 1 : 0; },
+    get raining() { return raining; },
+    get amount() { return rain; },
+    setQuality(q) { geo.instanceCount = Math.min(MAX_STREAKS, q.rainStreaks); },
+  };
+}
