@@ -1094,13 +1094,14 @@ export function makeGraffitiTexture() {
 
 // ===========================================================================
 // 10. FENCES AND RAILINGS: see-through pictures that repeat sideways.
-//     4 rows: chain-link fence | balcony railing | iron picket fence | wood fence
+//     4 rows: chain-link fence | balcony railing | glass balustrade | wood fence
 // ===========================================================================
 // For each row: v range in the texture and how many meters one repeat is wide.
 export const RAIL = {
   chain: { v0: 0.752, v1: 0.998, tile: 2.4 },
   bars: { v0: 0.502, v1: 0.748, tile: 1.0 },
-  picket: { v0: 0.252, v1: 0.498, tile: 1.5 },
+  glass: { v0: 0.252, v1: 0.498, tile: 1.6 },
+  picket: { v0: 0.252, v1: 0.498, tile: 1.6 },   // (old name, now the glass balustrade)
   planks: { v0: 0.002, v1: 0.248, tile: 2.0 },
 };
 export function makeRailTexture() {
@@ -1133,18 +1134,19 @@ export function makeRailTexture() {
     ctx.fillRect(0, y + R - 16, S, 7);         // bottom rail
     ctx.clearRect(0, y, S, 3);
   }
-  // ---- row 2: iron fence with pointed pickets ----
+  // ---- row 2: glass balustrade: clear panels, a thin top rail, a post per repeat ----
   {
     const y = R * 2;
-    ctx.fillStyle = '#161618';
-    for (let k = 0; k < 10; k++) {
-      const px = (k + 0.5) * (S / 10);
-      ctx.fillRect(px - 4, y + 16, 8, R - 18);
-      ctx.beginPath(); ctx.moveTo(px - 7, y + 20); ctx.lineTo(px, y + 3); ctx.lineTo(px + 7, y + 20); ctx.fill();
-    }
-    ctx.fillRect(0, y + 30, S, 8);
-    ctx.fillRect(0, y + R - 22, S, 8);
-    ctx.fillRect(0, y + 10, 14, R - 10);       // thicker post
+    ctx.fillStyle = 'rgba(150,185,200,0.2)';
+    ctx.fillRect(0, y + 8, S, R - 12);         // the glass
+    ctx.fillStyle = 'rgba(210,225,232,0.34)';
+    ctx.fillRect(0, y + 8, S, 3);              // light catches the top edge
+    ctx.fillStyle = '#a9aeb2';
+    ctx.fillRect(0, y + 3, S, 6);              // hand rail
+    ctx.fillRect(0, y + R - 6, S, 4);          // bottom shoe
+    ctx.fillStyle = '#8d9296';
+    ctx.fillRect(0, y + 3, 6, R - 4);          // post
+    ctx.clearRect(0, y, S, 2);
   }
   // ---- row 3: old wooden boards with gaps (around empty lots) ----
   {
@@ -1231,4 +1233,40 @@ export function makeWallDetailTexture() {
   }
   ctx.putImageData(img, 0, 0);
   return canvasTexture(cv, { linear: true });
+}
+
+
+// ===========================================================================
+// 12. FOLIAGE: a dense carpet of leaves that repeats without seams
+//     (green walls on facades).
+// ===========================================================================
+export function makeFoliageTexture() {
+  const S = 256;
+  const [cv, ctx] = makeCanvas(S, S);
+  ctx.fillStyle = '#0d150b';
+  ctx.fillRect(0, 0, S, S);
+  const rng = new RNG(4242);
+  // leaves from the back (dark) to the front (lighter); each is drawn 9 times,
+  // shifted by the picture size, so the texture repeats without seams
+  const N = 1500;
+  for (let i = 0; i < N; i++) {
+    const depth = i / N;
+    const x = rng.range(0, S), y = rng.range(0, S), a = rng.range(0, 6.283);
+    const l = rng.range(5, 11), w = rng.range(2.2, 4.4);
+    const hue = rng.int(78, 118), sat = rng.int(26, 46), lum = 9 + depth * 24 + rng.range(-4, 5);
+    ctx.fillStyle = rng.chance(0.03) ? `hsl(${rng.int(40, 60)},${sat}%,${lum + 6}%)` : `hsl(${hue},${sat}%,${lum}%)`;
+    for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) {
+      if (x + ox < -14 || x + ox > S + 14 || y + oy < -14 || y + oy > S + 14) continue;
+      ctx.save();
+      ctx.translate(x + ox, y + oy);
+      ctx.rotate(a);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, l, w, 0, 0, 7);
+      ctx.fill();
+      // light middle rib on the nearest leaves
+      if (depth > 0.7) { ctx.strokeStyle = 'rgba(190,210,140,0.18)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(-l, 0); ctx.lineTo(l, 0); ctx.stroke(); }
+      ctx.restore();
+    }
+  }
+  return canvasTexture(cv);
 }

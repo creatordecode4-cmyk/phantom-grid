@@ -341,7 +341,7 @@ export function createLighting(scene, renderer, city, materials) {
   function currentSkyLum() { return lastSkyLum; }
 
   // ---------------- far shadow map ----------------
-  const cityBox = { minX: layout.city.minX - 60, maxX: layout.city.maxX + 20, minZ: layout.neon.promenadeMinZ - 20, maxZ: layout.city.maxZ + 20, maxY: 45 };
+  const cityBox = { minX: layout.city.minX - 60, maxX: layout.city.maxX + 20, minZ: layout.neon.promenadeMinZ - 20, maxZ: layout.city.maxZ + 20, maxY: 190 };
   function updateFarShadow() {
     const cx = (cityBox.minX + cityBox.maxX) / 2, cz = (cityBox.minZ + cityBox.maxZ) / 2;
     farSun.target.position.set(cx, 0, cz);

@@ -1,0 +1,581 @@
+// ---------------------------------------------------------------------------
+// heroBuildings.js - the HERO BUILDINGS of Port Meridian, made from code.
+//
+// Each one follows a reference picture in assets/reference/buildings/
+// (see docs/building_notes.md for the notes on every picture):
+//
+//   b01 twist tower          160 m   The Crown (and 260 m as Kessler-Vance HQ)
+//   b02 terrace tower         80 m   The Crown
+//   b03 garden midrise        30 m   The Grid
+//   b04 office hub            35 m   Neon Mile (twin towers with a sky bridge)
+//   b05 villa cluster         20 m   The Grid
+//   b06 beach hotel           50 m   Neon Mile
+//   b07 drone and EV hub      35 m   Neon Mile (+ 55 m drone tower)
+//   b08 retrofit brick tower  55 m   The Grid
+//   b09 Neon Mile arcade      12 m   Neon Mile (no picture, built from the brief)
+//   b10 S-curve tower        180 m   The Crown
+//   b11 hourglass tower      140 m   The Crown and Neon Mile
+//
+// A hero function gets the kit and a "site":
+//   s.x, s.z   middle of the lot,   s.rot  the way the front looks (radians)
+//   s.far      true for copies outside the walkable area (less detail)
+//   s.scale    b01 only: 1 = 160 m, 1.625 = 260 m
+// It returns { rect (ground area that is solid), top (height) }.
+//
+// If a model file with the same name exists in assets/buildings/ (for example
+// b01_twist_tower.glb), buildings.js loads that file instead.
+// ---------------------------------------------------------------------------
+
+import { FLOOR, GLASS_TINTS } from './buildingKit.js';
+
+// Real sizes: height (m) and the lot each hero needs (width along the street x depth).
+export const HEROES = {
+  b01: { file: 'b01_twist_tower', height: 160, w: 52, d: 52 },
+  b02: { file: 'b02_terrace_tower', height: 82, w: 42, d: 34 },
+  b03: { file: 'b03_garden_midrise', height: 31, w: 30, d: 30 },
+  b04: { file: 'b04_office_hub', height: 36, w: 54, d: 28 },
+  b05: { file: 'b05_villa_cluster', height: 21, w: 46, d: 44 },
+  b06: { file: 'b06_beach_hotel', height: 56, w: 40, d: 34 },
+  b07: { file: 'b07_drone_ev_hub', height: 55, w: 40, d: 34 },
+  b08: { file: 'b08_retrofit_brick_tower', height: 55, w: 28, d: 26 },
+  b09: { file: 'b09_neon_arcade', height: 14, w: 46, d: 22 },
+  b10: { file: 'b10_scurve_tower', height: 180, w: 46, d: 40 },
+  b11: { file: 'b11_hourglass_tower', height: 140, w: 36, d: 36 },
+};
+
+// A curve on a body as a list of points: f(t) gives where around, y runs from ya to yb.
+const line = (f, ya, yb, n = 9) => Array.from({ length: n }, (_, i) => [f(i / (n - 1)), ya + ((yb - ya) * i) / (n - 1)]);
+// A point in front of the building: "right" meters to the right, "front" meters toward the street.
+const local = (s, right, front) => [s.x + right * Math.cos(s.rot) + front * Math.sin(s.rot), s.z - right * Math.sin(s.rot) + front * Math.cos(s.rot)];
+// A few street trees and EV posts at the foot of a hero.
+function entrance(kit, s, w, front, trees = 2) {
+  const ctx = kit.ctx;
+  for (let i = 0; i < trees; i++) {
+    const p = local(s, (i - (trees - 1) / 2) * (w / Math.max(1, trees)), front);
+    ctx.roofTrees.push({ x: p[0], y: kit.curb, z: p[1], s: 0.9, trunk: true });
+    ctx.colliders.circles.push({ x: p[0], z: p[1], r: 0.25 });
+  }
+}
+function evPosts(kit, s, right0, right1, front, n) {
+  for (let i = 0; i < n; i++) {
+    const p = local(s, right0 + ((right1 - right0) * (i + 0.5)) / n, front);
+    kit.ctx.evPosts.push({ x: p[0], z: p[1], rot: s.rot });
+  }
+}
+
+// ===========================================================================
+// b01 TWIST TOWER
+// ===========================================================================
+function b01(kit, s) {
+  const { curb, C } = kit, far = !!s.far, k = s.scale || 1;
+  const H = 160 * k, a = 16 * Math.sqrt(k), y0 = curb, tint = GLASS_TINTS[0];
+  // green podium: two floors, wider than the tower, trees on its roof
+  const pod = kit.body({ x: s.x, z: s.z, rot: s.rot, plan: 'round', a: a * 1.45, b: a * 1.45, y0, y1: y0 + 9, kind: 1, bay: 3, floorH: 4.5, tint });
+  kit.roof(pod, { hedge: true, trees: far ? 0 : 7, color: C.concrete, far });
+  // the tower: turns 80 degrees on the way up and is thinner in the middle
+  const TW = 1.4, yb = y0 + 9, yt = y0 + H;
+  const main = kit.body({
+    x: s.x, z: s.z, rot: s.rot, plan: 'round', a, b: a, y0: yb, y1: yt, tint, bay: 1.7, steps: far ? 12 : 22,
+    levels: [[0, 1.06, 0], [0.25, 0.97, TW * 0.25], [0.5, 0.86, TW * 0.5], [0.75, 0.94, TW * 0.75], [1, 1.02, TW]],
+  });
+  const T = (y) => (y - yb) / (yt - yb), Y = (t) => yb + (yt - yb) * t;
+  // Four ribbons in two pairs. A pair starts together, opens in the middle
+  // and closes again at the top: the field between them is an "eye" of dark glass.
+  const open = (t) => 0.16 * Math.sin(Math.PI * t);
+  const A = (t) => 0.02 + 0.5 * t + open(t), B = (t) => 0.02 + 0.5 * t - open(t);
+  const rib = { w: 2.8 * Math.sqrt(k), out: 0.5, color: C.light };
+  kit.ribbon(main, line(A, yb + 2, yt - 1.5, 11), rib);
+  kit.ribbon(main, line(B, yb + 2, yt - 1.5, 11), rib);
+  kit.ribbon(main, line((t) => A(t) + 0.5, yb + 2, yt - 1.5, 11), rib);
+  kit.ribbon(main, line((t) => B(t) + 0.5, yb + 2, yt - 1.5, 11), rib);
+  // outside the eyes: a light veil over the glass
+  const veil = { mat: 'glass', out: 0.2, cols: 5, rowH: far ? 12 : 6 };
+  kit.patch(main, (y) => A(T(y)), (y) => B(T(y)) + 0.5, yb + 2.5, yt - 2, veil);
+  kit.patch(main, (y) => A(T(y)) + 0.5, (y) => B(T(y)) + 1, yb + 2.5, yt - 2, veil);
+  // sky gardens: a diagonal band of planted terraces inside the eyes
+  for (let t = 0.3; t < 0.64; t += FLOOR / (yt - yb)) kit.terrace(main, Y(t), A(t) - 0.2, A(t) - 0.03, { depth: 2.4, far });
+  for (let t = 0.52; t < 0.82; t += (2 * FLOOR) / (yt - yb)) kit.terrace(main, Y(t), B(t) + 0.53, B(t) + 0.7, { depth: 2.2, far });
+  // two platforms that stick out: a sky bridge stub and a garden balcony
+  kit.bridgeStub(main, A(0.55) + 0.2, Y(0.55), 11);
+  kit.terrace(main, Y(0.4), A(0.4) + 0.03, A(0.4) + 0.12, { depth: 5.5, far });
+  // top: tilted solar panels on the last floors, roof garden, helipad
+  kit.patch(main, 0.58, 0.9, Y(0.9), Y(0.985), { mat: 'panel', kind: 4, out: 0.4, color: [1, 1, 1], cols: 6 });
+  kit.roof(main, { trees: far ? 3 : 9, hedge: true, helipad: [0.36, -0.3], treeSize: 1.3, far });
+  if (!far) {
+    kit.fins(main, { every: 2, depth: 0.3 });
+    kit.slabs(pod, { y0: y0 + 4.5, y1: y0 + 9, step: 4.5, thick: 0.5, grow: 1.03 });
+    kit.evBays(pod, 0.42, 0.58, 4);
+    kit.signOn(pod, 0, y0 + 5, 5, 1.1, 0.4);
+    entrance(kit, s, a * 2.6, a * 1.45 + 4, 4);
+    kit.contactShadow(pod);
+  }
+  return { rect: pod.aabb(), top: yt };
+}
+
+// ===========================================================================
+// b02 TERRACE TOWER
+// ===========================================================================
+function b02(kit, s) {
+  const { curb, C } = kit, far = !!s.far;
+  const a = 17, b = 13, tint = GLASS_TINTS[1];
+  const base = { x: s.x, z: s.z, rot: s.rot, plan: 'round', a, b, tint, bay: 1.5 };
+  // glass lobby
+  const lobby = kit.body({ ...base, a: a - 1.2, b: b - 1.2, y0: curb, y1: curb + 5, kind: 1, bay: 3 });
+  // two stacked blocks with an open garden floor between them
+  const blocks = [[curb + 5, curb + 41], [curb + 46, curb + 82]];
+  for (const [ya, yb] of blocks) {
+    const sf = kit.body({ ...base, y0: ya, y1: yb });
+    const h = yb - ya;
+    // ribbon frames: an S on the front and one on the back; between them (around
+    // the right side) every floor is a planted terrace, the other half is smooth glass
+    const F = (t) => 0.95 + 0.17 * (0.5 - 0.5 * Math.cos(Math.PI * t)), K = (t) => 0.55 - 0.15 * (0.5 - 0.5 * Math.cos(Math.PI * t));
+    const rib = { w: 2.6, out: 0.45, color: C.white, kind: 1, metal: 0.3 };
+    kit.ribbon(sf, line(F, ya + 1.4, yb - 1.4), rib);
+    kit.ribbon(sf, line(K, ya + 1.4, yb - 1.4), rib);
+    // bands along the top and the bottom of the glass half
+    kit.ribbon(sf, [[K(1), yb - 1.3], [0.62, yb - 1.3], [0.82, yb - 1.3], [F(1), yb - 1.3]], { ...rib, w: 2.2 });
+    kit.ribbon(sf, [[K(0), ya + 1.3], [0.68, ya + 1.3], [0.85, ya + 1.3], [F(0), ya + 1.3]], { ...rib, w: 2.2 });
+    for (let y = ya + FLOOR; y < yb - 1; y += FLOOR) {
+      const t = (y - ya) / h;
+      kit.terrace(sf, y, F(t) - 1 + 0.035, K(t) - 0.035, { depth: 2.3, vines: 0.5, far });
+    }
+    if (!far) kit.fins(sf, { u0: 0.58, u1: 0.93, depth: 0.42 });
+    if (ya > curb + 40) kit.roof(sf, { trees: far ? 3 : 8, hedge: true, dronePad: [-0.45, -0.3], solar: 0.12, treeSize: 1.2, far });
+  }
+  // the garden floor: a smaller core, columns, plants all around, a sky bridge
+  const core = kit.body({ ...base, a: a - 4, b: b - 4, y0: curb + 41, y1: curb + 46, mat: 'panel', tint: C.concrete, kind: 0 });
+  kit.cap(core, curb + 41, { down: true, grow: 1.4, color: C.light });
+  kit.terrace(core, curb + 41, 0, 1, { depth: 4.3, thick: 0.6, vines: 0.8, far });
+  const posts = [];
+  for (let i = 0; i < 8; i++) { const p = lobby.at((i + 0.5) / 8, 0); posts.push([p.x + p.nx * 0.6, p.z + p.nz * 0.6]); }
+  kit.columns(posts, curb + 41, curb + 46, 0.4);
+  kit.bridgeStub(core, 0.75, curb + 41.4, 12);
+  if (!far) {
+    for (let i = 0; i < 5; i++) { const p = core.at(i / 5 + 0.1, 0); kit.ctx.roofTrees.push({ x: p.x + p.nx * 2.2, y: curb + 41, z: p.z + p.nz * 2.2, s: 0.7, trunk: true }); }
+    kit.slabs(lobby, { y0: curb + 5, y1: curb + 5, thick: 0.5, grow: 1.1 });
+    kit.evBays(lobby, 0.45, 0.55, 2);
+    kit.signOn(lobby, 0, curb + 3.4, 4.5, 1.0, 0.4);
+    evPosts(kit, s, 6, 14, b + 3.5, 3);
+    entrance(kit, s, 30, b + 5, 3);
+    kit.contactShadow(lobby);
+  }
+  return { rect: kit.body({ ...base, y0: curb, y1: curb + 1, noSkin: true }).aabb(), top: curb + 82 };
+}
+
+// ===========================================================================
+// b03 GARDEN MIDRISE
+// ===========================================================================
+function b03(kit, s) {
+  const { curb, C, ctx } = kit;
+  const a = 11.5, tint = GLASS_TINTS[2];
+  const base = { x: s.x, z: s.z, rot: s.rot, plan: 'round', a, b: a, tint, bay: 1.3 };
+  const lobby = kit.body({ ...base, a: a - 0.8, b: a - 0.8, y0: curb, y1: curb + 5.5, kind: 1, bay: 2.8 });
+  const sf = kit.body({ ...base, y0: curb + 5.5, y1: curb + 29.5 });
+  const tiers = [curb + 5.5, curb + 13.5, curb + 21.5];
+  // three thick concrete trays full of plants
+  for (const y of tiers) kit.terrace(sf, y, 0, 1, { depth: 1.7, thick: 0.95, color: C.concrete, vines: 0.65 });
+  // a ribbon swings over every tier, with perforated metal under it
+  tiers.forEach((y, i) => {
+    const u0 = [0.88, 0.38, 0.62][i], dir = i === 1 ? -1 : 1;
+    const R = (t) => u0 + dir * 0.24 * (0.5 - 0.5 * Math.cos(Math.PI * t));
+    kit.ribbon(sf, line(R, y + 1.2, y + 7.4, 7), { w: 1.7, out: 0.4, color: C.concrete });
+    kit.patch(sf, (yy) => R((yy - y - 1.2) / 6.2), R(1) + dir * 0.02, y + 1.3, y + 7.3, { kind: 1, out: 0.3, color: C.light, cols: 5, rowH: 3 });
+  });
+  // the big green wall, two tiers high
+  kit.patch(sf, 0.66, 0.84, curb + 6.6, curb + 21, { mat: 'green', out: 0.35, cols: 4 });
+  kit.fins(sf, { depth: 0.36, width: 0.07 });
+  // thin roof plate that hangs over, solar roof with a drone, trees
+  kit.roof(sf, { plate: 1.16, solar: 0.4, trees: 4, treeSize: 1.35, dronePad: [0.5, 0.45], hedge: true });
+  // sky bridges at the top tier, to the left and to the right
+  kit.bridgeStub(sf, 0.25, curb + 22.3, 8);
+  kit.bridgeStub(sf, 0.75, curb + 22.3, 8);
+  // outdoor glass stair from the street up to the first tray
+  stair(kit, sf.at(0.14, 0), sf.at(0.3, 0), curb, curb + 5.5, 2.6);
+  kit.slabs(lobby, { y0: curb + 5.5, y1: curb + 5.5, thick: 0.01, grow: 1 });
+  kit.signOn(lobby, 0, curb + 3.6, 4, 0.9, 0.4);
+  kit.doorOn(lobby, 0.0, 2.2, 2.9, 0);
+  evPosts(kit, s, -9, -3, a + 1.6, 3);
+  kit.contactShadow(lobby);
+  ctx.shopLights.push({ x: local(s, 0, a + 1.5)[0], z: local(s, 0, a + 1.5)[1], r: 9, power: 0.4 });
+  return { rect: lobby.aabb(), top: curb + 30 };
+}
+// Outdoor stair with glass sides: from point p (on the ground) up to point q.
+function stair(kit, p, q, y0, y1, off) {
+  const mb = kit.ctx.mb.panel, C = kit.C;
+  const A = [p.x + p.nx * off, p.z + p.nz * off], B = [q.x + q.nx * off, q.z + q.nz * off];
+  const nA = [p.nx, p.nz], nB = [q.nx, q.nz], w = 1.5;
+  mb.color(C.concrete[0], C.concrete[1], C.concrete[2], 1);
+  mb.data(0, 0.6, 0.05, 0);
+  const a0 = [A[0], y0, A[1]], a1 = [A[0] + nA[0] * w, y0, A[1] + nA[1] * w], b0 = [B[0], y1, B[1]], b1 = [B[0] + nB[0] * w, y1, B[1] + nB[1] * w];
+  mb.quadAuto(a0, a1, b1, b0, [0, 1, 0]);
+  mb.quadAuto([a0[0], y0 - 0.3, a0[2]], [a1[0], y0 - 0.3, a1[2]], [b1[0], y1 - 0.3, b1[2]], [b0[0], y1 - 0.3, b0[2]], [0, -1, 0]);
+  mb.quadAuto(a1, [a1[0], y0 - 0.3, a1[2]], [b1[0], y1 - 0.3, b1[2]], b1, [nA[0], 0, nA[1]]);
+  // glass balustrade on the outer side
+  const rm = kit.ctx.mb.rail;
+  rm.color(1, 1, 1, 1);
+  rm.quad(a1, b1, [b1[0], y1 + 1.1, b1[2]], [a1[0], y0 + 1.1, a1[2]], [nA[0], 0, nA[1]], [0, 0.252], [5, 0.252], [5, 0.498], [0, 0.498]);
+  kit.ctx.colliders.circles.push({ x: (a0[0] + a1[0]) / 2, z: (a0[2] + a1[2]) / 2, r: 0.9 });
+}
+
+// ===========================================================================
+// b04 OFFICE HUB (twin towers with a sky bridge)
+// ===========================================================================
+function b04(kit, s) {
+  const { curb, C } = kit;
+  const a = 10.5, tint = GLASS_TINTS[3];
+  let rect = null;
+  [-1, 1].forEach((side, i) => {
+    const c = local(s, side * 15.5, 0);
+    const base = { x: c[0], z: c[1], rot: s.rot, plan: 'round', a, b: a, tint, bay: 1.5 };
+    // dark recessed ground floor with EV bays
+    const ground = kit.body({ ...base, a: a - 1, b: a - 1, y0: curb, y1: curb + 4.6, mat: 'panel', tint: C.graphite, kind: 0 });
+    kit.evBays(ground, -0.11, 0.11, 3);
+    kit.evBays(ground, 0.39, 0.61, 2);
+    // curved glass podium, framed like one huge rounded window
+    const pod = kit.body({ ...base, a: a + 0.7, b: a + 0.7, y0: curb + 4.6, y1: curb + 15.6, levels: [[0, 0.96, 0], [0.5, 1.03, 0], [1, 0.96, 0]], steps: 4, bay: 2.2 });
+    kit.slabs(pod, { y0: curb + 4.6, y1: curb + 15.6, step: 11, thick: 0.9, grow: 1.02, color: C.light });
+    kit.faceRibbon(pod, 0, 'portal', { color: C.light, wide: 0.95, depth: 0.5 });
+    kit.faceRibbon(pod, 2, 'portal', { color: C.light, wide: 0.95, depth: 0.5 });
+    // upper part: one half stepped terraces, the other half a perforated volume with fins
+    const up = kit.body({ ...base, y0: curb + 15.6, y1: curb + 33 });
+    for (const y of [curb + 19.6, curb + 23.6, curb + 27.6]) kit.terrace(up, y, 0.54 + (y - curb - 19.6) * 0.012, 0.96, { depth: 2.5, color: C.light, vines: 0.6 });
+    kit.patch(up, 0.05, 0.45, curb + 17, curb + 31.5, { kind: 1, out: 0.3, color: C.light, cols: 8 });
+    kit.ribbon(up, [[0.96, curb + 16], [0.0, curb + 21], [0.05, curb + 27], [0.16, curb + 32.6]], { w: 2.0, out: 0.45, color: C.light });
+    kit.fins(up, { u0: 0.46, u1: 0.56, depth: 0.5 });
+    // wide thin roof wing; helipad on one tower, solar on the other
+    kit.roof(up, i === 0 ? { plate: 1.2, helipad: [0, 0], plateColor: C.light } : { plate: 1.2, solar: 0.5, trees: 2, plateColor: C.light });
+    kit.contactShadow(ground);
+    const r = ground.aabb();
+    rect = rect ? { minX: Math.min(rect.minX, r.minX), maxX: Math.max(rect.maxX, r.maxX), minZ: Math.min(rect.minZ, r.minZ), maxZ: Math.max(rect.maxZ, r.maxZ) } : r;
+    kit.collide(r, curb + 33);
+  });
+  // the long sky bridge between the two towers
+  const p = local(s, -8, 0), q = local(s, 8, 0);
+  kit.bridge(p[0], p[1], q[0], q[1], curb + 20);
+  evPosts(kit, s, -4, 4, a + 2.5, 3);
+  return { rect, top: curb + 35, solid: true };
+}
+
+// ===========================================================================
+// b05 VILLA CLUSTER
+// ===========================================================================
+function b05(kit, s) {
+  const { curb, C, ctx } = kit;
+  const spots = [[-12, 10.5, 0], [12, 10.5, 0.2], [-12, -10.5, Math.PI], [12, -10.5, Math.PI - 0.15]];
+  let rect = null;
+  const centers = [];
+  spots.forEach(([dx, dz, turn], i) => {
+    const c = local(s, dx, dz);
+    const rot = s.rot + turn;
+    centers.push(c);
+    const wood = i % 2 === 0;
+    // rounded concrete plinth with the garage
+    const plinth = kit.body({ x: c[0], z: c[1], rot, plan: 'round', a: 9.4, b: 8.6, y0: curb, y1: curb + 3.4, mat: 'panel', tint: C.concrete, kind: 0, rough: 0.85 });
+    kit.evBays(plinth, -0.06, 0.06, 1);
+    kit.doorOn(plinth, 0.12, 3.2, 2.6, 3);
+    kit.doorOn(plinth, -0.13, 1.5, 2.5, 0);
+    // a thin warm line of light along the top edge of the plinth
+    kit.ribbon(plinth, [[0, curb + 3.2], [0.25, curb + 3.2], [0.5, curb + 3.2], [0.75, curb + 3.2], [1, curb + 3.2]], { w: 0.1, out: 0.05, color: [1.0, 0.72, 0.4], glow: 0.75, fine: 2.5 });
+    // four floors of rounded trays that step back, each with a garden terrace in front
+    let top = curb + 3.4;
+    for (let f = 0; f < 4; f++) {
+      const sf = kit.body({
+        x: c[0], z: c[1], rot, plan: 'round', a: 8.6 - f * 1.05, b: 7.6 - f * 0.9, y0: top, y1: top + FLOOR,
+        levels: [[0, 1, 0, 0, -f * 0.75], [1, 1, 0, 0, -f * 0.75]], steps: 1,
+        ...(f % 2 === (wood ? 1 : 0) ? { mat: 'panel', tint: wood ? C.wood : C.graphite, kind: 2, rough: 0.6 } : { tint: GLASS_TINTS[4], bay: 1.6 }),
+      });
+      // graphite tray under every floor, plants on the part that the next floor leaves free
+      kit.slabs(sf, { y0: top + 0.02, y1: top + 0.02, thick: 0.45, grow: 1.09, color: C.graphite });
+      kit.terrace(sf, top, -0.2, 0.2, { depth: 1.1, thick: 0.3, color: C.graphite, vines: 0.7 });
+      top += FLOOR;
+      if (f === 3) kit.roof(sf, { trees: 2, hedge: true, solar: wood ? 0.45 : 0, rimColor: C.graphite, treeSize: 1.1 });
+    }
+    // one villa has a small helipad on its first terrace
+    if (i === 0) { const p = local({ x: c[0], z: c[1], rot }, 0, 6.3); kit.parts.helipad.add(p[0], curb + 3.4, p[1], 0, 1, 0.42, 0.25, 0.42); }
+    const r = plinth.aabb();
+    kit.collide(r, top);
+    kit.contactShadow(plinth);
+    rect = rect ? { minX: Math.min(rect.minX, r.minX), maxX: Math.max(rect.maxX, r.maxX), minZ: Math.min(rect.minZ, r.minZ), maxZ: Math.max(rect.maxZ, r.maxZ) } : r;
+  });
+  // thin bridges from villa to villa
+  kit.bridge(centers[0][0], centers[0][1], centers[1][0], centers[1][1], curb + 11.4);
+  kit.bridge(centers[2][0], centers[2][1], centers[3][0], centers[3][1], curb + 11.4);
+  // a small garden court in the middle
+  for (const [dx, dz] of [[0, 0], [-3, 2], [3, -2]]) { const p = local(s, dx, dz); ctx.roofTrees.push({ x: p[0], y: curb, z: p[1], s: 1.0, trunk: true }); ctx.colliders.circles.push({ x: p[0], z: p[1], r: 0.25 }); }
+  return { rect, top: curb + 21, solid: true };
+}
+
+// ===========================================================================
+// b06 BEACH HOTEL
+// ===========================================================================
+function b06(kit, s) {
+  const { curb, C, ctx } = kit;
+  const a = 15, b = 12, tint = GLASS_TINTS[3];
+  const base = { x: s.x, z: s.z, rot: s.rot, plan: 'circle', a, b, tint, bay: 1.6 };
+  // glass lobby under a wide curved canopy on slim legs
+  const lobby = kit.body({ ...base, a: a - 2, b: b - 2, y0: curb, y1: curb + 5, kind: 1, bay: 3 });
+  kit.slabs(lobby, { y0: curb + 5.4, y1: curb + 5.4, thick: 0.5, grow: 1.5, color: C.white });
+  const legs = [];
+  for (let i = 0; i < 8; i++) { const p = lobby.at((i + 0.5) / 8, 0); legs.push([p.x + p.nx * 4.6, p.z + p.nz * 4.6]); }
+  kit.columns(legs, curb, curb + 5, 0.3, C.white);
+  // the tower: every floor has a thick white wave balcony
+  const sf = kit.body({ ...base, y0: curb + 5, y1: curb + 49.4, levels: [[0, 0.9, 0], [0.12, 1, 0], [1, 1, 0]], steps: 6 });
+  kit.slabs(sf, { y0: curb + 9.4, y1: curb + 49.4, step: FLOOR, thick: 1.15, grow: 1.0, wave: true, color: C.white });
+  kit.fins(sf, { every: 2, depth: 0.25, y0: curb + 9.4, color: C.graphite });
+  kit.planted(sf, curb + 9.5, { grow: 1.07, share: 0.6, vines: 0.5 });
+  // back: green walls and two ribbons
+  kit.patch(sf, 0.4, 0.47, curb + 10, curb + 40, { mat: 'green', out: 2.0, cols: 2 });
+  kit.patch(sf, 0.53, 0.58, curb + 14, curb + 30, { mat: 'green', out: 2.0, cols: 2 });
+  kit.ribbon(sf, [[0.4, curb + 33], [0.48, curb + 35], [0.56, curb + 40], [0.62, curb + 42]], { w: 1.8, out: 2.1, color: C.white });
+  kit.ribbon(sf, [[0.6, curb + 16], [0.52, curb + 18], [0.44, curb + 22]], { w: 1.8, out: 2.1, color: C.white });
+  // roof: pool at the front edge, garden, penthouse with the helipad on top
+  kit.roof(sf, { trees: 6, hedge: true, treeSize: 1.1, color: C.light });
+  const pool = kit.body({ ...base, a: a * 0.62, b: b * 0.36, y0: curb + 49.4, y1: curb + 50.2, mat: 'panel', tint: C.white, kind: 0, levels: [[0, 1, 0, 0, b * 0.52], [1, 1, 0, 0, b * 0.52]], steps: 1 });
+  kit.cap(pool, curb + 50.05, { kind: 5, color: [1, 1, 1], grow: 0.93 });
+  kit.cap(pool, curb + 50.2, { color: C.white, grow: 0.0 });
+  const pent = kit.body({ ...base, plan: 'round', a: 6.2, b: 4.6, y0: curb + 49.4, y1: curb + 55.4, levels: [[0, 1, 0, 0, -b * 0.42], [1, 1, 0, 0, -b * 0.42]], steps: 1, bay: 1.8 });
+  kit.roof(pent, { helipad: [0, 0], plate: 1.12 });
+  kit.bridgeStub(sf, 0.75, curb + 29.4, 10);
+  kit.signOn(lobby, 0, curb + 3.3, 5, 1.1, 0.45, true);
+  // landscaped foot: trees, EV parking at the street
+  entrance(kit, s, 34, b + 6, 4);
+  evPosts(kit, s, -6, 6, b + 9, 4);
+  kit.contactShadow(lobby);
+  ctx.shopLights.push({ x: local(s, 0, b + 2)[0], z: local(s, 0, b + 2)[1], r: 10, power: 0.45 });
+  return { rect: lobby.aabb(), top: curb + 56 };
+}
+
+// ===========================================================================
+// b07 DRONE AND EV HUB
+// ===========================================================================
+function b07(kit, s) {
+  const { curb, C, ctx } = kit;
+  const a = 14, b = 11, tint = GLASS_TINTS[2];
+  const c = local(s, -3, 1);
+  const base = { x: c[0], z: c[1], rot: s.rot, plan: 'soft', a, b, tint, bay: 1.4 };
+  // concrete ground floor: glass door in front, garage doors at the back, chargers on one side
+  const ground = kit.body({ ...base, y0: curb, y1: curb + 5.5, mat: 'panel', tint: C.concrete, kind: 0, rough: 0.85 });
+  kit.doorOn(ground, 0, 5.5, 3.6, 0);
+  kit.doorOn(ground, 0.44, 4.4, 4.0, 3);
+  kit.doorOn(ground, 0.56, 4.4, 4.0, 3);
+  kit.evBays(ground, 0.66, 0.84, 4);
+  // tall glass body with white fins
+  const sf = kit.body({ ...base, y0: curb + 5.5, y1: curb + 27.5 });
+  kit.fins(sf, { depth: 0.5, width: 0.09, color: C.white, u0: 0.12, u1: 0.88 });
+  kit.slabs(sf, { y0: curb + 5.5, y1: curb + 5.5, thick: 0.6, grow: 1.03, color: C.light });
+  // a ribbon cuts diagonally over the front; stepped green terraces above it
+  const R = (t) => 0.86 + 0.3 * t;
+  kit.ribbon(sf, line(R, curb + 9, curb + 24, 6), { w: 1.9, out: 0.5, color: C.white });
+  for (const y of [curb + 15.5, curb + 19.5, curb + 23.5]) kit.terrace(sf, y, R((y - curb - 9) / 15) - 1 + 0.03, 0.2, { depth: 2.6, color: C.concrete, vines: 0.5 });
+  kit.patch(sf, 0.42, 0.58, curb + 8, curb + 20, { mat: 'green', out: 0.3, cols: 4 });
+  // the wavy metal roof with a white edge, trees on it
+  const top = curb + 27.5, rf = sf.frameAt(top), mb = ctx.mb.panel;
+  const wave = (x, z) => top + 3.4 + 2.4 * Math.sin(1.5 * x + 0.5) * Math.cos(1.1 * z) + 1.2 * x;
+  const rows = [0, 0.5, 1.09].map((r) => sf.ring.map((p) => { const q = sf.place(rf, p.x * r, p.z * r, p.nx, p.nz); return [q.x, wave(p.x * r, p.z * r), q.z]; }));
+  mb.color(C.graphite[0], C.graphite[1], C.graphite[2], 1);
+  mb.data(3, 0.4, 0.6, 0);
+  for (let r = 0; r < 2; r++) for (let i = 0; i < sf.ring.length - 1; i++) mb.quadAuto(rows[r][i], rows[r + 1][i], rows[r + 1][i + 1], rows[r][i + 1], [0, 1, 0]);
+  mb.color(C.white[0], C.white[1], C.white[2], 1);
+  mb.data(0, 0.5, 0.1, 0);
+  for (let i = 0; i < sf.ring.length - 1; i++) {
+    const p = rows[2][i], q = rows[2][i + 1], n = sf.ring[i];
+    mb.quadAuto(p, q, [q[0], q[1] - 0.55, q[2]], [p[0], p[1] - 0.55, p[2]], [n.nx, 0, n.nz]);
+    // wall between the glass and the roof (so nothing is open under the wave)
+    const g0 = sf.place(rf, n.x, n.z, n.nx, n.nz), n2 = sf.ring[i + 1], g1 = sf.place(rf, n2.x, n2.z, n2.nx, n2.nz);
+    mb.quadAuto([g0.x, top, g0.z], [g1.x, top, g1.z], [g1.x, wave(n2.x, n2.z) - 0.1, g1.z], [g0.x, wave(n.x, n.z) - 0.1, g0.z], [n.nx, 0, n.nz]);
+  }
+  for (const [x, z] of [[0.5, 0.2], [0.3, -0.4], [-0.3, 0.3]]) { const q = sf.place(rf, x, z, 0, 1); ctx.roofTrees.push({ x: q.x, y: wave(x, z) - 0.2, z: q.z, s: 0.85, trunk: true }); }
+  // the slim drone tower with a solar strip and a landing deck
+  const tc = local(s, 15.2, -8);
+  const tower = kit.body({ x: tc[0], z: tc[1], rot: s.rot, plan: 'soft', a: 2.5, b: 2.5, y0: curb, y1: curb + 53, mat: 'panel', tint: C.grey, kind: 0, rough: 0.7 });
+  kit.patch(tower, -0.09, 0.09, curb + 10, curb + 50, { kind: 4, out: 0.12, color: [1, 1, 1], cols: 1, rowH: 20 });
+  kit.patch(tower, 0.16, 0.34, curb + 8, curb + 46, { kind: 1, out: 0.1, color: C.light, cols: 1, rowH: 20 });
+  kit.slabs(tower, { y0: curb + 53, y1: curb + 53, thick: 0.5, grow: 1.9, color: C.light });
+  kit.cap(tower, curb + 53, { grow: 1.9 });
+  kit.parts.dronePad.add(tc[0], curb + 53, tc[1], Math.sin(s.rot), Math.cos(s.rot), 1.35, 1, 1.35);
+  // zig-zag service stairs on the side of the tower
+  for (let i = 0; i < 7; i++) {
+    const p = tower.at(0.75, 0), y = curb + 6 + i * 6;
+    kit.parts.block.add(p.x + p.nx * 0.1, y, p.z + p.nz * 0.1, p.nx, p.nz, 3.4, 0.15, 1.3, null, C.grey);
+  }
+  kit.collide(tower.aabb(), curb + 53);
+  evPosts(kit, s, -17, -9, 4, 4);
+  kit.contactShadow(ground);
+  return { rect: ground.aabb(), top: curb + 55 };
+}
+
+// ===========================================================================
+// b08 RETROFIT BRICK TOWER
+// ===========================================================================
+function b08(kit, s) {
+  const { curb, C, ctx } = kit;
+  // the old brick tower (lined up with the map, like all brick houses)
+  const turn = Math.round(s.rot / (Math.PI / 2));
+  const front = ['N', 'W', 'S', 'E'][((turn % 4) + 4) % 4];
+  const hw = 11, hd = 10;
+  const wide = front === 'N' || front === 'S';
+  const r = { minX: s.x - (wide ? hw : hd), maxX: s.x + (wide ? hw : hd), minZ: s.z - (wide ? hd : hw), maxZ: s.z + (wide ? hd : hw) };
+  const brick = kit.brickBox(r, 9, { tint: [0.78, 0.72, 0.7], age: 0.95, cut: { side: front, s0: 0, s1: 10, y0: curb + 4.6 + 4 * 3.5 } });
+  const top = brick.top;            // 36.3 m
+  // new glass part set into the front left corner; it rises above the brick
+  const gc = local(s, -5.6, 4.2);
+  const glass = kit.body({ x: gc[0], z: gc[1], rot: s.rot, plan: 'round', a: 6.2, b: 6.2, y0: curb + 18.6, y1: curb + 51, tint: GLASS_TINTS[4], bay: 1.5 });
+  kit.cap(glass, curb + 18.6, { down: true, color: C.bronze });
+  kit.slabs(glass, { y0: curb + 22.6, y1: curb + 50.6, thick: 0.35, grow: 1.1, color: C.light, rail: true });
+  kit.planted(glass, curb + 30.7, { grow: 1.12, share: 0.5, vines: 0.6 });
+  kit.planted(glass, curb + 42.7, { grow: 1.12, share: 0.5, vines: 0.6 });
+  // bronze frame around the glass part, with an S step where it cuts into the brick
+  kit.faceRibbon(glass, 0, 'portal', { color: C.bronze, wide: 0.92, y0: curb + 19, y1: curb + 50.6 });
+  kit.ribbon(glass, [[0.22, curb + 19], [0.2, curb + 26], [0.12, curb + 30], [0.1, curb + 37]], { w: 1.0, out: 0.35, color: C.bronze, metal: 0.6 });
+  kit.roof(glass, { helipad: [0, 0], plate: 1.1, plateColor: C.light });
+  // grey metal box on top of the old roof, wood slats beside it
+  const bc = local(s, 2.6, -1.5);
+  const box = kit.body({ x: bc[0], z: bc[1], rot: s.rot, plan: 'soft', a: 7.6, b: 7.8, y0: top, y1: curb + 49.5, mat: 'panel', tint: C.grey, kind: 3, rough: 0.45, metal: 0.5 });
+  kit.roof(box, { helipad: [0.2, -0.2], solar: 0.2, trees: 3, color: C.roof });
+  const sc = local(s, 6.4, 6.6);
+  const slats = kit.body({ x: sc[0], z: sc[1], rot: s.rot, plan: 'soft', a: 3.8, b: 2.6, y0: top, y1: curb + 45.5, mat: 'panel', tint: C.wood, kind: 2 });
+  kit.roof(slats, { trees: 2, hedge: true, rimColor: C.bronze });
+  // green walls and hanging plants on the old brick
+  kit.patch(box, 0.2, 0.3, top - 9, top + 6, { mat: 'green', out: 3.7, cols: 2 });
+  kit.patch(box, 0.7, 0.78, top - 6, top + 4, { mat: 'green', out: 3.5, cols: 2 });
+  kit.planted(box, top + 0.9, { grow: 1.32, share: 0.45, vines: 0.8 });
+  // sky bridge near the top, EV chargers at the street
+  kit.bridgeStub(box, 0.25, curb + 43.5, 12);
+  evPosts(kit, s, 2, 9, hd + 1.4, 3);
+  ctx.shopLights.push({ x: local(s, 0, hd + 1.5)[0], z: local(s, 0, hd + 1.5)[1], r: 8, power: 0.3 });
+  return { rect: r, top: curb + 53 };
+}
+
+// ===========================================================================
+// b09 NEON MILE ARCADE (designed from the brief)
+// ===========================================================================
+function b09(kit, s) {
+  const { curb, C, ctx } = kit;
+  const a = 19, b = 7.2;
+  const base = { x: s.x, z: s.z, rot: s.rot, plan: 'round', a, b, tint: GLASS_TINTS[5] };
+  // curved glass front: shops on the ground floor, two floors above
+  const shops = kit.body({ ...base, y0: curb, y1: curb + 5, kind: 1, bay: 3.2, floorH: 5 });
+  const up = kit.body({ ...base, y0: curb + 5, y1: curb + 12.2, bay: 1.6, floorH: 3.6 });
+  kit.slabs(up, { y0: curb + 5, y1: curb + 12.2, step: 3.6, thick: 0.4, grow: 1.04, color: C.white });
+  kit.fins(up, { every: 2, depth: 0.3, u0: 0.0, u1: 1 });
+  // soft lit shop signs along the front
+  for (const u of [-0.076, -0.038, 0, 0.038, 0.076]) kit.signOn(shops, u, curb + 3.7, 3.1, 0.8, 0.45, u === 0);
+  for (const u of [-0.057, 0.019, 0.057]) kit.doorOn(shops, u, 1.9, 2.8, 0);
+  // green wall at one end
+  kit.patch(up, 0.19, 0.31, curb + 0.6, curb + 12, { mat: 'green', out: 0.35, cols: 4 });
+  // roof garden under a thin floating canopy on slim columns
+  kit.roof(up, { trees: 3, hedge: true, treeSize: 0.9 });
+  const posts = [];
+  for (let i = 0; i < 10; i++) { const p = up.at((i + 0.5) / 10, 0); posts.push([p.x + p.nx * 1.6, p.z + p.nz * 1.6]); }
+  kit.columns(posts, curb, curb + 15.2, 0.17, C.white);
+  kit.parts.slab.round.add(s.x, curb + 15.2, s.z, Math.sin(s.rot), Math.cos(s.rot), a * 1.16, 0.35, b * 1.42, null, C.white);
+  kit.cap(up, curb + 15.5, { grow: 1.1, color: C.light });
+  kit.cap(up, curb + 15.22, { grow: 1.1, down: true, color: C.white });
+  // a soft hologram above the entrance, EV chargers at the street
+  const hp = local(s, 0, b + 0.5);
+  kit.hologram(hp[0], hp[1], curb + 16.4, Math.sin(s.rot), Math.cos(s.rot), 0.7);
+  evPosts(kit, s, -15, -5, b + 3.2, 4);
+  evPosts(kit, s, 5, 15, b + 3.2, 4);
+  ctx.shopLights.push({ x: local(s, -8, b + 2)[0], z: local(s, -8, b + 2)[1], r: 9, power: 0.5 }, { x: local(s, 8, b + 2)[0], z: local(s, 8, b + 2)[1], r: 9, power: 0.5 });
+  kit.contactShadow(shops);
+  return { rect: shops.aabb(), top: curb + 16 };
+}
+
+// ===========================================================================
+// b10 S-CURVE TOWER
+// ===========================================================================
+function b10(kit, s) {
+  const { curb, C } = kit, far = !!s.far;
+  const a = 17, b = 14, H = 180, tint = GLASS_TINTS[0];
+  const base = { x: s.x, z: s.z, rot: s.rot, plan: 'round', a, b, tint, bay: 1.6 };
+  // glass podium with a white canopy
+  const pod = kit.body({ ...base, a: a + 1.5, b: b + 1.5, y0: curb, y1: curb + 6, kind: 1, bay: 3, floorH: 6 });
+  // the tower, and a slightly smaller glass crown box on top
+  const yb = curb + 6, yc = curb + 158, yt = curb + H;
+  const main = kit.body({ ...base, y0: yb, y1: yc });
+  const crown = kit.body({ ...base, a: a * 0.9, b: b * 0.9, y0: yc, y1: yt, tint: GLASS_TINTS[5], levels: [[0, 1, 0], [1, 0.93, 0]], steps: 2 });
+  kit.cap(main, yc, { color: C.roof });
+  // ONE huge S ribbon from the foot to the top; it ends in a fin above the roof.
+  // A thinner second line runs beside it; the field between them is a light veil.
+  const Sx = (t) => 0.84 + 0.42 * (t * t * (3 - 2 * t)) + 0.05 * Math.sin(Math.PI * 2 * t);
+  const S2 = (t) => Sx(t) - 0.16 + 0.07 * t;
+  const T = (y) => Math.min(1, Math.max(0, (y - yb - 2) / (yt + 7 - yb - 2)));
+  kit.ribbon(main, line(Sx, yb + 2, yt + 9, 14), { w: 3.6, out: 0.6, color: C.white, over: 12 });
+  kit.ribbon(main, line(S2, yb + 2, yt + 3, 14), { w: 1.1, out: 0.5, color: C.white, over: 6 });
+  kit.patch(main, (y) => S2(T(y)), (y) => Sx(T(y)), yb + 3, yt + 4, { mat: 'glass', out: 0.25, cols: 4, rowH: far ? 14 : 7 });
+  // sky gardens cut into the tower at about 30% and 60% of the height
+  for (const [ya, n] of [[curb + 52, 3], [curb + 108, 2]]) {
+    for (let i = 0; i < n; i++) kit.terrace(main, ya + i * FLOOR, 0.3, 0.72, { depth: 3 - i * 0.5, vines: 0.6, far });
+    if (!far) for (const u of [0.36, 0.5, 0.64]) { const p = main.at(u, 0); kit.ctx.roofTrees.push({ x: p.x + p.nx * 1.5, y: ya + (n - 1) * FLOOR + 0.4, z: p.z + p.nz * 1.5, s: 0.8, trunk: false }); }
+  }
+  // sky bridges, roof garden, helipad on a round core
+  kit.bridgeStub(main, 0.75, curb + 63, 10);
+  kit.bridgeStub(main, 0.25, curb + 85, 10);
+  kit.roof(crown, { trees: far ? 3 : 8, hedge: true, treeSize: 1.3, far });
+  const core = kit.body({ ...base, plan: 'circle', a: 4.2, b: 4.2, y0: yt, y1: yt + 4.5, mat: 'panel', tint: C.light, kind: 0, levels: [[0, 1, 0, a * 0.3, 0], [1, 1, 0, a * 0.3, 0]], steps: 1 });
+  kit.roof(core, { helipad: [0, 0] });
+  if (!far) {
+    kit.slabs(main, { y0: yb + FLOOR, y1: yc, thick: 0.35, grow: 1.012, color: C.light });
+    kit.slabs(pod, { y0: curb + 6.3, y1: curb + 6.3, thick: 0.5, grow: 1.12, color: C.white });
+    kit.evBays(pod, 0.44, 0.56, 3);
+    kit.signOn(pod, 0, curb + 4.2, 5, 1.1, 0.4);
+    entrance(kit, s, 34, b + 6, 4);
+    kit.contactShadow(pod);
+  }
+  return { rect: pod.aabb(), top: yt + 6 };
+}
+
+// ===========================================================================
+// b11 HOURGLASS TOWER
+// ===========================================================================
+function b11(kit, s) {
+  const { curb, C } = kit, far = !!s.far;
+  const a = 13.5, H = 140, tint = GLASS_TINTS[5];
+  const base = { x: s.x, z: s.z, rot: s.rot, plan: 'soft', a, b: a, tint, bay: 1.5 };
+  // concrete ground floor with upright fins and EV chargers
+  const ground = kit.body({ ...base, a: a * 0.97, b: a * 0.97, y0: curb, y1: curb + 8, mat: 'panel', tint: C.concrete, kind: 0, rough: 0.85 });
+  // the glass tower: narrower toward the middle (waist at 55% of the height)
+  const yb = curb + 8, yt = curb + 124;
+  const main = kit.body({ ...base, y0: yb, y1: yt, steps: far ? 8 : 14, levels: [[0, 1.0, 0], [0.3, 0.9, 0], [0.55, 0.76, 0], [0.8, 0.88, 0], [1, 0.99, 0]] });
+  // the last four floors step back, with terraces and trees
+  const t1 = kit.body({ ...base, a: a * 0.88, b: a * 0.88, y0: yt, y1: yt + 8 });
+  const t2 = kit.body({ ...base, a: a * 0.74, b: a * 0.74, y0: yt + 8, y1: curb + H });
+  kit.roof(main, { hedge: true, trees: far ? 0 : 4, far });
+  kit.roof(t1, { hedge: true, trees: far ? 0 : 3, far });
+  kit.roof(t2, { trees: far ? 3 : 6, hedge: true, helipad: [1.15, 0.1], treeSize: 1.2, far });
+  // the curved solar strip with its white frame
+  const Su = (t) => 0.02 + 0.055 * Math.sin(Math.PI * 1.5 * t);
+  const T = (y) => (y - yb) / (yt - 26 - yb), hw = 1.6 / main.per;
+  kit.patch(main, (y) => Su(T(y)) - hw, (y) => Su(T(y)) + hw, yb + 1, yt - 26, { kind: 4, out: 0.3, color: [1, 1, 1], cols: 2, rowH: 6 });
+  kit.ribbon(main, line((t) => Su(t) - hw * 1.25, yb + 1, yt - 26, 10), { w: 0.5, out: 0.42, color: C.white });
+  kit.ribbon(main, line((t) => Su(t) + hw * 1.25, yb + 1, yt - 26, 10), { w: 0.5, out: 0.42, color: C.white });
+  // white ribs on the back that follow the hourglass shape
+  for (const u of [0.42, 0.47, 0.53, 0.58]) kit.ribbon(main, [[u, yb + 1], [u, yb + 40], [u, yb + 80], [u, yt - 1]], { w: 0.45, out: 0.4, color: C.white });
+  // garden notches at about 45% and 62% of the height
+  kit.terrace(main, curb + 62, 0.08, 0.42, { depth: 2.4, vines: 0.6, far });
+  kit.terrace(main, curb + 86, 0.6, 0.94, { depth: 2.4, vines: 0.6, far });
+  if (!far) {
+    // white floor plates on every floor, fins on the concrete foot
+    kit.slabs(main, { y0: yb, y1: yt, thick: 0.34, grow: 1.012, color: C.white });
+    kit.slabs(t1, { y0: yt + 4, y1: yt + 8, thick: 0.34, grow: 1.015, color: C.white });
+    kit.fins(ground, { every: 2, depth: 0.5, width: 0.5, color: C.concrete });
+    kit.evBays(ground, 0.42, 0.58, 3);
+    kit.doorOn(ground, 0, 4.5, 3.6, 0);
+    kit.signOn(ground, 0, curb + 4.6, 4.5, 1.0, 0.4);
+    evPosts(kit, s, -9, 9, a + 2.2, 4);
+    kit.contactShadow(ground);
+  }
+  return { rect: ground.aabb(), top: curb + H };
+}
+
+const BUILDERS = { b01, b02, b03, b04, b05, b06, b07, b08, b09, b10, b11 };
+
+// Build one hero. Returns { rect, top } and adds its collision box.
+export function buildHero(kit, id, site) {
+  const out = BUILDERS[id](kit, site);
+  if (!site.far) {
+    if (!out.solid) kit.collide(out.rect, out.top);
+    kit.finish({ ...out.rect, top: out.top, floors: Math.round(out.top / FLOOR), mat: 'hero', playable: true, type: id, hero: true });
+  }
+  return out;
+}

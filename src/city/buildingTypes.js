@@ -1,627 +1,396 @@
 // ---------------------------------------------------------------------------
-// buildingTypes.js - the BUILDING TYPES of Port Meridian.
+// buildingTypes.js - the CITY FILL: all buildings that are not hero buildings.
 //
-// Every type is a small recipe that puts parts from buildingKit.js together:
+// They are made from the same kit as the heroes (buildingKit.js), in many
+// variations, so no two neighbours look the same:
 //
-//   walkup     old brick walk-up apartment house, stoop stairs, fire escape
-//   stucco     plaster apartment block with balconies (box, L, U, setback top)
-//   corner     corner building with a cut corner and the entrance on it
-//   shoprow    low row of shops with a long awning and signs
-//   office     small office building, stripes of glass and concrete
-//   warehouse  warehouse / garage, sawtooth or curved metal roof, big doors
-//   house      small old house with a sloped roof and a front yard
-//   station    fuel + charging station with a canopy
-//   parking    small parking lot with painted lines
-//   emptylot   empty lot with a fence, weeds and rubble
-//   neonshop   Neon Mile shop house: glass fronts, awnings, lit signs
+//   tower     stack of rounded floor slabs: straight, tapered, twisted,
+//             hourglass or bulging; glass with fins; roof garden / pads
+//   trays     thick planted trays every two floors, green wall, ribbon frames
+//   steps     floors that step back into garden terraces (glass, wood, graphite)
+//   podium    wide glass podium with a slimmer tower on top and a roof wing
+//   wave      oval tower with wave balconies (Neon Mile)
+//   arcade    low curved shop building under a floating canopy (Neon Mile)
+//   retrofit  OLD brick building with new glass and green parts on top
+//   plaza     small green square with trees and EV chargers
 //
-// TO ADD YOUR OWN TYPE: copy one of the entries in TYPES, give it a new name,
-// change the recipe, and give it a weight in pickType() at the bottom.
+// TO ADD YOUR OWN TYPE: copy an entry of TYPES, change the recipe and give it
+// a weight in pickType() at the bottom.
 //
-// A recipe gets:
-//   kit  = the parts (see buildingKit.js)
-//   lot  = the piece of land: lot.rect, lot.front, lot.corner, lot.prev ...
-//   rng  = random numbers (the same every time, so the city never changes)
-// Lot coordinates used below: u runs along the street (0 .. w), v goes back
-// into the lot (0 .. d). Outlines are lists of [u, v] points.
+// A recipe gets the kit, the lot (lot.rect, lot.front, lot.district ...) and
+// "rng" (random numbers that are the same on every start).
 // ---------------------------------------------------------------------------
 
-import { FLOOR_H, GROUND_H, BRICK_TINTS, PLASTER_TINTS, NEON_TINTS, METAL_TINTS, varyTint } from './buildingKit.js';
+import { FLOOR, LOBBY, GLASS_TINTS, FRAME_COLORS, BRICK_TINTS } from './buildingKit.js';
 
-const CONCRETE_TINTS = [[0.74, 0.78, 0.86], [1.12, 1.12, 1.14], [0.95, 0.92, 0.84], [0.6, 0.63, 0.68], [0.86, 0.9, 0.94]];
+const ROT = { N: 0, W: Math.PI / 2, S: Math.PI, E: -Math.PI / 2 };
 
-// A number of floors that is different from the house next door.
-function floorsBetween(rng, lo, hi, lot) {
+// Where a building stands on its lot: middle, direction of the front, half sizes.
+//   margin = free strip between the lot edge and the building (planters, trees)
+function siteOf(lot, margin) {
+  const r = lot.rect, wide = lot.front === 'N' || lot.front === 'S';
+  const w = r.maxX - r.minX, d = r.maxZ - r.minZ;
+  return {
+    x: (r.minX + r.maxX) / 2, z: (r.minZ + r.maxZ) / 2, rot: ROT[lot.front],
+    a: (wide ? w : d) / 2 - margin, b: (wide ? d : w) / 2 - margin,
+  };
+}
+// A point given in building coordinates (right, toward the street).
+const local = (s, right, front) => [s.x + right * Math.cos(s.rot) + front * Math.sin(s.rot), s.z - right * Math.sin(s.rot) + front * Math.cos(s.rot)];
+
+// How many floors? Depends on the district. Never the same as the neighbour.
+function pickFloors(rng, lot, lo, hi) {
+  if (lot.district === 'crown') { lo = Math.round(lo * 2.3); hi = Math.round(hi * 2.6); } // the hero towers stay the tallest
+  else if (lot.district === 'neon') { lo = Math.max(3, lo - 2); hi = Math.min(11, hi); }
   let f = rng.int(lo, hi);
-  if (lot.prev && lot.prev.floors === f) f = f < hi ? f + 1 : Math.max(lo, f - 1);
+  if (lot.prev && lot.prev.floors === f) f = f < hi ? f + 1 : f - 1;
   return f;
 }
-// A wall color that is different from the house next door.
-function pickTint(rng, lot, palette) {
-  let idx = rng.int(0, palette.length - 1);
-  if (lot.prev && lot.prev.palette === palette && lot.prev.tintIdx === idx) idx = (idx + 1 + rng.int(0, palette.length - 2)) % palette.length;
-  return { tint: varyTint(palette[idx], rng), idx, palette };
+// Frame color and glass tint that differ from the neighbour.
+function pickLook(rng, lot) {
+  let ci = rng.int(0, FRAME_COLORS.length - 1), gi = rng.int(0, GLASS_TINTS.length - 1);
+  if (lot.prev && lot.prev.ci === ci) ci = (ci + 2) % FRAME_COLORS.length;
+  if (lot.prev && lot.prev.gi === gi) gi = (gi + 1) % GLASS_TINTS.length;
+  const v = 1 + rng.range(-0.08, 0.08);
+  return { ci, gi, frame: FRAME_COLORS[ci].map((c) => c * v), glass: GLASS_TINTS[gi].map((c) => c * (1 + rng.range(-0.1, 0.1))) };
 }
-// How old a building looks: 0 = new and clean, 1 = old and worn.
-function pickAge(rng, lo = 0, hi = 1) {
+// The shape of a body over its height (see "levels" in buildingKit.js).
+function pickProfile(rng, tall) {
   const r = rng.next();
-  const a = r < 0.2 ? rng.range(0, 0.25) : r < 0.65 ? rng.range(0.3, 0.6) : rng.range(0.65, 1);
-  return Math.min(hi, Math.max(lo, a));
+  if (r < 0.3) return { name: 'straight', levels: null };
+  if (r < 0.48) return { name: 'taper', levels: [[0, 1, 0], [0.5, rng.range(0.9, 0.97), 0], [1, rng.range(0.72, 0.86), 0]] };
+  if (r < 0.7) { const t = rng.range(0.35, tall ? 1.2 : 0.8) * (rng.chance(0.5) ? 1 : -1); return { name: 'twist', levels: [[0, 1, 0], [0.5, rng.range(0.9, 1), t * 0.5], [1, rng.range(0.9, 1), t]] }; }
+  if (r < 0.86) { const w = rng.range(0.74, 0.86); return { name: 'hourglass', levels: [[0, 1, 0], [0.5, w, 0], [1, rng.range(0.94, 1.02), 0]] }; }
+  return { name: 'bulge', levels: [[0, 0.86, 0], [0.45, 1, 0], [1, rng.range(0.78, 0.9), 0]] };
 }
-const summary = (floors, mat, lk) => ({ floors, mat, tintIdx: lk ? lk.idx : -1, palette: lk ? lk.palette : null });
-
-// Small front yard between the sidewalk and a house that stands back:
-// iron fence with a gap at the door, a few bushes.
-function frontYard(kit, B, depth, rng) {
-  const { w } = B.loc;
-  const door = B.door ?? w / 2;
-  const P = (u, v) => B.loc.pt(u, v);
-  const run = (ua, va, ub, vb) => {
-    if (Math.hypot(ub - ua, vb - va) < 0.6) return;
-    const a = P(ua, va), b = P(ub, vb);
-    kit.fence(a[0], a[1], b[0], b[1], kit.curb, 1.05, 'picket');
-  };
-  run(0.1, 0.12, door - 1.25, 0.12);
-  run(door + 1.25, 0.12, w - 0.1, 0.12);
-  if (B.side.left !== 'front') run(0.08, 0.12, 0.08, depth);
-  if (B.side.right !== 'front') run(w - 0.08, 0.12, w - 0.08, depth);
-  for (let u = 0.9; u < w - 0.7; u += rng.range(1.3, 2.3)) {
-    if (Math.abs(u - door) < 1.5 || !rng.chance(0.6)) continue;
-    const p = P(u, depth - 0.6), s = rng.range(0.8, 1.3);
-    kit.parts.shrub.add(p[0], kit.curb, p[1], 0, 1, s, s, s);
+// Ground floor: glass lobby with doors, soft lit shop signs, sometimes EV bays.
+function groundFloor(kit, lot, s, plan, look, rng, o = {}) {
+  const neon = lot.district === 'neon';
+  const lobby = kit.body({ x: s.x, z: s.z, rot: s.rot, plan, a: s.a - 0.5, b: s.b - 0.5, y0: kit.curb, y1: kit.curb + LOBBY, kind: 1, bay: 3, floorH: LOBBY, tint: look.glass, lo: true });
+  if (lot.playable) {
+    const shops = neon || rng.chance(0.6);
+    if (shops && plan !== 'circle') {
+      // signs sit on the flat part of the front, between the round corners
+      const span = (2 * s.a * (plan === 'soft' ? 0.72 : 0.42)) / lobby.per;
+      const n = Math.max(1, Math.min(4, Math.round((span * lobby.per) / 4.5)));
+      for (let i = 0; i < n; i++) {
+        if (rng.chance(0.8)) kit.signOn(lobby, ((i + 0.5) / n - 0.5) * span, kit.curb + 3.6, Math.min(3.8, (span * lobby.per) / n - 0.5), 0.85, rng.range(0.3, 0.5), neon && rng.chance(0.4));
+      }
+      kit.ctx.shopLights.push({ x: local(s, 0, s.b + 1.2)[0], z: local(s, 0, s.b + 1.2)[1], r: s.a * 0.8 + 3, power: neon ? 0.45 : 0.3 });
+    }
+    kit.doorOn(lobby, plan === 'circle' ? 0 : rng.range(-0.04, 0.04), 2.2, 2.9, 0);
+    if (!o.noEv && rng.chance(0.3)) kit.evBays(lobby, 0.44, 0.56, s.a > 9 ? 2 : 1);
+    kit.contactShadow(lobby);
   }
-  kit.lotDecal(B, 'dirt', w / 2, depth / 2, w - 0.8, Math.max(0.6, depth - 0.5), 0.55);
+  return lobby;
 }
-
-// Chain-link fence along the sides of an open lot that are not closed by a neighbour's wall.
-function fenceOpenSides(kit, B, kind = 'chain', h = 2.0) {
-  const { w, d } = B.loc;
-  const P = (u, v) => B.loc.pt(u, v);
-  const run = (ua, va, ub, vb) => { const a = P(ua, va), b = P(ub, vb); kit.fence(a[0], a[1], b[0], b[1], kit.curb, h, kind); };
-  if (B.side.left === 'back' || B.side.left === 'gap') run(0.1, 0.1, 0.1, d - 0.1);
-  if (B.side.right === 'back' || B.side.right === 'gap') run(w - 0.1, 0.1, w - 0.1, d - 0.1);
-  if (B.side.back === 'back' || B.side.back === 'gap') run(0.1, d - 0.1, w - 0.1, d - 0.1);
+// What stands on the roof.
+function roofOf(kit, lot, sf, rng, o = {}) {
+  const crown = lot.district === 'crown';
+  const big = Math.min(sf.frameAt(sf.y1).a, sf.frameAt(sf.y1).b) > 7.5;
+  const pad = big && rng.chance(crown ? 0.6 : 0.12);
+  kit.roof(sf, {
+    hedge: lot.playable && rng.chance(0.6), trees: lot.playable ? rng.int(0, big ? 4 : 2) : 0, far: !lot.playable,
+    helipad: pad, dronePad: !pad && lot.playable && rng.chance(0.3), solar: rng.chance(0.5) ? rng.range(0.2, 0.5) : 0,
+    plate: o.plate || (rng.chance(0.3) ? rng.range(1.06, 1.16) : 0), plateColor: o.color, ac: rng.int(0, 1),
+  });
 }
+const summary = (type, floors, look, sf, top) => ({ type, floors, ci: look ? look.ci : -1, gi: look ? look.gi : -1, rect: sf ? sf.aabb() : null, top });
 
 export const TYPES = {
   // =========================================================================
-  // a) OLD BRICK WALK-UP: 3 to 5 floors, stoop, fire escape, stone trim
+  // TOWER: a stack of rounded slabs (straight, tapered, twisted, hourglass, bulge)
   // =========================================================================
-  walkup: {
-    w: [6.5, 12], d: [11, 16],
+  tower: {
+    w: [18, 32], d: [18, 30],
     build(kit, lot, rng) {
-      const floors = floorsBetween(rng, 3, lot.low ? 4 : 5, lot);
-      const lk = pickTint(rng, lot, BRICK_TINTS);
-      const B = kit.begin(lot, { mat: 'brick', tint: lk.tint, age: pickAge(rng, 0.35), rng });
-      const { w, d } = B.loc;
-      const street = B.side.front === 'front';
-      // most walk-ups stand back a little: room for the stoop and a tiny yard
-      const yard = street && lot.edgeType === 'street' && d > 12.5 && rng.chance(0.75) ? 2.3 : 0;
-      const sloped = floors <= 3 && rng.chance(0.3);
-      const o = {
-        groundH: yard ? 0.9 + FLOOR_H : 0.4 + FLOOR_H, floors: floors - 1, style: 2, bayW: rng.range(2.25, 2.7), ground: 'res',
-        parapet: sloped ? 0 : rng.range(0.6, 1.1), cornice: sloped ? false : rng.chance(0.65) ? 'big' : true,
-        bands: rng.chance(0.45), quoins: rng.chance(0.5), sill: true, lintel: true,
-        fireEscape: street && (floors >= 4 ? rng.chance(0.7) : rng.chance(0.3)), ac: 0.1,
-      };
-      // some walk-ups have a bay window that sticks out over the street
-      const bay = street && w > 7.5 && rng.chance(0.3);
-      if (bay) o.fireEscape = false;
-      const r = kit.volume(B, [[0, yard], [w, yard], [w, d], [0, d]], o);
-      if (bay) {
-        const bw = 2.7, bu = rng.chance(0.5) ? 0.7 : w - bw - 0.7;
-        kit.bayWindow(B, bu, bu + bw, yard, o.groundH, floors - 1, o);
-      }
-      kit.collide(B, 0, yard, w, d, r.top + o.parapet);
-      if (sloped) kit.roofGable(B, [0, yard, w, d], r.top, { ridgeAlong: 'u' });
-      else {
-        kit.roofFlat(B, [r], r.top);
-        kit.roofStuff(B, r, r.top, { old: true, hut: true });
-      }
-      if (yard) frontYard(kit, B, yard, rng);
-      kit.finish(B, r, r.top + o.parapet);
-      return summary(floors, 'brick', lk);
-    },
-  },
-
-  // =========================================================================
-  // b) PLASTER APARTMENT BLOCK: 4 to 8 floors, balconies, several shapes
-  // =========================================================================
-  stucco: {
-    w: [10, 26], d: [12, 19],
-    build(kit, lot, rng) {
-      const neon = lot.district === 'neon';
-      const floors = floorsBetween(rng, lot.low ? 3 : 4, lot.low ? 4 : neon ? 6 : 8, lot);
-      const lk = pickTint(rng, lot, neon ? NEON_TINTS : PLASTER_TINTS);
-      const B = kit.begin(lot, { mat: 'plaster', tint: lk.tint, age: pickAge(rng), rng });
-      const { w, d } = B.loc;
-      const street = B.side.front === 'front';
-      const shops = street && rng.chance(neon ? 0.85 : 0.55);
-      // which window bays have balconies: none, all, every second one, or the two outer ones
-      const pat = rng.int(0, 3);
-      const cols = pat === 1 ? () => true : pat === 2 ? (i) => i % 2 === 0 : (i, n) => i === 0 || i === n - 1;
-      const parapet = rng.range(0.5, 1.0);
-      const o = {
-        groundH: shops ? GROUND_H : 0.4 + FLOOR_H, floors: floors - 1, style: 1, bayW: rng.range(3.2, 3.9),
-        ground: shops ? 'shops' : 'res', neon: neon && lot.edgeType === 'neon', parapet, bands: rng.chance(0.6), sill: true, surround: rng.chance(0.35),
-        balcony: pat ? { cols, kind: rng.chance(0.5) ? 'solid' : 'rail', from: rng.chance(0.3) ? 1 : 0 } : null, ac: 0.07,
-      };
-      const shape = w >= 22 && d >= 15 && street && rng.chance(0.55) ? 'U'
-        : w >= 16 && d >= 15.5 && rng.chance(0.5) ? 'L'
-          : floors >= 6 && d >= 13 && rng.chance(0.55) ? 'setback' : 'box';
-      let top, rects, r;
-      if (shape === 'U') {
-        // two wings and a courtyard that opens to the street
-        const a = rng.range(6, 7.5), c = Math.min(d - 6, rng.range(5, 7));
-        const inner = { ground: 'plainwall', balcony: null, fireEscape: false };
-        r = kit.volume(B, [[0, 0], [a, 0], [a, c], [w - a, c], [w - a, 0], [w, 0], [w, d], [0, d]],
-          { ...o, kinds: [null, 'front', null, 'front'], per: { 1: inner, 3: inner } });
-        rects = [B.loc.rect(0, 0, a, d), B.loc.rect(w - a, 0, w, d), B.loc.rect(a, c, w - a, d)];
-        kit.collide(B, 0, 0, a, d, r.top);
-        kit.collide(B, w - a, 0, w, d, r.top);
-        kit.collide(B, a, c, w - a, d, r.top);
-        // the courtyard: planters with bushes, a low railing with a gate gap
-        for (let u = a + 1.2; u < w - a - 1; u += 2.6) {
-          if (Math.abs(u - w / 2) < 1.6) continue;
-          const p = B.loc.pt(u, c - 1.1), s = rng.range(1.0, 1.5);
-          kit.parts.planter.add(p[0], kit.curb, p[1], B.loc.f.nx, B.loc.f.nz);
-          kit.parts.shrub.add(p[0], kit.curb + 0.5, p[1], 0, 1, s, s, s);
-          kit.collide(B, u - 0.7, c - 1.4, u + 0.7, c - 0.8, 1);
+      const s = siteOf(lot, rng.range(1.6, 3.2));
+      const crown = lot.district === 'crown';
+      const floors = pickFloors(rng, lot, 6, 12);
+      const look = pickLook(rng, lot);
+      const plan = lot.diag ? rng.pick(['circle', 'round']) : rng.pick(['soft', 'round', 'round', 'circle']);
+      if (plan === 'circle') { const m = Math.min(s.a, s.b * 1.3); s.a = m; s.b = Math.min(s.b, m); }
+      const prof = pickProfile(rng, floors > 14);
+      const lobby = groundFloor(kit, lot, s, plan, look, rng);
+      const y0 = kit.curb + LOBBY, y1 = y0 + floors * FLOOR;
+      const sf = kit.body({ x: s.x, z: s.z, rot: s.rot, plan, a: s.a, b: s.b, y0, y1, levels: prof.levels, tint: look.glass, bay: rng.range(1.4, 2.0), lo: true, steps: prof.levels ? Math.max(3, Math.round(floors / 2.2)) : 1 });
+      if (lot.playable) {
+        // floor slabs: thin lines on some towers, deep white balcony trays on others
+        const deep = rng.chance(0.45);
+        const wave = plan === 'circle' && rng.chance(0.4);
+        kit.slabs(sf, { y0, y1, thick: wave ? 1.1 : deep ? rng.range(0.4, 0.6) : 0.32, grow: wave ? 1 : deep ? rng.range(1.04, 1.09) : 1.012, color: look.frame, wave, rail: deep && !wave && plan !== 'soft' && rng.chance(0.5) });
+        if (!wave && rng.chance(0.6)) kit.fins(sf, { every: rng.int(1, 2), depth: rng.range(0.25, 0.45), color: look.frame, y0: y0 + 0.4 });
+        // ribbon frames on straight sides
+        if (!prof.levels && plan !== 'circle' && rng.chance(0.6)) {
+          const kind = rng.pick(['S', 'sweep', 'portal']);
+          kit.faceRibbon(sf, 0, kind, { color: look.frame });
+          if (rng.chance(0.5)) kit.faceRibbon(sf, rng.pick([1, 2, 3]), rng.pick(['S', 'sweep']), { color: look.frame });
         }
-        for (const [ua, ub] of [[a + 0.2, w / 2 - 1.1], [w / 2 + 1.1, w - a - 0.2]]) {
-          const p = B.loc.pt(ua, 0.15), q = B.loc.pt(ub, 0.15);
-          kit.fence(p[0], p[1], q[0], q[1], kit.curb, 1.0, 'bars');
+        // one to three planted floors (hanging gardens)
+        for (let k = rng.int(0, crown ? 4 : 2); k > 0; k--) kit.planted(sf, y0 + rng.int(1, floors - 1) * FLOOR, { grow: deep ? 1.06 : 1.02, share: 0.7, hang: deep ? 0.9 : 0.3 });
+      }
+      roofOf(kit, lot, sf, rng, { color: look.frame });
+      kit.collide(lobby.aabb(), y1);
+      return summary('tower', floors, look, sf, y1);
+    },
+  },
+
+  // =========================================================================
+  // TRAYS: thick planted trays every two floors, green wall, ribbons (like b03)
+  // =========================================================================
+  trays: {
+    w: [18, 30], d: [18, 28],
+    build(kit, lot, rng) {
+      const s = siteOf(lot, rng.range(2.4, 3.6));
+      const tiers = lot.district === 'crown' ? rng.int(6, 12) : rng.int(2, 5);
+      const look = pickLook(rng, lot);
+      const plan = rng.pick(['round', 'round', 'soft']);
+      const lobby = groundFloor(kit, lot, s, plan, look, rng);
+      const y0 = kit.curb + LOBBY, y1 = y0 + tiers * 2 * FLOOR;
+      const sf = kit.body({ x: s.x, z: s.z, rot: s.rot, plan, a: s.a, b: s.b, y0, y1, tint: look.glass, bay: 1.4, lo: true });
+      const col = rng.chance(0.6) ? kit.C.concrete : look.frame;
+      if (lot.playable) {
+        kit.slabs(sf, { y0, y1: y1 - 1, step: 2 * FLOOR, thick: 0.9, grow: rng.range(1.08, 1.13), color: col });
+        for (let t = 0; t < tiers; t++) {
+          kit.planted(sf, y0 + t * 2 * FLOOR, { grow: 1.07, vines: 0.55, hang: 1.2 });
+          if (plan !== 'circle' && rng.chance(0.7)) kit.faceRibbon(sf, t % 4, 'sweep', { y0: y0 + t * 2 * FLOOR + 0.6, y1: y0 + (t + 1) * 2 * FLOOR - 0.9, color: col });
         }
-        top = r.top;
-      } else if (shape === 'L') {
-        // a wing at the street and a second wing going back
-        const a = rng.range(w * 0.4, w * 0.55), c = rng.range(8, 10);
-        const right = rng.chance(0.5);
-        r = kit.volume(B, right ? [[0, 0], [w, 0], [w, d], [a, d], [a, c], [0, c]] : [[0, 0], [w, 0], [w, c], [w - a, c], [w - a, d], [0, d]], o);
-        rects = [B.loc.rect(0, 0, w, c), right ? B.loc.rect(a, c, w, d) : B.loc.rect(0, c, w - a, d)];
-        kit.collide(B, 0, 0, w, c, r.top);
-        if (right) kit.collide(B, a, c, w, d, r.top); else kit.collide(B, 0, c, w - a, d, r.top);
-        top = r.top;
-      } else if (shape === 'setback') {
-        // the top floors stand back behind a roof terrace
-        const k = rng.int(1, 2), sb = rng.range(2.4, 3.2);
-        const low = kit.volume(B, [[0, 0], [w, 0], [w, d], [0, d]], { ...o, floors: floors - 1 - k, parapet: 0, per: { 0: { parapet: 1.0 } }, roof: 'none' });
-        kit.roofFlat(B, [B.loc.rect(0, 0, w, sb)], low.top);
-        r = kit.volume(B, [[0, sb], [w, sb], [w, d], [0, d]], { ...o, y0: low.top, groundH: 0, floors: k, balcony: null, bands: false });
-        rects = [B.loc.rect(0, sb, w, d)];
-        kit.collide(B, 0, 0, w, d, r.top);
-        top = r.top;
-        r = { ...r, ...B.loc.rect(0, 0, w, d) };
-      } else {
-        r = kit.volume(B, [[0, 0], [w, 0], [w, d], [0, d]], o);
-        rects = [r];
-        kit.collide(B, 0, 0, w, d, r.top);
-        top = r.top;
+        kit.fins(sf, { depth: 0.34, width: 0.07, color: look.frame });
+        // a green wall on one side
+        const u = rng.pick([0.2, 0.45, 0.7]);
+        kit.patch(sf, u, u + 0.14, y0 + 1, y0 + Math.min(tiers, 3) * 2 * FLOOR - 1, { mat: 'green', out: 0.3, cols: 3 });
       }
-      kit.roofFlat(B, rects, top);
-      for (const rc of rects) kit.roofStuff(B, rc, top, { old: B.age > 0.6, hut: floors < 5, shops });
-      // tall blocks: a stair and lift tower that rises above the roof
-      if (floors >= 5 && shape !== 'U' && rng.chance(0.6)) {
-        const t = kit.volume(B, [[w - 4.2, d - 4.6], [w - 0.5, d - 4.6], [w - 0.5, d - 0.5], [w - 4.2, d - 0.5]],
-          { y0: top, groundH: 0, floors: 1, style: 0, parapet: 0.3, kinds: ['back', 'back', 'back', 'back'] });
-        kit.roofFlat(B, [t], t.top);
-      }
-      // Neon Mile: a glowing name or a hologram on the roof
-      if (lot.edgeType === 'neon' && shape === 'box' && w > 9) {
-        const roll = rng.next();
-        if (roll < 0.4) kit.roofSign(B, B.loc.frame(0, 0, w, 0), top + parapet, rng);
-        else if (roll < 0.55) kit.hologram(B, B.loc.frame(0, 0, w, 0), top + parapet, rng);
-      }
-      kit.finish(B, r, top + parapet);
-      return summary(floors, 'plaster', lk);
+      roofOf(kit, lot, sf, rng, { plate: rng.range(1.12, 1.18), color: col });
+      kit.collide(lobby.aabb(), y1);
+      return summary('trays', tiers * 2, look, sf, y1);
     },
   },
 
   // =========================================================================
-  // c) CORNER BUILDING: the corner is cut off, the entrance is on the cut
+  // STEPS: floors that step back into garden terraces (like b05, but one house)
   // =========================================================================
-  corner: {
-    w: [11, 18], d: [11, 16],
+  steps: {
+    w: [18, 30], d: [18, 28],
     build(kit, lot, rng) {
-      const brick = rng.chance(0.55);
-      const neon = lot.district === 'neon';
-      const floors = floorsBetween(rng, lot.low ? 3 : 4, lot.low ? 4 : 6, lot);
-      const lk = pickTint(rng, lot, brick ? BRICK_TINTS : neon ? NEON_TINTS : PLASTER_TINTS);
-      const B = kit.begin(lot, { mat: brick ? 'brick' : 'plaster', tint: lk.tint, age: pickAge(rng, 0.2), rng });
-      const { w, d } = B.loc;
-      const c = 3.0, left = lot.cornerSide === 'left';
-      const pts = left ? [[c, 0], [w, 0], [w, d], [0, d], [0, c]] : [[0, 0], [w - c, 0], [w, c], [w, d], [0, d]];
-      const cut = left ? 4 : 1; // number of the cut-corner edge in the outline
-      const parapet = rng.range(0.7, 1.2);
-      const o = {
-        groundH: GROUND_H, floors: floors - 1, style: brick ? 2 : 1, bayW: brick ? rng.range(2.3, 2.7) : rng.range(3.2, 3.8),
-        ground: 'shops', neon: neon && lot.edgeType === 'neon', parapet, cornice: brick || rng.chance(0.5) ? 'big' : false, bands: rng.chance(0.6),
-        sill: true, lintel: brick, surround: !brick && rng.chance(0.4), ac: 0.06,
-        per: { [cut]: { ground: 'entry', bayW: brick ? 2.0 : 3.4 } },
-      };
-      const r = kit.volume(B, pts, o);
-      // collision: two boxes and a row of circles along the cut corner
-      if (left) {
-        kit.collide(B, c, 0, w, d, r.top);
-        kit.collide(B, 0, c, c, d, r.top);
-        kit.collideSlant(B, 0, c, c, 0);
-      } else {
-        kit.collide(B, 0, 0, w - c, d, r.top);
-        kit.collide(B, w - c, c, w, d, r.top);
-        kit.collideSlant(B, w - c, 0, w, c);
-      }
-      kit.roofPoly(B, pts, r.top);
-      kit.roofStuff(B, left ? B.loc.rect(c, 1, w, d) : B.loc.rect(0, 1, w - c, d), r.top, { old: B.age > 0.55, hut: true, shops: true });
-      kit.finish(B, r, r.top + parapet);
-      return summary(floors, B.mat, lk);
-    },
-  },
-
-  // =========================================================================
-  // d) LOW SHOP ROW: 1 or 2 floors, long awning, signs
-  // =========================================================================
-  shoprow: {
-    w: [13, 30], d: [9, 13],
-    build(kit, lot, rng) {
-      const neon = lot.district === 'neon';
-      const floors = rng.chance(0.6) ? 1 : 2;
-      const brick = !neon && rng.chance(0.4);
-      const lk = pickTint(rng, lot, brick ? BRICK_TINTS : neon ? NEON_TINTS : PLASTER_TINTS);
-      const B = kit.begin(lot, { mat: brick ? 'brick' : 'plaster', tint: lk.tint, age: pickAge(rng), rng });
-      const { w, d } = B.loc;
-      const parapet = rng.range(1.0, 1.6);
-      const o = {
-        groundH: GROUND_H, floors: floors - 1, style: brick ? 2 : 1, bayW: brick ? rng.range(2.4, 2.8) : rng.range(3.3, 3.9),
-        ground: 'shops', neon: neon && lot.edgeType === 'neon', longAwning: rng.chance(0.6), upperDoor: floors > 1,
-        parapet, bands: floors > 1, sill: true, lintel: brick, cornice: brick && rng.chance(0.4),
-      };
-      const r = kit.volume(B, [[0, 0], [w, 0], [w, d], [0, d]], o);
-      kit.collide(B, 0, 0, w, d, r.top + parapet);
-      kit.roofFlat(B, [r], r.top);
-      kit.roofStuff(B, r, r.top, { shops: true });
-      if (lot.edgeType === 'neon' && rng.chance(0.45)) kit.roofSign(B, B.loc.frame(0, 0, w, 0), r.top + parapet, rng);
-      kit.finish(B, r, r.top + parapet);
-      return summary(floors, B.mat, lk);
-    },
-  },
-
-  // =========================================================================
-  // e) SMALL OFFICE BUILDING: upright stripes of glass and concrete
-  // =========================================================================
-  office: {
-    w: [12, 24], d: [13, 20],
-    build(kit, lot, rng) {
-      const floors = floorsBetween(rng, 4, lot.low ? 5 : 8, lot);
-      const lk = pickTint(rng, lot, CONCRETE_TINTS);
-      const B = kit.begin(lot, { mat: 'plaster', tint: lk.tint, age: pickAge(rng, 0, 0.6), rng });
-      const { w, d } = B.loc;
-      const fins = rng.chance(0.7);
-      const o = {
-        groundH: GROUND_H, floors: floors - 1, style: 3, bayW: rng.range(2.8, 3.3), ground: 'office',
-        parapet: 0.5, fins, bands: !fins && rng.chance(0.6),
-      };
-      const r = kit.volume(B, [[0, 0], [w, 0], [w, d], [0, d]], o);
-      kit.collide(B, 0, 0, w, d, r.top + 0.5);
-      kit.roofFlat(B, [r], r.top);
-      // machine room on the roof, set back from the edges
-      if (w > 10 && d > 10) {
-        const m = kit.volume(B, [[2.6, 3], [w - 2.6, 3], [w - 2.6, d - 3], [2.6, d - 3]],
-          { y0: r.top, groundH: 0, floors: 1, style: 0, parapet: 0.2, kinds: ['back', 'back', 'back', 'back'] });
-        kit.roofFlat(B, [m], m.top);
-        const p = B.loc.pt(w / 2, d / 2);
-        kit.parts.antenna.add(p[0], m.top, p[1], 0, 1);
-        kit.parts.dish.add(p[0] + 1.5, m.top, p[1] + 1, 0, 1);
-      } else kit.roofStuff(B, r, r.top, {});
-      kit.finish(B, r, r.top + 0.5);
-      return summary(floors, 'plaster', lk);
-    },
-  },
-
-  // =========================================================================
-  // f) WAREHOUSE / GARAGE: big roll-up doors, sawtooth or curved metal roof
-  // =========================================================================
-  warehouse: {
-    w: [15, 28], d: [13, 22],
-    build(kit, lot, rng) {
-      const metal = rng.chance(0.55);
-      const lk = pickTint(rng, lot, metal ? METAL_TINTS : BRICK_TINTS);
-      const B = kit.begin(lot, { mat: metal ? 'metal' : 'brick', tint: lk.tint, age: pickAge(rng, 0.35), rng });
-      const { w, d } = B.loc;
-      const roof = rng.pick(w <= 26 ? ['saw', 'barrel', 'flat'] : ['saw', 'flat']);
-      const upper = !metal && roof === 'flat' && rng.chance(0.6); // brick warehouses can have an office floor on top
-      const parapet = roof === 'flat' ? rng.range(0.5, 0.9) : 0;
-      const o = {
-        groundH: upper ? 5.0 : rng.range(5.6, 7.2), floors: upper ? 1 : 0, style: upper ? 2 : 0, bayW: 3.2, ground: 'garage',
-        parapet, sill: true, lintel: true, cornice: !metal && roof === 'flat' && rng.chance(0.4),
-      };
-      const r = kit.volume(B, [[0, 0], [w, 0], [w, d], [0, d]], o);
-      let top = r.top + parapet;
-      const sheet = metal ? lk.tint.map((c) => c * 0.8) : [0.3, 0.31, 0.32];
-      if (roof === 'saw') top = r.top + kit.roofSaw(B, [0, 0, w, d], r.top, { tint: sheet });
-      else if (roof === 'barrel') top = r.top + kit.roofBarrel(B, [0, 0, w, d], r.top, { tint: sheet });
-      else {
-        kit.roofFlat(B, [r], r.top);
-        kit.roofStuff(B, r, r.top, { old: true });
-      }
-      kit.collide(B, 0, 0, w, d, top);
-      kit.finish(B, r, top);
-      return summary(upper ? 2 : 1.5, B.mat, lk);
-    },
-  },
-
-  // =========================================================================
-  // OLD HOUSE: 2 or 3 floors, sloped roof, chimney, front yard
-  // =========================================================================
-  house: {
-    w: [7, 10.5], d: [9.5, 13],
-    build(kit, lot, rng) {
-      const floors = rng.int(2, 3);
-      const brick = rng.chance(0.5);
-      const lk = pickTint(rng, lot, brick ? BRICK_TINTS : PLASTER_TINTS);
-      const B = kit.begin(lot, { mat: brick ? 'brick' : 'plaster', tint: lk.tint, age: pickAge(rng, 0.3), rng });
-      const { w, d } = B.loc;
-      const street = B.side.front === 'front';
-      const yard = street && d > 11 ? 2.3 : 0;
-      const o = {
-        groundH: yard ? 0.9 + FLOOR_H : 0.4 + FLOOR_H, floors: floors - 1, style: 2, bayW: rng.range(2.4, 2.8), ground: 'res',
-        parapet: 0, sill: true, lintel: brick, surround: !brick, ac: 0.08,
-      };
-      const r = kit.volume(B, [[0, yard], [w, yard], [w, d], [0, d]], o);
-      // a bay window over the front door side
-      if (street && rng.chance(0.35)) kit.bayWindow(B, w / 2 - 1.35, w / 2 + 1.35, yard, o.groundH, floors - 1, o);
-      const rise = kit.roofGable(B, [0, yard, w, d], r.top, { ridgeAlong: rng.chance(0.55) ? 'v' : 'u' });
-      // brick chimney
-      const cu = rng.range(1, w - 1.8), cv = (yard + d) / 2 + rng.range(-1, 1);
-      kit.boxUp(B, cu, cv, cu + 0.7, cv + 0.7, r.top, r.top + rise + 0.8, 0.8);
-      kit.collide(B, 0, yard, w, d, r.top + rise);
-      if (yard) frontYard(kit, B, yard, rng);
-      kit.finish(B, r, r.top + rise);
-      return summary(floors, B.mat, lk);
-    },
-  },
-
-  // =========================================================================
-  // g) FUEL + CHARGING STATION: canopy, charger islands, small shop
-  // =========================================================================
-  station: {
-    w: [20, 28], d: [16, 22], open: true,
-    build(kit, lot, rng) {
-      const lk = pickTint(rng, lot, PLASTER_TINTS);
-      const B = kit.begin(lot, { mat: 'plaster', tint: lk.tint, age: pickAge(rng, 0, 0.5), rng });
-      const { w, d } = B.loc;
-      const ctx = kit.ctx, ps = ctx.mb.propStatic, curb = kit.curb;
-      kit.lotGround(B, 0, 0, w, d, 0.72);
-      const band = rng.pick([[0.05, 0.42, 0.4], [0.5, 0.12, 0.08], [0.1, 0.22, 0.5], [0.55, 0.4, 0.06]]); // company color
-      // ---- canopy on four posts ----
-      const cw = Math.min(w - 7, 12), u0 = (w - cw) / 2, u1 = u0 + cw, v0 = 2.2, v1 = 9.4, top = 5.2;
-      const c = B.loc.rect(u0, v0, u1, v1);
-      ps.color(0.62, 0.63, 0.63, 1).data(0.5, 0.1, 0, 0);
-      ps.box(c.minX, top, c.minZ, c.maxX, top + 0.55, c.maxZ, 1, 'nsewtb');
-      // colored band around the canopy edge (glows a little at night)
-      ps.color(band[0], band[1], band[2], 1).data(0.4, 0, 0, 0.5);
-      ps.box(c.minX - 0.04, top + 0.1, c.minZ - 0.04, c.maxX + 0.04, top + 0.42, c.maxZ + 0.04, 1, 'nsew');
-      // light panels under the canopy
-      ps.color(1, 0.96, 0.88, 1).data(0.3, 0, 0, 0.9);
-      for (const fu of [0.25, 0.75]) for (const fv of [0.3, 0.7]) {
-        const p = B.loc.pt(u0 + cw * fu, v0 + (v1 - v0) * fv);
-        ps.box(p[0] - 0.7, top - 0.03, p[1] - 0.35, p[0] + 0.7, top, p[1] + 0.35, 1, 'nsewb');
-      }
-      const mid = B.loc.pt(w / 2, (v0 + v1) / 2);
-      ctx.shopLights.push({ x: mid[0], z: mid[1], r: 11, power: 0.55 });
-      for (const pu of [u0 + 0.6, u1 - 0.6]) for (const pv of [v0 + 1.2, v1 - 1.2]) {
-        const p = B.loc.pt(pu, pv);
-        ps.color(0.5, 0.51, 0.52, 1).data(0.5, 0.4, 0, 0);
-        ps.box(p[0] - 0.18, curb, p[1] - 0.18, p[0] + 0.18, top, p[1] + 0.18, 1, 'nsew');
-        ctx.colliders.circles.push({ x: p[0], z: p[1], r: 0.35 });
-      }
-      // ---- two islands with chargers, painted bays ----
-      const paint = [band[0] * 1.2 + 0.05, band[1] * 1.2 + 0.05, band[2] * 1.2 + 0.05];
-      for (const iv of [v0 + 2.0, v1 - 2.0]) {
-        const isl = B.loc.rect(u0 + 1.6, iv - 0.45, u1 - 1.6, iv + 0.45);
-        B.mb.color(0.78, 0.8, 0.84, 1).data(0, 0, 0, 0.4);
-        B.mb.box(isl.minX, curb, isl.minZ, isl.maxX, curb + 0.2, isl.maxZ, 3.4, 'nsewt');
-        ctx.colliders.boxes.push({ ...isl, h: 1.9 });
-        for (const fu of [0.3, 0.7]) {
-          const p = B.loc.pt(u0 + cw * fu, iv);
-          kit.parts.charger.add(p[0], curb + 0.2, p[1], B.loc.f.nx, B.loc.f.nz, 1, 1, 1, null, paint);
+      const s = siteOf(lot, rng.range(1.8, 3));
+      const n = lot.district === 'crown' ? rng.int(5, 8) : rng.int(3, 5);
+      const look = pickLook(rng, lot);
+      const plan = rng.pick(['round', 'soft']);
+      const warm = rng.chance(0.5);
+      const each = lot.district === 'crown' ? 3 : rng.int(1, 2); // floors per step
+      const lobby = groundFloor(kit, lot, s, plan, look, rng);
+      let y = kit.curb + LOBBY, sf = null;
+      const shrink = Math.min(1.5, (Math.min(s.a, s.b) - 5) / n);
+      for (let i = 0; i < n; i++) {
+        const solid = rng.chance(0.3);
+        sf = kit.body({
+          x: s.x, z: s.z, rot: s.rot, plan, a: s.a - i * shrink, b: s.b - i * shrink * 0.8, y0: y, y1: y + each * FLOOR,
+          levels: [[0, 1, 0, 0, -i * shrink * 0.7], [1, 1, 0, 0, -i * shrink * 0.7]], steps: 1, lo: true,
+          ...(solid ? { mat: 'panel', tint: warm ? kit.C.wood : kit.C.graphite, kind: 2 } : { tint: look.glass, bay: 1.6 }),
+        });
+        if (lot.playable) {
+          kit.slabs(sf, { y0: y + 0.02, y1: y + each * FLOOR, thick: 0.42, grow: 1.07, color: warm ? kit.C.graphite : look.frame });
+          if (i > 0) kit.planted(sf, y, { grow: 1.1, vines: 0.6, hang: 0.4 });
         }
-        for (let u = u0 + 1; u <= u1 - 0.9; u += (cw - 2) / 3) {
-          kit.paintLine(B, u, iv - 2.3, u, iv - 0.6);
-          kit.paintLine(B, u, iv + 0.6, u, iv + 2.3);
-        }
+        y += each * FLOOR;
       }
-      kit.lotDecal(B, 'oil1', w / 2 - 2, (v0 + v1) / 2, 2.4, 2.0, 0.6, 1, 0.04);
-      kit.lotDecal(B, 'oil2', w / 2 + 3, v0 + 1.5, 1.6, 1.6, 0.6, 2, 0.04);
-      // ---- small shop at the back ----
-      const kw = Math.min(11, w - 6), ku = rng.chance(0.5) ? 1 : w - kw - 1, kd = 6.2;
-      const r = kit.volume(B, [[ku, d - kd], [ku + kw, d - kd], [ku + kw, d - 0.4], [ku, d - 0.4]],
-        { groundH: 4.2, floors: 0, style: 0, ground: 'shops', upperDoor: false, parapet: 0.7, kinds: ['front', 'back', 'back', 'back'] });
-      kit.collide(B, ku, d - kd, ku + kw, d - 0.4, r.top);
-      kit.roofFlat(B, [r], r.top);
-      kit.roofStuff(B, r, r.top, { shops: true });
-      // ---- tall price sign near the street ----
-      const su = ku > w / 2 ? 1.6 : w - 1.6;
-      const sp = B.loc.pt(su, 1.4);
-      ps.color(0.5, 0.51, 0.52, 1).data(0.5, 0.4, 0, 0);
-      ps.box(sp[0] - 0.14, curb, sp[1] - 0.14, sp[0] + 0.14, 6.6, sp[1] + 0.14, 1, 'nsew');
-      ctx.colliders.circles.push({ x: sp[0], z: sp[1], r: 0.3 });
-      const sf = B.loc.frame(su - 1.2, 1.25, su + 1.2, 1.25);
-      kit.sign(sf, 1.2, 5.3, 2.4, 0.6, kit.paintedSign(rng), 0.7, 0);
-      const sb = B.loc.frame(su + 1.2, 1.55, su - 1.2, 1.55);
-      kit.sign(sb, 1.2, 5.3, 2.4, 0.6, kit.paintedSign(rng), 0.7, 0);
-      ps.color(band[0], band[1], band[2], 1).data(0.4, 0, 0, 0.6);
-      ps.box(Math.min(sp[0] - 1.25, sp[0] + 1.25), 6.0, sp[1] - 0.16, Math.max(sp[0] - 1.25, sp[0] + 1.25), 6.5, sp[1] + 0.16, 1, 'nsewtb');
-      fenceOpenSides(kit, B, 'chain', 2.0);
-      kit.finish(B, B.loc.rect(ku, d - kd, ku + kw, d - 0.4), r.top);
-      return summary(1, 'plaster', lk);
+      roofOf(kit, lot, sf, rng, { color: look.frame });
+      kit.collide(lobby.aabb(), y);
+      return summary('steps', n * each, look, lobby, y);
     },
   },
 
   // =========================================================================
-  // g) SMALL PARKING LOT with painted lines
+  // PODIUM: wide glass podium, slimmer tower on top, thin roof wing (like b04)
   // =========================================================================
-  parking: {
-    w: [15, 24], d: [15, 24], open: true,
+  podium: {
+    w: [22, 34], d: [20, 30],
     build(kit, lot, rng) {
-      const B = kit.begin(lot, { mat: 'plaster', tint: [0.8, 0.82, 0.86], age: 0.6, rng });
-      const { w, d } = B.loc;
-      const ctx = kit.ctx, curb = kit.curb, ff = B.loc.f;
-      kit.lotGround(B, 0, 0, w, d, 0.76);
-      // parking rows along the left and the right side, cars stand nose to the fence
-      const rows = [[0.5, 5.3, 1], [w - 5.3, w - 0.5, -1]];
-      for (const [ua, ub, dir] of rows) {
-        for (let v = 1.2; v + 2.6 <= d - 0.8; v += 2.6) {
-          kit.paintLine(B, ua, v, ub, v);
-          if (v + 5.2 > d - 0.8) kit.paintLine(B, ua, v + 2.6, ub, v + 2.6);
-          const um = (ua + ub) / 2, vm = v + 1.3;
-          // concrete wheel stop at the far end of each bay
-          const ws = B.loc.pt(dir > 0 ? ua + 0.5 : ub - 0.5, vm);
-          kit.parts.block.add(ws[0], curb + 0.03, ws[1], ff.dx, ff.dz, 1.8, 0.13, 0.22, null, kit.STONE);
-          if (rng.chance(0.5)) {
-            const p = B.loc.pt(um + dir * 0.2, vm);
-            ctx.parked.push({ x: p[0], z: p[1], rot: Math.atan2(-dir * ff.dx, -dir * ff.dz) + rng.range(-0.04, 0.04) });
-          }
-          if (rng.chance(0.3)) kit.lotDecal(B, 'oil2', um, vm, 1.1, 1.1, 0.7, rng.range(0, 6), 0.04);
-        }
+      const s = siteOf(lot, rng.range(1.6, 2.6));
+      const floors = pickFloors(rng, lot, 6, 11);
+      const look = pickLook(rng, lot);
+      const plan = rng.pick(['round', 'soft']);
+      const lobby = groundFloor(kit, lot, s, plan, look, rng);
+      const y0 = kit.curb + LOBBY, yp = y0 + rng.int(2, 3) * FLOOR, y1 = y0 + floors * FLOOR;
+      const pod = kit.body({ x: s.x, z: s.z, rot: s.rot, plan, a: s.a, b: s.b, y0, y1: yp, tint: look.glass, bay: 2.2, lo: true, levels: [[0, 0.96, 0], [0.5, 1.02, 0], [1, 0.96, 0]], steps: 3 });
+      const prof = pickProfile(rng, floors > 14);
+      const k = rng.range(0.62, 0.78);
+      const sf = kit.body({ x: s.x, z: s.z, rot: s.rot, plan: rng.pick([plan, 'round', 'circle']), a: s.a * k, b: s.b * k, y0: yp, y1, levels: prof.levels, tint: look.glass, bay: 1.6, lo: true, steps: prof.levels ? Math.max(3, Math.round(floors / 2.5)) : 1 });
+      kit.cap(pod, yp, { color: kit.C.roof });
+      if (lot.playable) {
+        kit.slabs(pod, { y0, y1: yp, step: yp - y0, thick: 0.8, grow: 1.03, color: look.frame });
+        if (plan !== 'circle') kit.faceRibbon(pod, 0, 'portal', { color: look.frame, wide: 0.9, depth: 0.5 });
+        kit.planted(pod, yp, { grow: 0.97, vines: 0.3, hang: 0.5 });
+        kit.slabs(sf, { y0: yp + FLOOR, y1, thick: 0.32, grow: 1.012, color: look.frame });
+        if (rng.chance(0.6)) kit.fins(sf, { every: 2, depth: 0.35, color: look.frame });
       }
-      // small booth at the entrance
-      const bu = rng.chance(0.5) ? 5.9 : w - 7.5;
-      const booth = kit.boxUp(B, bu, 0.6, bu + 1.6, 2.2, curb, curb + 2.5, 1.0);
-      ctx.colliders.boxes.push({ ...booth, h: 2.6 });
-      const bf = B.loc.frame(bu, 0.6, bu + 1.6, 0.6);
-      kit.opening(B, bf, 0.25, 1.35, curb + 1.0, 1.1, 0.05, 0, rng.int(1, 60) + 0.3);
-      // one tall lamp in the middle
-      const lp = B.loc.pt(w / 2, d / 2);
-      ctx.lotLamps.push({ x: lp[0], z: lp[1], rot: Math.atan2(ff.dx, ff.dz) });
-      fenceOpenSides(kit, B, 'chain', 2.0);
-      kit.finish(B, B.loc.rect(0, 0, w, d), 0);
-      return summary(0, 'open', null);
+      roofOf(kit, lot, sf, rng, { plate: rng.range(1.15, 1.25), color: look.frame });
+      kit.collide(lobby.aabb(), y1);
+      return summary('podium', floors, look, pod, y1);
     },
   },
 
   // =========================================================================
-  // h) EMPTY LOT: fence, weeds, rubble
+  // WAVE: oval tower with a wave balcony on every floor (like b06)
   // =========================================================================
-  emptylot: {
-    w: [8, 18], d: [10, 18], open: true,
+  wave: {
+    w: [22, 34], d: [20, 28],
     build(kit, lot, rng) {
-      const B = kit.begin(lot, { mat: 'plaster', tint: [1, 1, 1], age: 1, rng });
-      const { w, d } = B.loc;
-      const ctx = kit.ctx, curb = kit.curb;
-      // trodden earth instead of paving
-      kit.lotDecal(B, 'patch', w / 2, d / 2, w - 0.3, d - 0.3, 1.0, Math.atan2(B.loc.f.nx, B.loc.f.nz));
-      for (let k = 0; k < (w * d) / 22; k++) {
-        kit.lotDecal(B, rng.pick(['dirt', 'dirt', 'leak', 'oil1', 'crack1']), rng.range(1.5, w - 1.5), rng.range(1.5, d - 1.5), rng.range(2, 5), rng.range(2, 5), rng.range(0.5, 0.95), rng.range(0, 6.28), 0.014);
+      const s = siteOf(lot, rng.range(2.4, 3.4));
+      const floors = pickFloors(rng, lot, 6, 11);
+      const look = pickLook(rng, lot);
+      const lobby = groundFloor(kit, lot, { ...s, a: s.a - 1.5, b: s.b - 1.5 }, 'circle', look, rng);
+      const y0 = kit.curb + LOBBY, y1 = y0 + floors * FLOOR;
+      const sf = kit.body({ x: s.x, z: s.z, rot: s.rot, plan: 'circle', a: s.a, b: s.b, y0, y1, tint: look.glass, bay: 1.6, lo: true });
+      if (lot.playable) {
+        kit.slabs(sf, { y0: y0 + 0.4, y1, thick: 1.12, grow: 1, wave: true, color: rng.chance(0.75) ? kit.C.white : look.frame });
+        kit.parts.slab.circle.add(s.x, y0 - 0.1, s.z, Math.sin(s.rot), Math.cos(s.rot), s.a * 1.22, 0.45, s.b * 1.22, null, kit.C.white);
+        kit.planted(sf, y0 + 0.45, { grow: 1.05, share: 0.6, vines: 0.5 });
+        if (rng.chance(0.5)) kit.patch(sf, 0.44, 0.56, y0 + 2, y1 - 3, { mat: 'green', out: 1.6, cols: 3 });
       }
-      // fence along the street: old boards or chain-link, often with a gap you can walk through
-      const planks = rng.chance(0.55), fh = planks ? 2.0 : 2.1;
-      const gap = rng.chance(0.6) ? rng.range(1.5, w - 3) : -9;
-      const run = (ua, ub) => {
-        if (ub - ua < 0.5) return;
-        const a = B.loc.pt(ua, 0.15), b = B.loc.pt(ub, 0.15);
-        kit.fence(a[0], a[1], b[0], b[1], curb, fh, planks ? 'planks' : 'chain', true, planks ? rng.range(0.7, 1) : 1);
-      };
-      run(0.05, gap > 0 ? gap : w - 0.05);
-      if (gap > 0) run(gap + 1.5, w - 0.05);
-      if (planks && B.playable) {
-        const f = B.loc.frame(0, 0.15, w, 0.15);
-        for (let s = 1.6; s < w - 1.6; s += rng.range(2.6, 5)) {
-          if (gap > 0 && s > gap - 1.4 && s < gap + 2.9) continue;
-          if (rng.chance(0.7)) kit.graffiti(B, f, s, curb + rng.range(0.3, 0.6), rng.range(1.5, 2.3), rng.range(1.0, 1.4), 0.02);
-        }
-      }
-      fenceOpenSides(kit, B, 'chain', 2.0);
-      // weeds everywhere, thicker along the edges
-      for (let k = 0; k < (w * d) / 5; k++) {
-        let u = rng.range(0.4, w - 0.4), v = rng.range(0.5, d - 0.4);
-        if (rng.chance(0.4)) { if (rng.chance(0.5)) u = rng.chance(0.5) ? rng.range(0.3, 1.2) : w - rng.range(0.3, 1.2); else v = d - rng.range(0.3, 1.4); }
-        const p = B.loc.pt(u, v), a = rng.range(0, 6.28), s = rng.range(0.6, 1.5);
-        kit.parts.weed.add(p[0], curb, p[1], Math.sin(a), Math.cos(a), s, s * rng.range(0.8, 1.3), s);
-      }
-      // heaps of rubble
-      for (let k = rng.int(2, 5); k > 0; k--) {
-        const p = B.loc.pt(rng.range(2, w - 2), rng.range(3, d - 2)), a = rng.range(0, 6.28), s = rng.range(0.8, 1.5);
-        kit.parts.rubble.add(p[0], curb, p[1], Math.sin(a), Math.cos(a), s, s, s);
-        ctx.colliders.circles.push({ x: p[0], z: p[1], r: 0.8 * s });
-        if (B.playable) kit.groundShadow(p[0], p[1], 2.4 * s);
-      }
-      kit.finish(B, B.loc.rect(0, 0, w, d), 0);
-      return summary(0, 'open', null);
+      roofOf(kit, lot, sf, rng, { color: kit.C.white });
+      kit.collide(lobby.aabb(), y1);
+      return summary('wave', floors, look, sf, y1);
     },
   },
 
   // =========================================================================
-  // NEON MILE SHOP HOUSE: 2 to 4 floors, glass fronts, awnings, lit signs
+  // ARCADE: low curved shop building under a floating canopy (like b09)
   // =========================================================================
-  neonshop: {
-    w: [8, 18], d: [13, 20],
+  arcade: {
+    w: [26, 44], d: [15, 21],
     build(kit, lot, rng) {
-      const floors = floorsBetween(rng, 2, 4, lot);
-      const lk = pickTint(rng, lot, NEON_TINTS);
-      const B = kit.begin(lot, { mat: 'plaster', tint: lk.tint, age: pickAge(rng, 0, 0.65), rng });
-      const { w, d } = B.loc;
-      const parapet = rng.range(0.7, 1.1);
-      const all = rng.chance(0.5);
-      const o = {
-        groundH: GROUND_H, floors: floors - 1, style: 1, bayW: rng.range(3.3, 3.9), ground: 'shops', neon: true,
-        parapet, bands: rng.chance(0.5), sill: true, surround: rng.chance(0.5),
-        balcony: rng.chance(0.4) ? { cols: all ? () => true : (i) => i % 2 === 0, kind: 'rail' } : null,
-      };
-      const r = kit.volume(B, [[0, 0], [w, 0], [w, d], [0, d]], o);
-      kit.collide(B, 0, 0, w, d, r.top + parapet);
-      kit.roofFlat(B, [r], r.top);
-      kit.roofStuff(B, r, r.top, { shops: true, garden: rng.chance(0.12) });
-      if (B.side.front === 'front' && lot.edgeType === 'neon' && w > 7) {
-        const roll = rng.next();
-        if (roll < 0.34 && w > 9) kit.roofSign(B, B.loc.frame(0, 0, w, 0), r.top + parapet, rng);
-        else if (roll < 0.52) kit.hologram(B, B.loc.frame(0, 0, w, 0), r.top + parapet, rng);
+      const s = siteOf(lot, 2.2);
+      const look = pickLook(rng, lot);
+      const floors = rng.int(1, 2);
+      const base = { x: s.x, z: s.z, rot: s.rot, plan: 'round', a: s.a, b: s.b, tint: look.glass, lo: true };
+      const shops = kit.body({ ...base, y0: kit.curb, y1: kit.curb + LOBBY, kind: 1, bay: 3.2, floorH: LOBBY });
+      const y1 = kit.curb + LOBBY + floors * 3.8;
+      const up = kit.body({ ...base, y0: kit.curb + LOBBY, y1, bay: 1.6, floorH: 3.8 });
+      if (lot.playable) {
+        kit.slabs(up, { y0: kit.curb + LOBBY, y1, step: 3.8, thick: 0.4, grow: 1.04, color: look.frame });
+        const span = (2 * s.a * 0.42) / shops.per, n = Math.max(2, Math.round((span * shops.per) / 4.2));
+        for (let i = 0; i < n; i++) {
+          const u = ((i + 0.5) / n - 0.5) * span;
+          kit.signOn(shops, u, kit.curb + 3.7, Math.min(3.4, (span * shops.per) / n - 0.5), 0.82, rng.range(0.35, 0.5), rng.chance(0.3));
+          if (i % 2 === 0) kit.doorOn(shops, u + 0.008, 1.9, 2.8, 0);
+        }
+        // floating canopy on slim columns
+        const posts = [];
+        for (let i = 0; i < 8; i++) { const p = up.at((i + 0.5) / 8, 0); posts.push([p.x + p.nx * 1.4, p.z + p.nz * 1.4]); }
+        kit.columns(posts, kit.curb, y1 + 2.6, 0.16, kit.C.white);
+        kit.parts.slab.round.add(s.x, y1 + 2.6, s.z, Math.sin(s.rot), Math.cos(s.rot), s.a * 1.14, 0.35, s.b * 1.3, null, kit.C.white);
+        kit.cap(up, y1 + 2.9, { grow: 1.1, color: kit.C.light });
+        kit.cap(up, y1 + 2.62, { grow: 1.1, down: true, color: kit.C.white });
+        if (rng.chance(0.6)) kit.patch(up, 0.2, 0.3, kit.curb + 0.5, y1 - 0.2, { mat: 'green', out: 0.3, cols: 3 });
+        kit.ctx.shopLights.push({ x: local(s, 0, s.b + 2)[0], z: local(s, 0, s.b + 2)[1], r: s.a * 0.7 + 4, power: 0.5 });
+        kit.contactShadow(shops);
       }
-      kit.finish(B, r, r.top + parapet);
-      return summary(floors, 'plaster', lk);
+      kit.roof(up, { hedge: lot.playable, trees: lot.playable ? rng.int(1, 3) : 0, far: !lot.playable });
+      kit.collide(shops.aabb(), y1);
+      return summary('arcade', floors + 1, look, shops, y1 + 3);
+    },
+  },
+
+  // =========================================================================
+  // RETROFIT: an old brick house that got a new glass top, green walls, bronze trim
+  // =========================================================================
+  retrofit: {
+    w: [16, 26], d: [16, 24],
+    build(kit, lot, rng) {
+      const m = rng.range(1.2, 2.4), r = lot.rect;
+      const box = { minX: r.minX + m, maxX: r.maxX - m, minZ: r.minZ + m, maxZ: r.maxZ - m };
+      const old = rng.int(3, 6), add = rng.int(2, 5);
+      const look = pickLook(rng, lot);
+      const brick = kit.brickBox(box, old, { tint: rng.pick(BRICK_TINTS), rng });
+      const s = siteOf(lot, m);
+      // the new part: a rounded glass body on the old roof, set back a little
+      const k = rng.range(0.6, 0.86);
+      const dx = rng.range(-1, 1) * s.a * (1 - k) * 0.8, dz = rng.range(-1, 1) * s.b * (1 - k) * 0.8;
+      const top = brick.top + add * FLOOR;
+      const sf = kit.body({
+        x: s.x, z: s.z, rot: s.rot, plan: rng.pick(['round', 'round', 'circle']), a: s.a * k, b: s.b * k, y0: brick.top, y1: top,
+        levels: [[0, 1, 0, dx, dz], [1, rng.range(0.85, 1), rng.range(-0.3, 0.3), dx, dz]], steps: 2, tint: look.glass, bay: 1.5, lo: true,
+      });
+      const trim = rng.chance(0.6) ? kit.C.bronze : look.frame;
+      if (lot.playable) {
+        kit.slabs(sf, { y0: brick.top + 0.02, y1: top, thick: 0.38, grow: 1.08, color: trim, rail: rng.chance(0.5) });
+        kit.planted(sf, brick.top + 0.05, { grow: 1.12, vines: 0.7, hang: 1.5 });
+        if (rng.chance(0.5)) kit.planted(sf, brick.top + rng.int(1, add - 1) * FLOOR, { grow: 1.1, share: 0.6, vines: 0.5 });
+      }
+      roofOf(kit, lot, sf, rng, { color: trim });
+      kit.collide(box, top);
+      return { type: 'retrofit', floors: old + add + 1, ci: look.ci, gi: look.gi, rect: box, top };
+    },
+  },
+
+  // =========================================================================
+  // PLAZA: a small green square with trees, planters and EV chargers
+  // =========================================================================
+  plaza: {
+    w: [16, 26], d: [16, 24], open: true,
+    build(kit, lot, rng) {
+      const s = siteOf(lot, 2), ctx = kit.ctx;
+      for (let i = 0; i < Math.round((s.a * s.b) / 22); i++) {
+        const p = local(s, rng.range(-s.a, s.a), rng.range(-s.b, s.b * 0.6));
+        ctx.roofTrees.push({ x: p[0], y: kit.curb, z: p[1], s: rng.range(0.85, 1.3), trunk: true, pit: true });
+        ctx.colliders.circles.push({ x: p[0], z: p[1], r: 0.28 });
+      }
+      for (let i = 0; i < 4; i++) {
+        const p = local(s, (i - 1.5) * (s.a / 2.2), s.b - 0.8), sc = rng.range(1.0, 1.5);
+        kit.parts.planter.add(p[0], kit.curb, p[1], Math.sin(s.rot), Math.cos(s.rot));
+        kit.parts.shrub.add(p[0], kit.curb + 0.5, p[1], 0, 1, sc, sc, sc);
+        ctx.colliders.circles.push({ x: p[0], z: p[1], r: 0.7 });
+      }
+      // a row of fast chargers at the back, under a thin solar canopy
+      const n = Math.max(2, Math.round(s.a / 3));
+      const posts = [];
+      for (let i = 0; i < n; i++) {
+        const p = local(s, (i - (n - 1) / 2) * 3, -s.b + 1.6);
+        kit.parts.charger.add(p[0], kit.curb, p[1], Math.sin(s.rot), Math.cos(s.rot), 1, 1, 1, null, [0.1, 0.5, 0.45]);
+        ctx.colliders.circles.push({ x: p[0], z: p[1], r: 0.5 });
+        if (i === 0 || i === n - 1) posts.push(local(s, (i - (n - 1) / 2) * 3 + (i === 0 ? -1.2 : 1.2), -s.b + 0.8));
+      }
+      kit.columns(posts, kit.curb, kit.curb + 3.6, 0.12, kit.C.light);
+      const c = local(s, 0, -s.b + 1.8);
+      kit.parts.solar.add(c[0], kit.curb + 3.6, c[1], Math.sin(s.rot), Math.cos(s.rot), n * 3 + 2.4, 0.14, 4.2);
+      ctx.lotLamps.push({ x: local(s, 0, 0)[0], z: local(s, 0, 0)[1], rot: s.rot });
+      return { type: 'plaza', floors: 0, ci: -1, gi: -1, rect: null, top: 0 };
     },
   },
 };
 
 // ---------------------------------------------------------------------------
 // Which type goes on the next lot? "c" describes the place:
-//   c.district 'grid' | 'neon',  c.edgeType 'street' | 'avenue' | 'neon' | 'alley'
-//   c.corner   the lot has streets on two sides
+//   c.district 'grid' | 'neon' | 'crown',  c.edgeType 'street' | 'avenue' | 'neon' | 'alley'
 //   c.space    meters of street front that are still free
 //   c.prevType type of the lot before (never the same type twice in a row)
-//   c.openUsed this block already has an open lot (station, parking, empty)
+//   c.openUsed this block already has a plaza
 // The numbers are weights: a higher number is picked more often.
+// In The Grid about 15% of the buildings are old brick retrofits.
 // ---------------------------------------------------------------------------
 export function pickType(rng, c) {
   const list = [];
   const add = (id, weight) => {
     const t = TYPES[id];
     if (weight <= 0 || t.w[0] > c.space + 0.01 || id === c.prevType) return;
-    if (t.open && (c.openUsed || !c.playable)) return;
+    if (t.open && (c.openUsed || !c.playable || c.edgeType === 'alley')) return;
     list.push([id, weight]);
   };
-  if (c.edgeType === 'alley') {
-    add('walkup', 4); add('stucco', 3); add('warehouse', 3); add('shoprow', 1);
-  } else if (c.edgeType === 'neon') {
-    if (c.corner) add('corner', 5);
-    add('neonshop', 10); add('shoprow', 3); add('stucco', 3); add('office', 1.2);
-    add('parking', 0.8); if (c.corner) add('station', 1.5);
+  if (c.district === 'crown') {
+    add('tower', 8); add('podium', 3); add('trays', 1.5); add('steps', 1.5);
   } else if (c.district === 'neon') {
-    if (c.corner) add('corner', 5);
-    add('walkup', 4); add('stucco', 4); add('shoprow', 4); add('house', 2.5); add('warehouse', 2); add('office', 1.2);
-    add('parking', 1.2); add('emptylot', 1);
+    add('wave', 3); add('arcade', c.edgeType === 'neon' ? 3 : 1); add('tower', 3); add('podium', 2); add('trays', 2); add('steps', 1.5); add('plaza', 0.5);
   } else {
-    if (c.corner) { add('corner', 11); add('station', 1.3); }
-    add('walkup', 6); add('stucco', 5); add('shoprow', 2.2); add('office', 1.8); add('warehouse', 1.8); add('house', 1.7);
-    add('emptylot', 1.0); add('parking', 0.8);
+    add('tower', 4.4); add('trays', 2.6); add('steps', 2.6); add('podium', 1.8); add('retrofit', 2.3); add('plaza', 0.6);
   }
   if (!list.length) {
-    // nothing fits the rules: take any type that is narrow enough
-    for (const id of ['walkup', 'house', 'neonshop']) if (TYPES[id].w[0] <= c.space + 0.01) return id;
+    for (const id of ['retrofit', 'tower', 'steps']) if (TYPES[id].w[0] <= c.space + 0.01) return id;
     return null;
   }
   let total = 0;
-  for (const [, wgt] of list) total += wgt;
+  for (const [, w] of list) total += w;
   let r = rng.next() * total;
-  for (const [id, wgt] of list) { r -= wgt; if (r <= 0) return id; }
+  for (const [id, w] of list) { r -= w; if (r <= 0) return id; }
   return list[list.length - 1][0];
 }

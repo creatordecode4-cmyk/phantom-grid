@@ -463,47 +463,50 @@ export function makePalm(seed = 2) {
 // For each ring:  z = position,  yb = bottom,  ys = shoulder (below the
 // windows),  yt = top,  wb / ws / wt = half width at bottom / shoulder / top.
 const CAR_SPECS = {
+  // low electric fastback: one smooth arc from nose to tail, glass roof
   sedan: {
-    wheelR: 0.33, wheelX: 0.835, wheelZ: [-1.34, 1.4],
+    wheelR: 0.34, wheelX: 0.86, wheelZ: [-1.42, 1.5],
     rings: [
-      { z: -2.3, yb: 0.34, ys: 0.8, yt: 0.86, wb: 0.72, ws: 0.8, wt: 0.68 },
-      { z: -2.12, yb: 0.22, ys: 0.9, yt: 0.99, wb: 0.86, ws: 0.905, wt: 0.78 },
-      { z: -1.45, yb: 0.2, ys: 0.93, yt: 1.03, wb: 0.88, ws: 0.915, wt: 0.8 },
-      { z: -0.85, yb: 0.2, ys: 0.94, yt: 1.42, wb: 0.88, ws: 0.92, wt: 0.6 },
-      { z: 0.3, yb: 0.2, ys: 0.94, yt: 1.43, wb: 0.88, ws: 0.92, wt: 0.62 },
-      { z: 1.02, yb: 0.2, ys: 0.92, yt: 1.0, wb: 0.88, ws: 0.915, wt: 0.8 },
-      { z: 1.95, yb: 0.21, ys: 0.8, yt: 0.86, wb: 0.87, ws: 0.895, wt: 0.76 },
-      { z: 2.2, yb: 0.24, ys: 0.64, yt: 0.74, wb: 0.82, ws: 0.85, wt: 0.7 },
-      { z: 2.3, yb: 0.32, ys: 0.56, yt: 0.62, wb: 0.66, ws: 0.72, wt: 0.58 },
+      { z: -2.36, yb: 0.36, ys: 0.84, yt: 0.9, wb: 0.7, ws: 0.8, wt: 0.7 },
+      { z: -2.2, yb: 0.22, ys: 0.92, yt: 1.02, wb: 0.86, ws: 0.92, wt: 0.8 },
+      { z: -1.5, yb: 0.19, ys: 0.94, yt: 1.2, wb: 0.89, ws: 0.935, wt: 0.72 },
+      { z: -0.7, yb: 0.19, ys: 0.94, yt: 1.37, wb: 0.89, ws: 0.94, wt: 0.62 },
+      { z: 0.35, yb: 0.19, ys: 0.93, yt: 1.36, wb: 0.89, ws: 0.94, wt: 0.62 },
+      { z: 1.25, yb: 0.19, ys: 0.9, yt: 1.0, wb: 0.89, ws: 0.935, wt: 0.8 },
+      { z: 2.0, yb: 0.2, ys: 0.78, yt: 0.84, wb: 0.87, ws: 0.9, wt: 0.76 },
+      { z: 2.3, yb: 0.24, ys: 0.62, yt: 0.7, wb: 0.8, ws: 0.84, wt: 0.68 },
+      { z: 2.38, yb: 0.32, ys: 0.54, yt: 0.6, wb: 0.62, ws: 0.7, wt: 0.56 },
     ],
     // what is between ring i and ring i+1
-    gaps: ['body', 'body', 'glass', 'cabin', 'glass', 'body', 'body', 'body'],
+    gaps: ['body', 'glass', 'cabin', 'cabin', 'glass', 'body', 'body', 'body'],
   },
+  // tall rounded crossover
   suv: {
-    wheelR: 0.37, wheelX: 0.87, wheelZ: [-1.42, 1.48],
+    wheelR: 0.37, wheelX: 0.88, wheelZ: [-1.45, 1.5],
     rings: [
-      { z: -2.37, yb: 0.4, ys: 0.95, yt: 1.02, wb: 0.76, ws: 0.84, wt: 0.72 },
-      { z: -2.25, yb: 0.28, ys: 1.05, yt: 1.12, wb: 0.9, ws: 0.94, wt: 0.84 },
-      { z: -2.02, yb: 0.26, ys: 1.08, yt: 1.68, wb: 0.92, ws: 0.95, wt: 0.68 },
-      { z: 0.25, yb: 0.26, ys: 1.08, yt: 1.72, wb: 0.92, ws: 0.955, wt: 0.7 },
-      { z: 0.95, yb: 0.26, ys: 1.06, yt: 1.14, wb: 0.92, ws: 0.95, wt: 0.84 },
-      { z: 2.02, yb: 0.28, ys: 0.96, yt: 1.02, wb: 0.91, ws: 0.93, wt: 0.8 },
-      { z: 2.28, yb: 0.32, ys: 0.74, yt: 0.86, wb: 0.86, ws: 0.89, wt: 0.74 },
-      { z: 2.37, yb: 0.4, ys: 0.64, yt: 0.72, wb: 0.7, ws: 0.76, wt: 0.62 },
+      { z: -2.34, yb: 0.42, ys: 0.98, yt: 1.06, wb: 0.74, ws: 0.84, wt: 0.74 },
+      { z: -2.2, yb: 0.28, ys: 1.06, yt: 1.3, wb: 0.9, ws: 0.95, wt: 0.82 },
+      { z: -1.7, yb: 0.25, ys: 1.08, yt: 1.62, wb: 0.92, ws: 0.96, wt: 0.7 },
+      { z: 0.3, yb: 0.25, ys: 1.08, yt: 1.66, wb: 0.92, ws: 0.965, wt: 0.7 },
+      { z: 1.2, yb: 0.25, ys: 1.04, yt: 1.14, wb: 0.92, ws: 0.96, wt: 0.84 },
+      { z: 2.0, yb: 0.27, ys: 0.92, yt: 0.98, wb: 0.9, ws: 0.93, wt: 0.8 },
+      { z: 2.28, yb: 0.32, ys: 0.72, yt: 0.82, wb: 0.84, ws: 0.88, wt: 0.72 },
+      { z: 2.36, yb: 0.4, ys: 0.62, yt: 0.7, wb: 0.66, ws: 0.74, wt: 0.6 },
     ],
     gaps: ['body', 'glass', 'cabin', 'glass', 'body', 'body', 'body'],
   },
+  // self-driving shuttle pod: the same rounded shape at both ends, glass all around
   van: {
-    wheelR: 0.36, wheelX: 0.915, wheelZ: [-1.6, 1.75],
+    wheelR: 0.34, wheelX: 0.93, wheelZ: [-1.7, 1.7],
     rings: [
-      { z: -2.65, yb: 0.42, ys: 1.1, yt: 1.95, wb: 0.9, ws: 0.96, wt: 0.88 },
-      { z: -2.55, yb: 0.3, ys: 1.15, yt: 2.03, wb: 0.97, ws: 1.0, wt: 0.92 },
-      { z: 1.05, yb: 0.3, ys: 1.15, yt: 2.03, wb: 0.97, ws: 1.0, wt: 0.9 },
-      { z: 1.75, yb: 0.3, ys: 1.12, yt: 1.22, wb: 0.97, ws: 1.0, wt: 0.88 },
-      { z: 2.45, yb: 0.32, ys: 0.95, yt: 1.02, wb: 0.95, ws: 0.97, wt: 0.84 },
-      { z: 2.65, yb: 0.4, ys: 0.7, yt: 0.8, wb: 0.8, ws: 0.84, wt: 0.72 },
+      { z: -2.6, yb: 0.5, ys: 1.0, yt: 1.5, wb: 0.72, ws: 0.82, wt: 0.74 },
+      { z: -2.42, yb: 0.3, ys: 1.05, yt: 1.95, wb: 0.94, ws: 0.99, wt: 0.88 },
+      { z: -2.0, yb: 0.27, ys: 1.05, yt: 2.12, wb: 0.98, ws: 1.02, wt: 0.92 },
+      { z: 2.0, yb: 0.27, ys: 1.05, yt: 2.12, wb: 0.98, ws: 1.02, wt: 0.92 },
+      { z: 2.42, yb: 0.3, ys: 1.05, yt: 1.95, wb: 0.94, ws: 0.99, wt: 0.88 },
+      { z: 2.6, yb: 0.5, ys: 1.0, yt: 1.5, wb: 0.72, ws: 0.82, wt: 0.74 },
     ],
-    gaps: ['body', 'body', 'glass', 'body', 'body'],
+    gaps: ['glass', 'body', 'cabin', 'body', 'glass'],
   },
 };
 
@@ -536,7 +539,7 @@ export function makeCar(kind) {
       let m = PAINT;
       if (s === 0) m = TRIM;
       else if (s === 3 && (kindG === 'cabin' || kindG === 'glass')) m = GLASS;
-      else if (s === 4 && kindG === 'glass') m = GLASS;
+      else if (s === 4 && (kindG === 'glass' || (kindG === 'cabin' && kind !== 'van'))) m = GLASS; // glass roof
       use(m);
       const p0 = A[j], p1 = A[j + 1], p2 = B[j + 1], p3 = B[j];
       const cx = (p0[0] + p1[0] + p2[0] + p3[0]) / 4, cy = (p0[1] + p1[1] + p2[1] + p3[1]) / 4;
@@ -567,26 +570,21 @@ export function makeCar(kind) {
       // tyre: a tube, closed on the outside by a rubber disc and a metal hub cap
       extra.push(P(openCyl(spec.wheelR, spec.wheelR, 0.23, 10), [x, spec.wheelR, z], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }));
       extra.push(P(new THREE.CircleGeometry(spec.wheelR, 10), [x + sx * 0.115, spec.wheelR, z], RUBBER, 0.9, 0, { rot: [0, sx * HALF_PI, 0] }));
-      extra.push(P(new THREE.CircleGeometry(spec.wheelR * 0.62, 8), [x + sx * 0.122, spec.wheelR, z], [0.6, 0.61, 0.63], 0.3, 0.9, { rot: [0, sx * HALF_PI, 0] }));
+      // smooth wheel cover
+      extra.push(P(new THREE.CircleGeometry(spec.wheelR * 0.8, 10), [x + sx * 0.122, spec.wheelR, z], [0.2, 0.21, 0.22], 0.35, 0.8, { rot: [0, sx * HALF_PI, 0] }));
       // dark half circle behind the wheel = the wheel arch
       const arch = new THREE.CircleGeometry(spec.wheelR + 0.08, 7, 0, Math.PI);
       extra.push(P(arch, [sx * (spec.wheelX + 0.097), spec.wheelR - 0.02, z], [0.02, 0.02, 0.02], 0.9, 0, { rot: [0, sx * HALF_PI, 0] }));
     }
   }
+  // thin light bars across the nose and the tail (2090: no grille, no mirrors)
   const hw = last.ws;
-  const hy = (last.yb + last.yt) / 2 + 0.08;
-  extra.push(P(box(0.28, 0.1, 0.05), [hw * 0.66, hy, last.z + 0.005], [0.9, 0.92, 0.95], 0.12, 0.6));   // head lights
-  extra.push(P(box(0.28, 0.1, 0.05), [-hw * 0.66, hy, last.z + 0.005], [0.9, 0.92, 0.95], 0.12, 0.6));
-  extra.push(P(box(hw * 0.8, 0.13, 0.04), [0, last.yb + 0.1, last.z + 0.022], [0.03, 0.03, 0.03], 0.6, 0.3)); // grille
-  const ty = first.ys - 0.05;
-  extra.push(P(box(0.26, 0.11, 0.05), [first.ws * 0.7, ty, first.z - 0.005], [0.5, 0.03, 0.03], 0.25, 0.3)); // tail lights
-  extra.push(P(box(0.26, 0.11, 0.05), [-first.ws * 0.7, ty, first.z - 0.005], [0.5, 0.03, 0.03], 0.25, 0.3));
-  extra.push(P(box(0.5, 0.13, 0.03), [0, first.yb + 0.22, first.z - 0.03], [0.8, 0.8, 0.74], 0.5, 0));       // plate
-  // side mirrors sit at the bottom of the windshield
-  const cowl = spec.rings[spec.gaps.lastIndexOf('glass') + 1];
-  for (const sx of [-1, 1]) {
-    extra.push(P(box(0.2, 0.11, 0.09), [sx * (cowl.ws + 0.09), cowl.ys + 0.1, cowl.z - 0.12], [1, 1, 1], 0.3, 0.5, { paint: 1 }));
-  }
+  const hy = (last.yb + last.yt) / 2 + 0.1;
+  extra.push(P(box(hw * 1.5, 0.045, 0.05), [0, hy, last.z + 0.012], [0.92, 0.95, 1.0], 0.1, 0.5));
+  extra.push(P(box(hw * 0.9, 0.1, 0.04), [0, last.yb + 0.1, last.z + 0.02], [0.03, 0.03, 0.035], 0.5, 0.3));
+  const ty = first.ys - 0.04;
+  extra.push(P(box(first.ws * 1.6, 0.045, 0.05), [0, ty, first.z - 0.012], [0.55, 0.03, 0.03], 0.2, 0.3));
+  extra.push(P(box(0.5, 0.12, 0.03), [0, first.yb + 0.2, first.z - 0.03], [0.8, 0.8, 0.74], 0.5, 0));       // plate
 
   const out = new MeshBuilder();
   out.addGeometry(body, null, true);
@@ -619,26 +617,24 @@ function smoothNormals(geom) {
 }
 
 // ---------------------------------------------------------------------------
-// LIGHT RAIL TRAIN (two cars). Runs along z. Length about 29 m.
+// MAGLEV TRAIN (two cars). It floats over the guideway and has no wheels.
+// Runs along z. Length about 31 m.
 // ---------------------------------------------------------------------------
 export function makeTrain() {
-  const white = [0.8, 0.81, 0.8], teal = [0.1, 0.36, 0.38], glass = [0.5, 0.47, 0.38], dark = [0.05, 0.05, 0.055];
+  const white = [0.86, 0.87, 0.87], glass = [0.5, 0.47, 0.38], dark = [0.05, 0.05, 0.055], teal = [0.1, 0.4, 0.42];
   const parts = [];
-  for (const cz of [-7.35, 7.35]) {
-    parts.push(P(box(2.65, 2.3, 13.6), [0, 2.0, cz], white, 0.35, 0.4));
-    parts.push(P(box(2.67, 0.34, 13.62), [0, 1.15, cz], teal, 0.35, 0.4));
-    parts.push(P(box(2.5, 0.5, 13.0), [0, 3.3, cz], [0.6, 0.61, 0.6], 0.5, 0.5));        // roof equipment
-    parts.push(P(box(2.68, 0.85, 12.6), [0, 2.35, cz], glass, 0.08, 0.6, { glow: 1.0 })); // window band (lit at night)
-    parts.push(P(box(2.3, 0.5, 12.8), [0, 0.6, cz], dark, 0.7, 0.4));                    // under frame
-    for (const dz of [-4.4, 4.4]) parts.push(P(box(2.2, 0.55, 2.2), [0, 0.3, cz + dz], dark, 0.7, 0.5));
-    // sloped nose at the outer end
+  for (const cz of [-7.6, 7.6]) {
     const s = Math.sign(cz);
-    parts.push(P(box(2.5, 1.5, 1.2), [0, 1.7, cz + s * 7.2], white, 0.35, 0.4, { rot: [-s * 0.35, 0, 0] }));
-    parts.push(P(box(2.2, 0.8, 0.5), [0, 2.4, cz + s * 7.45], [0.06, 0.07, 0.08], 0.08, 0.8, { rot: [-s * 0.35, 0, 0] })); // windshield
-    parts.push(P(box(0.3, 0.1, 0.06), [0.85, 1.25, cz + s * 7.82], [1.0, 0.95, 0.85], 0.2, 0, { glow: 1.5 }));
-    parts.push(P(box(0.3, 0.1, 0.06), [-0.85, 1.25, cz + s * 7.82], [1.0, 0.95, 0.85], 0.2, 0, { glow: 1.5 }));
+    parts.push(P(box(2.7, 2.1, 12.4), [0, 1.9, cz], white, 0.3, 0.45));
+    parts.push(P(box(2.72, 0.12, 12.42), [0, 1.0, cz], teal, 0.35, 0.4));
+    parts.push(P(box(2.74, 0.8, 11.4), [0, 2.3, cz], glass, 0.08, 0.6, { glow: 1.0 }));           // window band (lit at night)
+    parts.push(P(box(3.0, 0.7, 12.6), [0, 0.55, cz], dark, 0.6, 0.5));                          // skirt that wraps the guideway
+    // long rounded nose at the outer end
+    parts.push(P(sph(1.0, 10, 6), [0, 1.75, cz + s * 6.4], white, 0.3, 0.45, { scale: [1.34, 1.05, 3.4] }));
+    parts.push(P(sph(1.0, 8, 5), [0, 2.1, cz + s * 7.3], [0.05, 0.06, 0.07], 0.08, 0.8, { scale: [1.0, 0.62, 2.0] })); // windshield
+    parts.push(P(box(1.6, 0.05, 0.06), [0, 1.2, cz + s * 9.62], [1.0, 0.97, 0.9], 0.2, 0, { glow: 1.5 }));
   }
-  parts.push(P(box(2.2, 2.0, 1.2), [0, 2.0, 0], dark, 0.8, 0.2)); // joint between the two cars
+  parts.push(P(box(2.3, 1.9, 2.9), [0, 1.9, 0], dark, 0.8, 0.2)); // joint between the two cars
   return mergeParts(parts);
 }
 
@@ -963,4 +959,292 @@ export function makeCharger() {
     P(cyl(0.035, 0.035, 0.16, 6), [0.4, 1.0, 0.05], [0.03, 0.03, 0.03], 0.6, 0.2, { rot: [0, 0, HALF_PI] }),
     P(cyl(0.022, 0.022, 0.7, 5), [0.46, 0.66, 0.05], [0.03, 0.03, 0.03], 0.7, 0),
   ]);
+}
+
+
+// ===========================================================================
+// FUTURISTIC BUILDING PARTS (2090 style, placed by buildingKit.js)
+// ===========================================================================
+
+// Outline of a "unit" floor plan: a square with rounded corners that fits
+// into -1..1 in x and z. The kit stretches it to the real size of a building.
+//   rho = corner radius: 0.25 soft square, 0.55 round square, 1 = circle
+// Returns points { x, z, nx, nz, s } going round (s = 0..1 along the outline).
+// The first and the last point are the same (middle of the front, +z side).
+export function planRing(rho, seg = 4) {
+  const r = Math.min(1, Math.max(0.02, rho)), c = 1 - r;
+  const pts = [{ x: 0, z: 1, nx: 0, nz: 1 }];
+  // corner centers and start angles (angles go from +x toward +z)
+  const corners = [[c, c, Math.PI / 2], [c, -c, 0], [-c, -c, -Math.PI / 2], [-c, c, -Math.PI]];
+  for (const [cx, cz, a0] of corners) {
+    for (let i = 0; i <= seg; i++) {
+      const a = a0 - (i / seg) * (Math.PI / 2);
+      pts.push({ x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r, nx: Math.cos(a), nz: Math.sin(a) });
+    }
+  }
+  pts.push({ x: 0, z: 1, nx: 0, nz: 1 });
+  let total = 0;
+  pts[0].s = 0;
+  for (let i = 1; i < pts.length; i++) {
+    total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+    pts[i].s = total;
+  }
+  for (const p of pts) p.s /= total;
+  return pts;
+}
+
+// Parts for the "panel" material: data = ( kind, roughness, metalness, glow ).
+//   kind 0 smooth, 1 perforated, 2 slats, 3 seam metal, 4 solar, 5 pool
+function panelParts(parts) {
+  const mb = new MeshBuilder();
+  for (const p of parts) {
+    const c = p.color || [1, 1, 1];
+    mb.color(c[0], c[1], c[2], 1);
+    mb.data(p.kind || 0, p.rough ?? 0.55, p.metal ?? 0.1, p.glow ?? 0);
+    const pos = p.pos || [0, 0, 0];
+    mb.add(p.geom, pos[0], pos[1], pos[2], p.rot || null, p.scale ?? null);
+  }
+  return mb.build(true);
+}
+
+// Floor slab edge: a ring that sticks out around one floor (white trays,
+// balcony bands). The building outline is at -1..1; the ring reaches from
+// 0.88 (hidden inside the glass) out to 1 + out. Height 0..1 (stretched to
+// the slab thickness).  wave > 0: the edge swings in and out (wave balconies).
+export function makeSlabRing(rho, out = 0.06, wave = 0, phase = 0, seg = 4) {
+  const ring = planRing(rho, seg);
+  const mb = new MeshBuilder();
+  mb.color(1, 1, 1, 1);
+  mb.data(0, 0.55, 0.08, 0);
+  const P = ring.map((p) => {
+    const o = out + wave * (0.5 + 0.5 * Math.sin(3 * Math.atan2(p.x, p.z) + phase));
+    return { ix: p.x * 0.88, iz: p.z * 0.88, ox: p.x + p.nx * o, oz: p.z + p.nz * o, nx: p.nx, nz: p.nz };
+  });
+  for (let i = 0; i < P.length - 1; i++) {
+    const a = P[i], b = P[i + 1];
+    if (Math.hypot(b.ox - a.ox, b.oz - a.oz) < 1e-5) continue;
+    // top, bottom
+    mb.quadAuto([a.ix, 1, a.iz], [a.ox, 1, a.oz], [b.ox, 1, b.oz], [b.ix, 1, b.iz], [0, 1, 0]);
+    mb.quadAuto([a.ix, 0, a.iz], [a.ox, 0, a.oz], [b.ox, 0, b.oz], [b.ix, 0, b.iz], [0, -1, 0]);
+    // rounded outer edge (smooth shading from corner to corner)
+    const i0 = mb.vertex(a.ox, 0, a.oz, a.nx, 0, a.nz), i1 = mb.vertex(b.ox, 0, b.oz, b.nx, 0, b.nz);
+    const i2 = mb.vertex(b.ox, 1, b.oz, b.nx, 0, b.nz), i3 = mb.vertex(a.ox, 1, a.oz, a.nx, 0, a.nz);
+    mb.quadIdx(i0, i1, i2, i3);
+  }
+  return mb.build(true);
+}
+
+// Glass balustrade that stands on a slab ring (uses the fence / railing picture).
+export function makeRailRing(rho, out = 0.05, seg = 4) {
+  const ring = planRing(rho, seg);
+  const mb = new MeshBuilder();
+  const R = RAIL.glass;
+  mb.color(1, 1, 1, 1);
+  for (let i = 0; i < ring.length - 1; i++) {
+    const a = ring[i], b = ring[i + 1];
+    const ax = a.x + a.nx * out, az = a.z + a.nz * out, bx = b.x + b.nx * out, bz = b.z + b.nz * out;
+    if (Math.hypot(bx - ax, bz - az) < 1e-5) continue;
+    const i0 = mb.vertex(ax, 0, az, a.nx, 0, a.nz, a.s * 44, R.v0), i1 = mb.vertex(bx, 0, bz, b.nx, 0, b.nz, b.s * 44, R.v0);
+    const i2 = mb.vertex(bx, 1, bz, b.nx, 0, b.nz, b.s * 44, R.v1), i3 = mb.vertex(ax, 1, az, a.nx, 0, a.nz, a.s * 44, R.v1);
+    mb.quadIdx(i0, i1, i2, i3);
+  }
+  return mb.build(false);
+}
+
+// A straight piece of glass balustrade, 1 m long (x = -0.5..0.5), 1 m high.
+export function makeGlassRail() {
+  const mb = new MeshBuilder();
+  const R = RAIL.glass;
+  mb.color(1, 1, 1, 1);
+  mb.quad([-0.5, 0, 0], [0.5, 0, 0], [0.5, 1, 0], [-0.5, 1, 0], [0, 0, 1], [0, R.v0], [1, R.v0], [1, R.v1], [0, R.v1]);
+  return mb.build(false);
+}
+
+// RIBBON FRAMES for one flat side of a building. The side is the unit
+// square x = -0.5..0.5, y = 0..1; the band sticks out z = 0..1 (stretched to
+// about 0.4 m). kind: 'S' big S-curve, 'sweep' diagonal swing, 'portal' rounded frame.
+export function makeFaceRibbon(kind) {
+  let path, closed = false, half = 0.04;
+  if (kind === 'S') path = [[-0.5, 0.0], [-0.3, 0.04], [-0.06, 0.26], [0.0, 0.5], [0.06, 0.74], [0.3, 0.96], [0.5, 1.0]];
+  else if (kind === 'sweep') path = [[-0.5, 0.12], [-0.22, 0.16], [0.0, 0.5], [0.22, 0.84], [0.5, 0.88]];
+  else {
+    // rounded rectangle outline
+    path = [];
+    const w = 0.4, h0 = 0.08, h1 = 0.92, r = 0.12;
+    const arc = (cx, cy, a0) => { for (let i = 0; i <= 5; i++) { const a = a0 + (i / 5) * (Math.PI / 2); path.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.6]); } };
+    arc(w - r, h1 - r * 0.6, 0); arc(-w + r, h1 - r * 0.6, Math.PI / 2); arc(-w + r, h0 + r * 0.6, Math.PI); arc(w - r, h0 + r * 0.6, Math.PI * 1.5);
+    closed = true;
+    half = 0.03;
+  }
+  // smooth the path (Catmull-Rom), except the portal which is already smooth
+  let pts = path;
+  if (!closed) {
+    pts = [];
+    const n = path.length, P = (i) => path[Math.min(n - 1, Math.max(0, i))];
+    for (let i = 0; i < n - 1; i++) {
+      for (let k = 0; k < 6; k++) {
+        const t = k / 6, p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
+        const cr = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t);
+        pts.push([cr(p0[0], p1[0], p2[0], p3[0]), cr(p0[1], p1[1], p2[1], p3[1])]);
+      }
+    }
+    pts.push(path[n - 1]);
+  } else pts = path.concat([path[0]]);
+  const mb = new MeshBuilder();
+  mb.color(1, 1, 1, 1);
+  mb.data(0, 0.5, 0.12, 0);
+  const n = pts.length;
+  const edge = pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    let tx = b[0] - a[0], ty = b[1] - a[1];
+    if (closed && (i === 0 || i === n - 1)) { tx = pts[1][0] - pts[n - 2][0]; ty = pts[1][1] - pts[n - 2][1]; }
+    const l = Math.hypot(tx, ty) || 1;
+    const mx = -ty / l, my = tx / l;
+    return { lx: p[0] + mx * half, ly: p[1] + my * half, rx: p[0] - mx * half, ry: p[1] - my * half, mx, my };
+  });
+  for (let i = 0; i < n - 1; i++) {
+    const a = edge[i], b = edge[i + 1];
+    mb.quadAuto([a.lx, a.ly, 1], [a.rx, a.ry, 1], [b.rx, b.ry, 1], [b.lx, b.ly, 1], [0, 0, 1]);                 // front
+    mb.quadAuto([a.lx, a.ly, 0], [a.lx, a.ly, 1], [b.lx, b.ly, 1], [b.lx, b.ly, 0], [a.mx, a.my, 0]);           // one side
+    mb.quadAuto([a.rx, a.ry, 0], [a.rx, a.ry, 1], [b.rx, b.ry, 1], [b.rx, b.ry, 0], [-a.mx, -a.my, 0]);         // other side
+  }
+  return mb.build(true);
+}
+
+// Round helipad on a short stem. The deck is 12 m wide and 2 m above the roof.
+export function makeHelipad() {
+  const deck = [0.19, 0.2, 0.21], white = [0.86, 0.86, 0.83];
+  const ring = new THREE.RingGeometry(4.25, 4.7, 20);
+  const parts = [
+    P(openCyl(1.4, 1.7, 1.7, 8), [0, 0.85, 0], [0.5, 0.51, 0.52], 0.6, 0.3),
+    P(cyl(6.0, 5.5, 0.4, 18), [0, 1.87, 0], deck, 0.8, 0.1),
+    P(openCyl(6.08, 6.08, 0.1, 18), [0, 2.03, 0], [0.62, 0.63, 0.64], 0.5, 0.5),
+    P(ring, [0, 2.09, 0], white, 0.7, 0, { rot: [-HALF_PI, 0, 0] }),
+    P(box(0.5, 0.02, 3.0), [-1.1, 2.095, 0], white, 0.7, 0),
+    P(box(0.5, 0.02, 3.0), [1.1, 2.095, 0], white, 0.7, 0),
+    P(box(2.2, 0.02, 0.5), [0, 2.095, 0], white, 0.7, 0),
+  ];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.39;
+    parts.push(P(new THREE.PlaneGeometry(0.3, 0.3), [Math.cos(a) * 5.7, 2.1, Math.sin(a) * 5.7], [0.3, 1.0, 0.5], 0.4, 0, { glow: 0.9, rot: [-HALF_PI, 0, 0] }));
+  }
+  return mergeParts(parts);
+}
+
+// Small drone landing pad on a mast, with a parked delivery drone.
+export function makeDronePad() {
+  const deck = [0.17, 0.18, 0.19];
+  const ring = new THREE.RingGeometry(1.7, 1.95, 14);
+  const body = [0.12, 0.13, 0.14];
+  const parts = [
+    P(openCyl(0.16, 0.22, 1.5, 5), [0, 0.75, 0], [0.55, 0.56, 0.57], 0.5, 0.6),
+    P(cyl(2.5, 2.3, 0.22, 12), [0, 1.61, 0], deck, 0.8, 0.1),
+    P(ring, [0, 1.74, 0], [0.86, 0.86, 0.83], 0.7, 0, { rot: [-HALF_PI, 0, 0] }),
+    // a parked delivery drone (simple shape: body, two arms, four rotor discs)
+    P(box(0.55, 0.18, 0.7), [0, 1.98, 0], body, 0.4, 0.5),
+    P(box(1.5, 0.05, 0.08), [0, 2.02, 0], body, 0.4, 0.5, { rot: [0, 0.78, 0] }),
+    P(box(1.5, 0.05, 0.08), [0, 2.02, 0], body, 0.4, 0.5, { rot: [0, -0.78, 0] }),
+  ];
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.78;
+    parts.push(P(new THREE.CircleGeometry(0.3, 6), [Math.cos(a) * 0.75, 2.1, Math.sin(a) * 0.75], [0.25, 0.25, 0.26], 0.5, 0.2, { rot: [-HALF_PI, 0, 0] }));
+    parts.push(P(new THREE.PlaneGeometry(0.2, 0.2), [Math.cos(a) * 2.3, 1.74, Math.sin(a) * 2.3], [0.3, 0.85, 1.0], 0.4, 0, { glow: 0.9, rot: [-HALF_PI, 0, 0] }));
+  }
+  return mergeParts(parts);
+}
+
+// One 8 m piece of a glass sky bridge (runs along x). Several pieces in a row
+// make a long bridge. The floor is at y = 0.
+export function makeSkyBridge() {
+  const L = 8, W = 3.0, H = 3.1;
+  const frame = [0.62, 0.64, 0.66], glass = [0.05, 0.07, 0.09];
+  const parts = [
+    P(box(L, 0.32, W + 0.3), [0, -0.16, 0], frame, 0.5, 0.4),
+    P(box(L, 0.26, W + 0.3), [0, H + 0.13, 0], frame, 0.5, 0.4),
+    P(box(L - 0.3, 0.04, 0.3), [0, H - 0.03, 0], [1.0, 0.86, 0.66], 0.3, 0, { glow: 0.7 }),   // light strip inside
+  ];
+  const diag = Math.hypot(L / 2, H), ang = Math.atan2(H, L / 2);
+  for (const sz of [-1, 1]) {
+    parts.push(P(box(L, H, 0.05), [0, H / 2, sz * W / 2], glass, 0.08, 0.85));
+    for (const x of [-L / 2, 0, L / 2]) parts.push(P(box(0.14, H, 0.14), [x, H / 2, sz * (W / 2 + 0.06)], frame, 0.5, 0.4));
+    // light truss: one diagonal per 4 m
+    parts.push(P(box(diag, 0.1, 0.1), [-L / 4, H / 2, sz * (W / 2 + 0.07)], frame, 0.5, 0.4, { rot: [0, 0, ang] }));
+    parts.push(P(box(diag, 0.1, 0.1), [L / 4, H / 2, sz * (W / 2 + 0.07)], frame, 0.5, 0.4, { rot: [0, 0, -ang] }));
+  }
+  return mergeParts(parts);
+}
+
+// EV bay on a ground floor wall: a dark opening with a green light frame and
+// a charger. The wall is at z = 0, the bay is 3.4 m wide.
+export function makeEvBay() {
+  const frame = [0.6, 0.62, 0.64], green = [0.25, 1.0, 0.55];
+  return mergeParts([
+    P(box(3.2, 2.75, 0.05), [0, 1.38, 0.04], [0.02, 0.022, 0.025], 0.5, 0.2),
+    P(box(0.18, 2.95, 0.34), [-1.62, 1.475, 0.17], frame, 0.5, 0.4),
+    P(box(0.18, 2.95, 0.34), [1.62, 1.475, 0.17], frame, 0.5, 0.4),
+    P(box(3.42, 0.2, 0.34), [0, 2.95, 0.17], frame, 0.5, 0.4),
+    P(box(3.0, 0.045, 0.04), [0, 2.8, 0.24], green, 0.3, 0, { glow: 1.25 }),
+    P(box(0.04, 2.5, 0.04), [-1.49, 1.4, 0.24], green, 0.3, 0, { glow: 1.2 }),
+    P(box(0.04, 2.5, 0.04), [1.49, 1.4, 0.24], green, 0.3, 0, { glow: 1.2 }),
+    P(box(0.3, 1.25, 0.2), [1.05, 0.63, 0.3], [0.85, 0.86, 0.86], 0.35, 0.3),
+    P(box(0.2, 0.12, 0.02), [1.05, 1.05, 0.41], green, 0.2, 0, { glow: 1.5 }),
+  ]);
+}
+
+// Hanging plant: a few long leaves that hang down from one point (y = 0 is
+// the top). Uses the palm frond picture.
+export function makeVine(seed = 9) {
+  const rng = new RNG(seed);
+  const mb = new MeshBuilder();
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI + rng.range(-0.3, 0.3);
+    const len = rng.range(1.3, 2.1), w = rng.range(0.5, 0.75), lean = rng.range(0.05, 0.3);
+    const dx = Math.cos(a), dz = Math.sin(a);
+    const ox = rng.range(-0.25, 0.25), tx = ox + rng.range(-0.15, 0.15);
+    const n = [-dz * 0.4, 0.5, dx * 0.4 + 0.75];
+    mb.color(1, 1, 0.92, 1);
+    mb.data(0, 0, 0, 0);
+    const i0 = mb.vertex(ox - dx * w / 2, 0, -dz * w / 2, n[0], n[1], n[2], 0, 0), i1 = mb.vertex(ox + dx * w / 2, 0, dz * w / 2, n[0], n[1], n[2], 1, 0);
+    mb.color(0.8, 0.86, 0.72, 1);
+    mb.data(0.7, 0, 0, 0);
+    const i2 = mb.vertex(tx + dx * w / 2, -len, dz * w / 2 + lean, n[0], n[1], n[2], 1, 1), i3 = mb.vertex(tx - dx * w / 2, -len, -dz * w / 2 + lean, n[0], n[1], n[2], 0, 1);
+    mb.quadIdx(i0, i1, i2, i3);
+  }
+  return mb.build(true);
+}
+
+// Smart street light: a slim pole with a thin bar of white light. The bar
+// points to +z (the street). lampPos = where the light comes from.
+export function makeSmartLight() {
+  const col = [0.6, 0.62, 0.64], led = [0.92, 0.96, 1.0];
+  const geometry = mergeParts([
+    P(openCyl(0.15, 0.18, 0.5, 6), [0, 0.25, 0], col, 0.45, 0.7),
+    P(openCyl(0.05, 0.085, 8.4, 5), [0, 4.7, 0], col, 0.45, 0.7),
+    P(box(0.08, 0.05, 2.9), [0, 8.86, 1.25], col, 0.45, 0.7),
+    P(box(0.055, 0.02, 2.1), [0, 8.825, 1.55], led, 0.3, 0, { glow: 1 }),
+    P(box(0.14, 0.14, 0.14), [0, 8.95, -0.1], [0.08, 0.09, 0.1], 0.3, 0.6),               // sensor
+    P(box(0.2, 0.04, 0.2), [0, 2.3, 0], [0.3, 0.8, 1.0], 0.3, 0, { glow: 1.15 }),          // small status light
+  ]);
+  return { geometry, lampPos: [0, 8.8, 1.55] };
+}
+
+// Smart mast: slim pole with small antennas, a camera and a status light.
+export function makeSmartMast() {
+  const col = [0.56, 0.58, 0.6];
+  return mergeParts([
+    P(cyl(0.14, 0.17, 0.4, 8), [0, 0.2, 0], col, 0.45, 0.7),
+    P(openCyl(0.05, 0.08, 7.4, 6), [0, 4.1, 0], col, 0.45, 0.7),
+    P(box(0.18, 0.7, 0.1), [0.16, 7.2, 0], [0.8, 0.81, 0.82], 0.4, 0.2),
+    P(box(0.18, 0.7, 0.1), [-0.16, 7.2, 0], [0.8, 0.81, 0.82], 0.4, 0.2),
+    P(box(0.1, 0.5, 0.18), [0, 6.5, 0.16], [0.8, 0.81, 0.82], 0.4, 0.2),
+    P(sph(0.11, 6, 4), [0.2, 5.4, 0], [0.05, 0.05, 0.06], 0.2, 0.6),
+    P(box(0.06, 0.06, 0.06), [0, 7.85, 0], [1.0, 0.2, 0.15], 0.3, 0, { glow: 1.3 }),
+  ]);
+}
+
+// Flat field of solar panels for roofs: 1 x 1 m, lies at y = 0..1 (stretch to size).
+export function makeSolarField() {
+  const g = box(1, 1, 1);
+  g.translate(0, 0.5, 0);
+  return panelParts([{ geom: g, kind: 4, rough: 0.14, metal: 0.55, color: [1, 1, 1] }]);
 }

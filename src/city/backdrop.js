@@ -4,7 +4,7 @@
 //   * dry brown hills on the north and east horizon
 //   * THE CROWN: downtown towers with the Kessler-Vance (KVI) headquarters
 //   * IRONHILL HIGHWAY: raised freeway on pillars along the east edge
-//   * the raised light-rail line with its train
+//   * the raised maglev line on thin pillars, with its train
 //   * rows of scenery buildings that close the view at the edges
 // ---------------------------------------------------------------------------
 
@@ -14,8 +14,8 @@ import { RNG } from '../utils/math.js';
 import { makeFbm } from '../utils/noise.js';
 import { MeshBuilder } from '../utils/geometry.js';
 import { simpleBuilding } from './buildings.js';
+import { buildHero } from './heroBuildings.js';
 import { makeTrain } from './models.js';
-import { HOLO_COUNT } from './textures.js';
 
 const T = CONFIG.textures;
 const CONCRETE = [0.74, 0.78, 0.86]; // turns the warm plaster picture into grey concrete
@@ -99,65 +99,78 @@ function buildHills(ctx) {
 }
 
 // ---------------------------------------------------------------------------
-// THE CROWN: glass towers 60 - 220 m, and the 260 m KVI headquarters.
+// THE CROWN (the part outside the walkable area): far glass towers 60 - 220 m
+// and the 260 m Kessler-Vance (KVI) headquarters, a taller twist tower.
+// Far towers are the simplest shapes with the glass photo texture; a few get
+// a ribbon frame and a helipad, some are linked by sky bridges.
+// (The Crown towers you can walk up to stand on the hero sites of layout.js.)
 // ---------------------------------------------------------------------------
 function buildCrown(ctx) {
   const L = ctx.layout;
   const C = L.crown;
+  const kit = ctx.kit;
   const rng = new RNG(L.seed + 77);
-  const mb = ctx.mb.tower;
-  const tile = T.glassTower.size;
+  ctx.rng = rng;
+  ctx.playableNow = false;
   const tints = [[0.8, 0.88, 0.96], [1, 1, 1], [0.84, 0.96, 0.92], [0.5, 0.54, 0.6], [1.0, 0.86, 0.7], [0.66, 0.72, 0.82], [0.38, 0.42, 0.48], [0.9, 0.92, 0.9]];
-  const placed = [{ x: C.kvi.x, z: C.kvi.z, r: 40 }];
+  const k = C.kvi;
+  const placed = [{ x: k.x, z: k.z, r: 44, top: k.height }];
 
-  const tower = (x, z, w, d, h, tint) => {
-    mb.color(tint[0], tint[1], tint[2], 1);
-    mb.box(x - w / 2, 0, z - d / 2, x + w / 2, h, z + d / 2, tile, 'nsewt');
-  };
+  // ---- Kessler-Vance headquarters: the twist tower, 260 m ----
+  buildHero(kit, 'b01', { x: k.x, z: k.z, rot: Math.PI * 0.8, far: true, scale: k.height / 160 });
+  // red warning light on a thin mast
+  const ps = ctx.mb.propStatic;
+  ps.color(0.05, 0.055, 0.06, 1).data(0.4, 0.8, 0, 0);
+  ps.box(k.x - 0.5, k.height, k.z - 0.5, k.x + 0.5, k.height + 22, k.z + 0.5, 1, 'nsew');
+  ps.color(1, 0.08, 0.05, 1).data(0.4, 0, 0, 1.9);
+  ps.box(k.x - 1.0, k.height + 22, k.z - 1.0, k.x + 1.0, k.height + 23.6, k.z + 1.0, 1, 'nsewt');
+  // the big KVI light sign floats beside the tower, turned toward the city
+  kit.hologram(k.x - 28, k.z - 34, k.height * 0.42, -0.55, -0.83, 5.5, 0);
 
+  // ---- two more landmarks in the distance: S-curve tower and hourglass tower ----
+  for (const [id, x, z, r] of [['b10', k.x + 118, k.z + 40, 30], ['b11', k.x - 96, k.z + 26, 24]]) {
+    buildHero(kit, id, { x, z, rot: Math.PI * 0.8, far: true });
+    placed.push({ x, z, r, top: id === 'b10' ? 180 : 140 });
+  }
+
+  // ---- the other towers ----
   let tries = 0;
-  while (placed.length < C.towers + 1 && tries++ < 4000) {
+  while (placed.length < C.towers + 3 && tries++ < 4000) {
     const a = rng.range(0, Math.PI * 2), rr = Math.sqrt(rng.next()) * C.radius;
     const x = C.centerX + Math.cos(a) * rr * 1.25, z = C.centerZ + Math.sin(a) * rr;
-    const w = rng.range(26, 52), d = rng.range(26, 52);
+    const w = rng.range(26, 50), d = rng.range(26, 50);
     if (z - d / 2 < L.city.maxZ + 62) continue; // keep clear of the scenery blocks
     const r = Math.max(w, d) * 0.75;
     if (placed.some((p) => Math.hypot(p.x - x, p.z - z) < p.r + r)) continue;
-    placed.push({ x, z, r });
     // towers are tallest in the middle of the district
     const mid = 1 - Math.min(1, rr / C.radius);
     const h = C.minHeight + (C.maxHeight - C.minHeight) * Math.min(1, mid * 0.75 + rng.next() * 0.45);
-    const tint = rng.pick(tints);
-    tower(x, z, w, d, h, tint);
-    // a narrower top part on many towers
-    if (rng.chance(0.6)) tower(x + rng.range(-3, 3), z + rng.range(-3, 3), w * 0.66, d * 0.66, h + rng.range(12, 40), tint);
+    const roll = rng.next();
+    const tw = rng.range(0.5, 1.3) * (rng.chance(0.5) ? 1 : -1);
+    const levels = roll < 0.25 ? null
+      : roll < 0.5 ? [[0, 1, 0], [0.5, 0.95, 0], [1, rng.range(0.6, 0.8), 0]]                // tapered
+        : roll < 0.75 ? [[0, 1, 0], [0.5, 0.92, tw * 0.5], [1, 0.96, tw]]                      // twisted
+          : [[0, 1, 0], [0.5, rng.range(0.72, 0.84), 0], [1, 1, 0]];                           // hourglass
+    const sf = kit.body({
+      x, z, rot: rng.range(0, 3.14), plan: rng.pick(['soft', 'round', 'round', 'circle']), a: w / 2, b: d / 2, y0: 0, y1: h,
+      levels, steps: levels ? 7 : 1, mat: 'tower', tint: rng.pick(tints), lo: true,
+    });
+    kit.cap(sf, h);
+    // some get a big ribbon frame, some a helipad
+    if (rng.chance(0.45)) {
+      const u = rng.next(), dir = rng.chance(0.5) ? 1 : -1;
+      kit.ribbon(sf, [[u, 3], [u + dir * 0.12, h * 0.3], [u + dir * 0.4, h * 0.7], [u + dir * 0.5, h - 2]], { w: 4.5, out: 0.9, color: kit.C.light, fine: 8 });
+    }
+    if (rng.chance(0.5)) kit.parts.helipad.add(x, h, z, 0, 1);
+    // sky bridge to a tower close by
+    const near = placed.find((p) => p.top > 70 && Math.hypot(p.x - x, p.z - z) < p.r + r + 26);
+    if (near && rng.chance(0.7)) {
+      const len = Math.hypot(near.x - x, near.z - z), dx = (near.x - x) / len, dz = (near.z - z) / len;
+      const y = Math.min(h, near.top) * rng.range(0.4, 0.7);
+      kit.bridge(x + dx * (Math.min(w, d) / 2 - 5), z + dz * (Math.min(w, d) / 2 - 5), near.x - dx * (near.r * 0.6), near.z - dz * (near.r * 0.6), y);
+    }
+    placed.push({ x, z, r, top: h });
   }
-
-  // ---- Kessler-Vance headquarters: the tallest tower, in three steps ----
-  const k = C.kvi;
-  const kt = [0.62, 0.72, 0.86];
-  tower(k.x, k.z, 50, 50, k.height * 0.74, kt);
-  tower(k.x, k.z, 37, 37, k.height * 0.92, kt);
-  tower(k.x, k.z, 24, 24, k.height, kt);
-  // thin mast on top (dark metal)
-  const ps = ctx.mb.propStatic;
-  ps.color(0.05, 0.055, 0.06, 1).data(0.4, 0.8, 0, 0);
-  ps.box(k.x - 0.8, k.height, k.z - 0.8, k.x + 0.8, k.height + 34, k.z + 0.8, 1, 'nsew');
-  // red warning light on the mast
-  ps.color(1, 0.08, 0.05, 1).data(0.4, 0, 0, 1.9);
-  ps.box(k.x - 1.2, k.height + 34, k.z - 1.2, k.x + 1.2, k.height + 36, k.z + 1.2, 1, 'nsewt');
-
-  // ---- giant KVI light banner on the tower sides that face the city ----
-  // (panel 0 of the hologram picture is the KVI advert)
-  const hm = ctx.mb.holo;
-  const u0 = 0, u1 = 1 / HOLO_COUNT;
-  const banner = (p0, p1, y0, y1, n) => {
-    const v = (p, y, lu, lv, uu, vv) => { hm.color(lu, lv, 0, 1); return hm.vertex(p[0], y, p[1], n[0], 0, n[1], uu, vv); };
-    hm.quadIdx(v(p0, y0, 0, 0, u0, 0), v(p1, y0, 1, 0, u1, 0), v(p1, y1, 1, 1, u1, 1), v(p0, y1, 0, 1, u0, 1));
-  };
-  const y0 = k.height * 0.74 - 74, y1 = k.height * 0.74 - 6;
-  banner([k.x + 17, k.z - 25.4], [k.x - 17, k.z - 25.4], y0, y1, [0, -1]);   // south face
-  banner([k.x - 25.4, k.z - 17], [k.x - 25.4, k.z + 17], y0, y1, [-1, 0]);   // east face
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +232,7 @@ function buildHighway(ctx) {
 }
 
 // ---------------------------------------------------------------------------
-// LIGHT RAIL: thin pillars, a narrow track deck, one raised station, a train
+// MAGLEV LINE: thin pillars, a narrow guideway, one raised station, a train
 // ---------------------------------------------------------------------------
 function buildRail(ctx) {
   const L = ctx.layout;
@@ -234,10 +247,15 @@ function buildRail(ctx) {
   pm.box(x - 2.7, top - 0.9, R.southEndZ, x + 2.7, top, R.northEndZ, tile, 'nsewtb');
   pm.box(x - 1.2, top - 1.7, R.southEndZ, x + 1.2, top - 0.9, R.northEndZ, tile, 'nsewb');
   for (const sx of [-2.7, 2.45]) pm.box(x + sx, top, R.southEndZ, x + sx + 0.25, top + 0.4, R.northEndZ, tile, 'ewt');
-  // dark rails on the deck
+  // maglev guideway: one raised beam in the middle with dark magnet strips on its sides
   const ps = ctx.mb.propStatic;
+  con(1.05);
+  pm.box(x - 0.7, top, R.southEndZ, x + 0.7, top + 0.5, R.northEndZ, tile, 'ewt');
   ps.color(0.05, 0.05, 0.055, 1).data(0.35, 0.9, 0, 0);
-  for (const o of [-1.75, -0.95, 0.95, 1.75]) ps.box(x + o - 0.05, top, R.southEndZ, x + o + 0.05, top + 0.1, R.northEndZ, 1, 'ewt');
+  for (const o of [-0.72, 0.72]) ps.box(x + o - 0.03, top + 0.12, R.southEndZ, x + o + 0.03, top + 0.4, R.northEndZ, 1, 'ew');
+  // thin strip of light along both edges of the deck (glows at night)
+  ps.color(0.75, 0.9, 1.0, 1).data(0.3, 0, 0, 0.7);
+  for (const o of [-2.72, 2.72]) ps.box(x + o - 0.02, top - 0.5, R.southEndZ, x + o + 0.02, top - 0.42, R.northEndZ, 1, 'ew');
 
   // thin round pillars with a small head
   const pillar = new THREE.CylinderGeometry(0.5, 0.55, top - 1.7, 12);

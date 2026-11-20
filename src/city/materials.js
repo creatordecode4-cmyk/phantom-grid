@@ -330,7 +330,7 @@ float pgRect1( float x, float a, float b, float aa ) {
 	return smoothstep( a - aa, a + aa, x ) - smoothstep( b - aa, b + aa, x );
 }
 
-#if defined( PG_WINDOWS ) || defined( PG_WINMOD )
+#if defined( PG_WINDOWS ) || defined( PG_WINMOD ) || defined( PG_GLASS )
 uniform sampler2D uPgWinAtlas;
 uniform sampler2D uPgWinLit;
 const vec4 PG_WIN1 = ${glslVec4(WINDOW_STYLES[1])};
@@ -469,9 +469,9 @@ void pgShopFront( vec2 p, vec2 size, float type, float seed,
 		float flatPart = 1.0 - pgRect( p, vec2( 0.07, 0.11 ), vec2( size.x - 0.07, size.y - 0.28 ), aa );
 		alb = mix( alb, base * 0.7, flatPart );
 		ridge *= 1.0 - flatPart;
-		// rust and dirt creeping up from the bottom
+		// a little street dust near the bottom
 		float dirt = texture2D( uPgNoise, p * vec2( 0.31, 0.07 ) + seed ).a;
-		alb = mix( alb, vec3( 0.17, 0.1, 0.06 ), smoothstep( 0.5, 0.95, dirt + ( 1.0 - p.y / size.y ) * 0.35 ) * 0.55 );
+		alb = mix( alb, vec3( 0.2, 0.19, 0.18 ), smoothstep( 0.55, 0.95, dirt + ( 1.0 - p.y / size.y ) * 0.3 ) * 0.3 );
 	} else if ( type < 2.5 ) {
 		// ---- plain door with a small window above ----
 		vec3 base = h1 < 0.35 ? vec3( 0.13, 0.05, 0.04 ) : h1 < 0.6 ? vec3( 0.06, 0.09, 0.13 )
@@ -581,6 +581,9 @@ const PG_FRAGMENT_COLOR = /* glsl */ `
 	float pgAge = 0.0;     // how old and worn this building is
 	float pgRoofDist = - 1.0;
 	float pgRust = 0.0;
+	float pgPanelRough = 0.6;
+	float pgPanelMetal = 0.0;
+	vec3 pgEmitA = vec3( 0.0 );   // light that is also given off by day
 	vec4 pgN1 = vec4( 0.5 );
 	vec4 pgN2 = vec4( 0.5 );
 	vec3 pgEmit = vec3( 0.0 );
@@ -778,6 +781,123 @@ const PG_FRAGMENT_COLOR = /* glsl */ `
 	}
 #endif
 
+#ifdef PG_GLASS
+	{
+		// GLASS CURTAIN WALL. vPgData = ( bay number, floor number, kind, building seed )
+		//   kind 0 = curtain wall,  1 = lobby (tall lit panes),  2 = veil (glass printed with fine light lines)
+		vec2 g = vPgData.xy;
+		vec2 cell = floor( g );
+		vec2 f = g - cell;
+		vec2 fw = fwidth( g ) + 0.0004;
+		float kind = floor( vPgData.z + 0.5 );
+		float lobby = step( 0.5, kind ) * ( 1.0 - step( 1.5, kind ) );
+		float seed = vPgData.w;
+		float h1 = pgCellHash( cell, 1.0 );
+		float h2 = pgCellHash( cell, 2.0 );
+		float h3 = pgCellHash( cell, 3.0 );
+		vec3 tint = diffuseColor.rgb;
+		// far away the thin lines would flicker: blend them into the glass
+		float fadeX = clamp( 1.0 - fw.x * 3.0, 0.0, 1.0 );
+		float fadeY = clamp( 1.0 - fw.y * 2.0, 0.0, 1.0 );
+		// a thin upright bar at every bay, a floor plate at every floor
+		float bar = ( 1.0 - smoothstep( 0.03, 0.03 + fw.x * 1.5, min( f.x, 1.0 - f.x ) ) ) * fadeX;
+		float plateH = mix( 0.13, 0.05, lobby );
+		float plate = ( 1.0 - smoothstep( plateH, plateH + fw.y * 1.5, f.y ) ) * mix( 0.45, 1.0, fadeY );
+		// every pane is a little different; some have a light blind pulled down
+		vec3 pane = tint * ( 0.8 + 0.4 * h1 );
+		float blindH = h2 > 0.72 ? 0.2 + 0.6 * fract( h2 * 9.7 ) : 0.0;
+		float blind = smoothstep( 1.0 - blindH - fw.y, 1.0 - blindH + fw.y, f.y ) * step( 0.001, blindH ) * fadeY * ( 1.0 - step( 0.5, kind ) );
+		pane = mix( pane, vec3( 0.4, 0.41, 0.4 ), blind * 0.85 );
+		float glassy = 1.0 - blind * 0.8;
+		if ( kind > 1.5 ) {
+			float lines = 0.5 + 0.5 * sin( g.x * 31.416 );
+			pane = mix( pane, vec3( 0.46, 0.48, 0.5 ), 0.42 + 0.26 * lines * fadeX );
+			glassy = 0.4;
+		}
+		// frames: light metal on most buildings, dark on some
+		vec3 frame = fract( seed * 7.31 ) < 0.62 ? vec3( 0.48, 0.5, 0.52 ) : vec3( 0.045, 0.05, 0.055 );
+		float fr = max( bar, plate );
+		// rain leaves faint streaks on the glass too
+		float streak = texture2D( uPgNoise, vec2( g.x * 0.11, vPgWorld.y * 0.012 ) ).a;
+		diffuseColor.rgb = mix( pane, frame, fr ) * ( 1.0 - 0.1 * smoothstep( 0.6, 0.95, streak ) );
+		pgGlass = glassy * ( 1.0 - fr );
+		// rooms with the light on: most only at night, a few glow all day
+		float share = 0.1 + 0.35 * fract( seed * 3.7 ) + 0.5 * lobby;
+		float mine = step( h2, share );
+		float room = ( 0.5 + 0.5 * smoothstep( 0.15, 0.95, f.y ) ) * ( 1.0 - blind * 0.5 ) * ( 1.0 - fr ) * ( 0.45 + 0.6 * h1 );
+		vec3 warm = h1 > 0.82 ? vec3( 0.7, 0.82, 1.0 ) : vec3( 1.0, 0.78, 0.5 );
+		pgEmit += warm * room * mine * step( h3, uPgWinLight ) * ( 1.0 + 0.5 * lobby );
+		pgEmitA += warm * room * mine * step( h3, 0.07 + 0.3 * lobby ) * ( 0.22 + 0.3 * lobby ) * uPgDay;
+	}
+#endif
+
+#ifdef PG_PANEL
+	{
+		// PANELS: frames, ribbons, slabs, roofs. vPgData = ( kind, roughness, metalness, glow )
+		//   kind 0 smooth, 1 perforated metal, 2 upright slats, 3 standing seam metal, 4 solar cells, 5 pool water
+		float kind = floor( vPgData.x + 0.5 );
+		vec3 N = normalize( vPgNormal );
+		float flatFace = step( 0.7, abs( N.y ) );
+		// position on the surface in meters: along the wall + up, or x + z on flat faces
+		vec2 wc = flatFace > 0.5 ? vPgWorld.xz : vec2( dot( vPgWorld.xz, normalize( vec2( - N.z, N.x ) + vec2( 1e-5 ) ) ), vPgWorld.y );
+		vec4 n1 = texture2D( uPgNoise, wc * 0.023 );
+		vec4 n2 = texture2D( uPgNoise, wc * 0.11 + 0.37 );
+		pgPanelRough = vPgData.y;
+		pgPanelMetal = vPgData.z;
+		// nothing is perfectly clean: soft dust, and rain streaks on upright faces
+		diffuseColor.rgb *= 0.9 + 0.2 * n1.r;
+		diffuseColor.rgb *= 1.0 - ( 1.0 - flatFace ) * 0.17 * smoothstep( 0.6, 0.95, n2.a ) * ( 0.4 + 0.6 * n1.b );
+		diffuseColor.rgb *= 1.0 - flatFace * 0.1 * n2.g;
+		if ( kind > 0.5 && kind < 1.5 ) {
+			// perforated metal: rows of small round holes
+			vec2 p = wc / 0.12;
+			float fwp = fwidth( p.x ) + fwidth( p.y );
+			float hole = 1.0 - smoothstep( 0.25, 0.25 + fwp, length( fract( p ) - 0.5 ) );
+			diffuseColor.rgb *= mix( 0.74, 1.0 - 0.78 * hole, clamp( 1.0 - fwp * 1.5, 0.0, 1.0 ) );
+		} else if ( kind > 1.5 && kind < 2.5 ) {
+			// upright slats (wood or bronze), each a slightly different tone
+			float sx = wc.x / 0.15;
+			float fr = fract( sx );
+			float fws = fwidth( sx );
+			float fade = clamp( 1.0 - fws * 1.8, 0.0, 1.0 );
+			float gap = 1.0 - smoothstep( 0.06, 0.12 + fws, min( fr, 1.0 - fr ) );
+			float tone = 0.82 + 0.36 * pgHash( vec2( floor( sx ), 7.0 ) );
+			diffuseColor.rgb *= mix( 0.82, tone * ( 1.0 - 0.82 * gap ), fade );
+			pgRidge = ( fr - 0.5 ) * 1.6 * fade * ( 1.0 - gap );
+		} else if ( kind > 2.5 && kind < 3.5 ) {
+			// standing seam metal: a thin raised seam every 45 cm
+			float sx = wc.x / 0.45;
+			float fr = fract( sx );
+			float fws = fwidth( sx );
+			float fade = clamp( 1.0 - fws * 1.8, 0.0, 1.0 );
+			float seam = ( 1.0 - smoothstep( 0.03, 0.03 + fws, min( fr, 1.0 - fr ) ) ) * fade;
+			diffuseColor.rgb *= 1.0 - 0.35 * seam;
+			pgRidge = sign( fr - 0.5 ) * seam * 1.2;
+		} else if ( kind > 3.5 && kind < 4.5 ) {
+			// solar panels: dark blue cells, silver frame around every panel
+			vec2 p = wc / vec2( 1.05, 1.75 );
+			vec2 fr = fract( p );
+			vec2 fwp = fwidth( p );
+			vec2 e = min( fr, 1.0 - fr );
+			float edge = 1.0 - smoothstep( 0.022, 0.022 + fwp.x, e.x ) * smoothstep( 0.014, 0.014 + fwp.y, e.y );
+			edge *= clamp( 1.0 - ( fwp.x + fwp.y ) * 1.2, 0.0, 1.0 );
+			vec2 c = fract( wc / 0.175 );
+			float cells = ( 1.0 - smoothstep( 0.0, 0.08, min( c.x, c.y ) ) ) * clamp( 1.0 - fwidth( wc.x ) * 9.0, 0.0, 1.0 );
+			vec3 cellCol = vec3( 0.012, 0.022, 0.065 ) * ( 0.8 + 0.5 * pgHash( floor( p ) ) ) + 0.02 * cells;
+			diffuseColor.rgb = mix( cellCol, vec3( 0.46, 0.48, 0.5 ), edge );
+			pgPanelRough = mix( 0.14, 0.4, edge );
+			pgPanelMetal = mix( 0.55, 0.8, edge );
+		} else if ( kind > 4.5 ) {
+			// pool water: clear turquoise with small ripples
+			vec2 r1 = texture2D( uPgNoise, wc * 0.5 + vec2( uPgTime * 0.03, uPgTime * 0.02 ) ).rg - 0.5;
+			diffuseColor.rgb = vec3( 0.02, 0.2, 0.24 ) * ( 0.85 + 0.5 * n2.g );
+			pgRidge = r1.x * 0.7;
+			pgPanelRough = 0.05;
+			pgPanelMetal = 0.0;
+		}
+	}
+#endif
+
 #ifdef PG_TOWER
 	{
 		// glass towers: some office floors stay lit at night, most are dark
@@ -845,6 +965,12 @@ const PG_FRAGMENT_ROUGH = /* glsl */ `
 #ifdef PG_PROP
 	roughnessFactor = mix( vPgData.x, vPgData.x * 0.6, uPgWet );
 #endif
+#ifdef PG_GLASS
+	roughnessFactor = mix( 0.5, 0.07, pgGlass );
+#endif
+#ifdef PG_PANEL
+	roughnessFactor = mix( pgPanelRough, pgPanelRough * 0.65, uPgWet );
+#endif
 `;
 
 // ---- C: metalness -----------------------------------------------------------------------
@@ -854,6 +980,12 @@ const PG_FRAGMENT_METAL = /* glsl */ `
 #endif
 #ifdef PG_METAL
 	metalnessFactor *= ( 1.0 - pgRust ) * ( 1.0 - pgWin );
+#endif
+#ifdef PG_GLASS
+	metalnessFactor *= mix( 0.55, 1.0, pgGlass );
+#endif
+#ifdef PG_PANEL
+	metalnessFactor = pgPanelMetal;
 #endif
 #ifdef PG_PROP
 	metalnessFactor = vPgData.y;
@@ -884,6 +1016,13 @@ const PG_FRAGMENT_NORMAL = /* glsl */ `
 		// ribs of the metal sheets: tilt the surface left and right
 		vec3 pgT = normalize( vec3( - vPgNormal.z, 0.0, vPgNormal.x ) + vec3( 1e-5 ) );
 		normal = normalize( normal + ( viewMatrix * vec4( pgT, 0.0 ) ).xyz * pgRidge * 0.42 * ( 1.0 - pgWin ) );
+	}
+#endif
+#ifdef PG_PANEL
+	{
+		// slats, seams and water ripples: tilt the surface a little
+		vec3 pgT = abs( vPgNormal.y ) > 0.7 ? vec3( 1.0, 0.0, 0.0 ) : normalize( vec3( - vPgNormal.z, 0.0, vPgNormal.x ) + vec3( 1e-5 ) );
+		normal = normalize( normal + ( viewMatrix * vec4( pgT, 0.0 ) ).xyz * pgRidge * 0.4 );
 	}
 #endif
 #ifdef PG_SHOP
@@ -920,7 +1059,14 @@ const PG_FRAGMENT_NORMAL = /* glsl */ `
 
 // ---- E: light that the surface gives off -----------------------------------------------------
 const PG_FRAGMENT_EMISSIVE = /* glsl */ `
-	totalEmissiveRadiance += pgEmit * step( 0.001, uPgWinLight + uPgNight );
+	totalEmissiveRadiance += pgEmit * step( 0.001, uPgWinLight + uPgNight ) + pgEmitA;
+#ifdef PG_PANEL
+	// glowing parts: data.w from 0..1 glows only at night, 1..2 glows always
+	{
+		float gl = vPgData.w;
+		totalEmissiveRadiance += vColor.rgb * ( max( gl - 1.0, 0.0 ) + min( gl, 1.0 ) * step( gl, 1.0 ) * uPgNight ) * 7.0;
+	}
+#endif
 #if defined( PG_GROUND ) || defined( PG_DECAL )
 	if ( uPgNight > 0.001 ) {
 		vec3 lamp = pgLampColor( pgLm, vPgWorld.xz ) * ( 1.0 - smoothstep( 1.0, 4.0, vPgWorld.y ) );
@@ -929,7 +1075,7 @@ const PG_FRAGMENT_EMISSIVE = /* glsl */ `
 		totalEmissiveRadiance += lamp * ( pgDamp * 0.14 + pgPud * 0.36 );
 	}
 #endif
-#if defined( PG_WALL ) || defined( PG_SHOP ) || defined( PG_SIGN ) || defined( PG_LAMP ) || defined( PG_WINMOD )
+#if defined( PG_WALL ) || defined( PG_SHOP ) || defined( PG_SIGN ) || defined( PG_LAMP ) || defined( PG_WINMOD ) || defined( PG_PANEL )
 	if ( uPgNight > 0.001 ) {
 		// walls catch lamp light from the street in front of them, fading with height
 		vec2 q = vPgWorld.xz + vPgNormal.xz * 2.2;
@@ -974,7 +1120,7 @@ const PG_FRAGMENT_EMISSIVE = /* glsl */ `
 // Turn a plain three.js material into a "patched" one.
 function patch(material, defs) {
   const defines = defs.map((d) => `#define ${d}`).join('\n') + '\n';
-  const usesData = defs.some((d) => ['PG_WINDOWS', 'PG_SHOP', 'PG_PROP', 'PG_SIGN', 'PG_FOLIAGE', 'PG_WINMOD'].includes(d));
+  const usesData = defs.some((d) => ['PG_WINDOWS', 'PG_SHOP', 'PG_PROP', 'PG_SIGN', 'PG_FOLIAGE', 'PG_WINMOD', 'PG_GLASS', 'PG_PANEL'].includes(d));
   const head = defines + (usesData ? '#define PG_USE_DATA\n' : '');
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, shared);
@@ -1097,6 +1243,7 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   tex.graffiti = TX.makeGraffitiTexture();
   tex.rail = TX.makeRailTexture();
   tex.wallDetail = TX.makeWallDetailTexture();
+  tex.foliage = TX.makeFoliageTexture();
   tex.winDay = win.day;
   tex.winLit = win.lit;
 
@@ -1174,7 +1321,18 @@ export async function createMaterials(renderer, onProgress = () => {}) {
     std({ map: tex.decals, color: 0x1b1c20, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8, roughness: 0.03 }),
     ['PG_LAMP']
   );
-  // Glass towers of The Crown.
+  // Glass curtain walls of the new buildings: dark tinted glass that mirrors
+  // the sky. Floor plates, bars, blinds and lit rooms are drawn by the shader.
+  mats.glass = patch(
+    new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.4, ior: 1.52, reflectivity: 0.55 }),
+    ['PG_GLASS']
+  );
+  // Frames, ribbons, slabs, roofs: one material that can look like smooth
+  // concrete or metal, perforated metal, wood slats, seam metal, solar cells, pool water.
+  mats.panel = patch(std({ roughness: 0.6 }), ['PG_PANEL']);
+  // Green walls: a dense carpet of leaves.
+  mats.greenWall = patch(std({ map: tex.foliage, roughness: 0.95 }), ['PG_LAMP']);
+  // Far glass towers of The Crown (photo texture).
   mats.tower = patch(std({ map: tex.glassTower, roughness: 0.14, metalness: 0.82, color: 0x9aa4ad }), ['PG_TOWER']);
   // Ground floor shop fronts (drawn by the shader).
   mats.shop = patch(std({ roughness: 0.5 }), ['PG_SHOP']);

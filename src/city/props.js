@@ -183,25 +183,24 @@ export function buildProps(ctx) {
   const lin = M.lin;
 
   // ---- the models -------------------------------------------------------------
-  const mStreet = M.makeStreetLight();
+  const mStreet = M.makeSmartLight(); // slim pole with a thin bar of white light
   const mLed1 = M.makeLedLight(1);
   const mLed2 = M.makeLedLight(2);
   const mTraffic = M.makeTrafficLight();
-  const mPole = M.makePowerPole();
   const mTree = M.makeTree(11);
   const mPalm = M.makePalm(12);
 
   const sets = ctx.sets; // shared with buildingKit.js, which has already added the building details
   const S = (name, geom, mat, opts) => (sets[name] = new InstancedSet(name, geom, mat, opts));
-  S('streetLight', mStreet.geometry, mats.prop, { maxDistance: 320 });
-  S('led1', mLed1.geometry, mats.prop, { maxDistance: 380 });
-  S('led2', mLed2.geometry, mats.prop, { maxDistance: 480 });
-  S('traffic', mTraffic.geometry, mats.prop, { maxDistance: 260 });
-  S('pole', mPole.geometry, mats.prop, { maxDistance: 320 });
-  S('treeTrunk', mTree.trunk, mats.prop, { maxDistance: 400 });
-  S('treeCrown', mTree.crown, mats.leaf, { maxDistance: 400 });
-  S('palmTrunk', mPalm.trunk, mats.prop, { maxDistance: 620 });
-  S('palmCrown', mPalm.crown, mats.frond, { maxDistance: 620 });
+  S('streetLight', mStreet.geometry, mats.prop, { maxDistance: 230 });
+  S('led1', mLed1.geometry, mats.prop, { maxDistance: 260 });
+  S('led2', mLed2.geometry, mats.prop, { maxDistance: 300 });
+  S('traffic', mTraffic.geometry, mats.prop, { maxDistance: 200 });
+  S('pole', M.makeSmartMast(), mats.prop, { maxDistance: 260 });
+  S('treeTrunk', mTree.trunk, mats.prop, { maxDistance: 200 });
+  S('treeCrown', mTree.crown, mats.leaf, { maxDistance: 330 });
+  S('palmTrunk', mPalm.trunk, mats.prop, { maxDistance: 400 });
+  S('palmCrown', mPalm.crown, mats.frond, { maxDistance: 400 });
   S('hydrant', M.makeHydrant(), mats.prop, { maxDistance: 95, useColor: true });
   S('bin', M.makeTrashBin(), mats.prop, { maxDistance: 105 });
   S('bench', M.makeBench(), mats.prop, { maxDistance: 120 });
@@ -209,9 +208,9 @@ export function buildProps(ctx) {
   S('ev', M.makeEvPost(), mats.prop, { maxDistance: 110 });
   S('dumpster', M.makeDumpster(), mats.prop, { maxDistance: 130, useColor: true });
   S('barrier', M.makeBarrier(), mats.prop, { maxDistance: 320 });
-  S('sedan', M.makeCar('sedan'), mats.prop, { maxDistance: 200, useColor: true });
-  S('suv', M.makeCar('suv'), mats.prop, { maxDistance: 200, useColor: true });
-  S('van', M.makeCar('van'), mats.prop, { maxDistance: 200, useColor: true });
+  S('sedan', M.makeCar('sedan'), mats.prop, { maxDistance: 150, useColor: true });
+  S('suv', M.makeCar('suv'), mats.prop, { maxDistance: 150, useColor: true });
+  S('van', M.makeCar('van'), mats.prop, { maxDistance: 150, useColor: true });
   S('lifeguard', M.makeLifeguardTower(), mats.prop, { maxDistance: 700 });
   S('newsBox', M.makeNewsBox(), mats.prop, { maxDistance: 90, useColor: true });
   S('meter', M.makeParkingMeter(), mats.prop, { maxDistance: 80, castShadow: false });
@@ -284,7 +283,7 @@ export function buildProps(ctx) {
       }
     }
 
-    // ---- wooden power poles on some east-west streets of The Grid ----
+    // ---- smart masts (antennas, cameras) on some east-west streets of The Grid ----
     if (grid && e.type === 'street' && e.axis === 'x' && e.inZ > 0.9 && block.row % 2 === 0) {
       for (const f of [0.25, 0.75]) {
         const s = len * f;
@@ -422,7 +421,7 @@ export function buildProps(ctx) {
         // oil drips under parked cars
         if (rng.chance(0.4)) addDecal(dc, 'oil2', p[0] + fx * 0.9, p[1] + fz * 0.9, 1.0, 1.0, rng.range(0, 6.28), 0.017, 0.7);
       }
-      if (rng.chance(neon ? 0.3 : 0.09) && free(s + 5.9, 0.35)) {
+      if (rng.chance(neon ? 0.3 : 0.2) && free(s + 5.9, 0.35)) {
         const q = P(s + 5.9, 0.42);
         sets.ev.add(q[0], ground, q[1], toStreet);
         take(s + 5.9, 0.4);
@@ -441,29 +440,10 @@ export function buildProps(ctx) {
   }
 
   // =============================================================================
-  // 2. WIRES between the power poles (thin sagging lines)
+  // 2. CABLES across the alleys (thin sagging lines from wall to wall)
   // =============================================================================
   {
     const pts = [];
-    for (const row of poleRows.values()) {
-      row.sort((p, q) => p.x - q.x);
-      for (let i = 0; i < row.length - 1; i++) {
-        const a = row[i], b = row[i + 1];
-        const d = Math.abs(b.x - a.x);
-        if (d > 75) continue;
-        for (const wp of mPole.wirePoints) {
-          // the poles are turned 90 degrees, so the cross arm runs along z
-          const z0 = a.z - wp[0], z1 = b.z - wp[0];
-          const sag = d * rng.range(0.012, 0.02) + (wp[1] < 7 ? 0.25 : 0);
-          const N = 8;
-          for (let k = 0; k < N; k++) {
-            const t0 = k / N, t1 = (k + 1) / N;
-            pts.push(a.x + (b.x - a.x) * t0, a.y + wp[1] - sag * 4 * t0 * (1 - t0), z0 + (z1 - z0) * t0);
-            pts.push(a.x + (b.x - a.x) * t1, a.y + wp[1] - sag * 4 * t1 * (1 - t1), z0 + (z1 - z0) * t1);
-          }
-        }
-      }
-    }
     // Find the building that stands at a point (for wires that end on a wall).
     const cellOf = (x, z) => Math.floor(x / 40) * 1000 + Math.floor(z / 40);
     const grid = new Map();
@@ -486,20 +466,6 @@ export function buildProps(ctx) {
         pts.push(a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1 - sag * 4 * t1 * (1 - t1), a[2] + (b[2] - a[2]) * t1);
       }
     };
-    // from the poles to the houses next to them (power and telephone lines)
-    for (const row of poleRows.values()) {
-      for (const pole of row) {
-        for (const off of [-7, -2.5, 3, 8]) {
-          if (!rng.chance(0.7)) continue;
-          const tx = pole.x + pole.inX * (pole.reach + 3) + pole.inZ * off, tz = pole.z + pole.inZ * (pole.reach + 3) - pole.inX * off;
-          const b = buildingAt(tx, tz);
-          if (!b || b.top < 6.5) continue;
-          // the point of the wall that is nearest to the pole side
-          const wx = Math.min(b.maxX, Math.max(b.minX, tx - pole.inX * 6)), wz = Math.min(b.maxZ, Math.max(b.minZ, tz - pole.inZ * 6));
-          hang([pole.x, pole.y + (rng.chance(0.5) ? 7.75 : 6.2), pole.z], [wx, Math.min(b.top - 0.4, rng.range(5.6, 8.2)), wz], rng.range(0.25, 0.6));
-        }
-      }
-    }
     // across the alleys, from wall to wall
     for (const al of L.alleyRects) {
       const long = al.axis === 'x' ? al.maxX - al.minX : al.maxZ - al.minZ;
@@ -628,6 +594,20 @@ export function buildProps(ctx) {
   }
   for (const l of ctx.lotLamps) addStreetLight(1, l.x, curb, l.z, l.rot);
 
+  // trees on roofs and terraces, in gardens and plazas (collected by the building kit)
+  for (const t of ctx.roofTrees) {
+    const rot = rng.range(0, 6.28);
+    if (t.trunk) sets.treeTrunk.add(t.x, t.y, t.z, rot, t.s);
+    // on high roofs only the crown is drawn: it stands lower, so no bare trunk floats there
+    sets.treeCrown.add(t.x, t.trunk ? t.y : t.y - 2.6 * t.s, t.z, rot, t.s);
+    if (t.pit) addDecal(dc, 'treePit', t.x, t.z, 1.3, 1.3, 0, t.y + 0.013, 1);
+  }
+  // EV charging posts in front of buildings
+  for (const e of ctx.evPosts) {
+    sets.ev.add(e.x, curb, e.z, e.rot);
+    circles.push({ x: e.x, z: e.z, r: 0.22 });
+  }
+
   // =============================================================================
   // 6. BARRIERS where the streets leave the play area
   // =============================================================================
@@ -703,9 +683,9 @@ export function buildProps(ctx) {
     cullX = x; cullZ = z; cullMul = mul;
     for (const s of Object.values(sets)) s.cull(x, z, mul, force);
   }
-  // LOW quality: no 3D windows and ledges (the walls show painted windows instead)
+  // LOW quality: no fins, no plants on facades, no 3D windows (the shaders paint lines instead)
   function setDetail(on) {
-    for (const s of Object.values(sets)) if (s.group === 'window') s.setEnabled(on);
+    for (const s of Object.values(sets)) if (s.group === 'window' || s.group === 'plants') s.setEnabled(on);
     cull(cullX > 1e8 ? 0 : cullX, cullZ > 1e8 ? 0 : cullZ, cullMul, true);
   }
 

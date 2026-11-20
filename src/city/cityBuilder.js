@@ -158,6 +158,7 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
       shop: new MeshBuilder(), sign: new MeshBuilder(), awning: new MeshBuilder(),
       propStatic: new MeshBuilder(), holo: new MeshBuilder(),
       metal: new MeshBuilder(), graffiti: new MeshBuilder(), rail: new MeshBuilder(), puddle: new MeshBuilder(),
+      glass: new MeshBuilder(), panel: new MeshBuilder(), hedge: new MeshBuilder(), green: new MeshBuilder(),
     },
     sets: {},         // all instanced things (props.js and buildingKit.js add to it)
     colliders: { boxes: [], circles: [] },
@@ -165,7 +166,10 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
     shopLights: [],   // light from shop windows: { x, z, r, power }
     buildings: [],
     parked: [],       // cars standing in parking lots: { x, z, rot }
-    lotLamps: [],     // lamps in parking lots: { x, z, rot }
+    lotLamps: [],     // lamps in plazas: { x, z, rot }
+    roofTrees: [],    // trees on roofs, terraces and in gardens: { x, y, z, s, trunk }
+    evPosts: [],      // EV charging posts in front of buildings: { x, z, rot }
+    playableNow: false,
     lampPatch: materials.lampPatch,
   };
 
@@ -179,11 +183,11 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
   lap('ground');
   await pause();
 
-  onProgress(0.2, 'Looking for hero buildings');
-  const heroes = await loadHeroModels();
+  onProgress(0.2, 'Looking for building models');
+  const models = await loadHeroModels();
   onProgress(0.25, 'Raising buildings');
   lap('heroLookup');
-  buildBuildings(ctx, heroes);
+  buildBuildings(ctx, models);
   lap('buildings');
   await pause();
 
@@ -228,6 +232,10 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
   make('brick', m.brick, { cast: true, order: 0 });
   make('plaster', m.plaster, { cast: true, order: 0 });
   make('metal', m.metal, { cast: true, order: 0 });
+  make('glass', m.glass, { cast: true, order: 0 });
+  make('panel', m.panel, { cast: true, order: 0 });
+  make('green', m.greenWall, { order: 1, data: false });
+  make('hedge', m.leaf, { order: 1 });
   make('shop', m.shop, { order: 1 });
   make('sign', m.sign, { order: 1 });
   make('awning', m.awning, { cast: true, order: 1 });
@@ -270,7 +278,9 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
     timing,
     // LOW quality switches the 3D window detail off
     setQuality(q) {
-      props.setDetail(q.buildingDetail !== false);
+      const on = q.buildingDetail !== false;
+      props.setDetail(on);
+      if (meshes.hedge) meshes.hedge.visible = on; // LOW: no plants on the facades
     },
     // called every frame
     update(dt, time, x, z, propDistance) {

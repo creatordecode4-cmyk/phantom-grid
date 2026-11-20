@@ -59,7 +59,6 @@ export const LAYOUT = {
     { col: 2, row: 5, axis: 'x' },
     { col: 7, row: 5, axis: 'z' },
     { col: 4, row: 6, axis: 'x' },
-    { col: 9, row: 6, axis: 'x' },
     { col: 1, row: 7, axis: 'z' },
     { col: 6, row: 7, axis: 'x' },
   ],
@@ -106,7 +105,7 @@ export const LAYOUT = {
 
   // ----- Raised light-rail line (near-future touch) ------------------------------
   rail: {
-    name: 'Meridian Line',
+    name: 'Meridian Maglev',
     streetIndex: 5,     // runs above this north-south street (0 = most eastern)
     height: 7.2,        // top of the track
     pillarSpacing: 28,
@@ -133,17 +132,34 @@ export const LAYOUT = {
   },
 
   // ----- Hero buildings ------------------------------------------------------------
-  // Model files (.glb) from assets/buildings/ are placed on these corner lots,
-  // the first file on the first lot and so on. Without files the lots get
-  // normal buildings.
-  //   col / row: which block,  corner: 'sw' 'se' 'nw' 'ne' (s = south, w = west ...)
-  //   front: which way the model looks,  width / depth: size of the lot in meters
-  heroLots: [
-    { col: 4, row: 4, corner: 'sw', front: 'W', width: 24, depth: 24 },  // first corner south of the start
-    { col: 5, row: 5, corner: 'se', front: 'E', width: 24, depth: 24 },  // first corner north of the start
-    { col: 2, row: 1, corner: 'sw', front: 'S', width: 24, depth: 24 },
-    { col: 6, row: 0, corner: 'sw', front: 'S', width: 22, depth: 22 },  // on Neon Mile
+  // The hand-made hero buildings (src/city/heroBuildings.js) stand on these lots.
+  //   id: which hero,  col / row: which block,  front: which way it looks
+  //   at: 'sw' 'se' 'nw' 'ne' = a corner of the block (s = south, w = west ...),
+  //       's' 'n' 'e' 'w' = middle of that side
+  heroSites: [
+    { id: 'b05', col: 4, row: 4, at: 'nw', front: 'W' },   // villa cluster: right beside the start point
+    { id: 'b03', col: 4, row: 4, at: 'sw', front: 'W' },   // garden midrise: first corner south of the start
+    { id: 'b08', col: 5, row: 5, at: 'se', front: 'E' },   // retrofit brick tower: first corner north of the start
+    { id: 'b04', col: 4, row: 0, at: 'sw', front: 'S' },   // office hub: where the start street meets Neon Mile
+    { id: 'b07', col: 5, row: 0, at: 'se', front: 'S' },   // drone + EV hub: the other side of that junction
+    { id: 'b09', col: 6, row: 0, at: 's', front: 'S' },    // arcade, Neon Mile
+    { id: 'b06', col: 3, row: 0, at: 's', front: 'S' },    // beach hotel, Neon Mile
+    { id: 'b11', col: 7, row: 0, at: 's', front: 'S' },    // hourglass tower, Neon Mile
+    { id: 'b01', col: 9, row: 6, at: 'e', front: 'E' },    // twist tower, The Crown
+    { id: 'b10', col: 9, row: 5, at: 'e', front: 'E' },    // S-curve tower, The Crown
+    { id: 'b02', col: 7, row: 7, at: 'sw', front: 'S' },   // terrace tower, The Crown
+    { id: 'b11', col: 7, row: 7, at: 'ne', front: 'E' },   // second hourglass tower, The Crown
   ],
+  // Extra model files (hero1.glb ... hero4.glb or buildings.json) stand on these lots.
+  modelLots: [
+    { col: 2, row: 3, at: 'sw', front: 'S', width: 24, depth: 24 },
+    { col: 6, row: 2, at: 'ne', front: 'N', width: 24, depth: 24 },
+    { col: 3, row: 5, at: 'se', front: 'E', width: 24, depth: 24 },
+    { col: 1, row: 4, at: 'nw', front: 'N', width: 24, depth: 24 },
+  ],
+  // The north-west corner of the map belongs to The Crown: blocks where
+  // (column + row) is at least this number get tall towers.
+  crownFrom: 14,
 
   // ----- Where the player starts ----------------------------------------------------
   spawn: {
@@ -292,7 +308,7 @@ export function buildLayout(L = LAYOUT) {
         id: blocks.length,
         col: c,
         row: r,
-        district: rows[r].neon ? 'neon' : 'grid',
+        district: rows[r].neon ? 'neon' : c + r >= L.crownFrom ? 'crown' : 'grid',
         playable: cols[c].playable && rows[r].playable,
         poly: piece.poly,
         isRect: piece.isRect,
@@ -466,6 +482,9 @@ export function buildLayout(L = LAYOUT) {
     if (z < beach.maxZ) return 'MERIDIAN BEACH';
     if (z < rows[0].maxZ + S.width / 2) return 'NEON MILE';
     if (x < cols[0].minX) return 'IRONHILL UNDERPASS';
+    // which block column and row is this? The north-west corner is The Crown.
+    const c = Math.floor((x - cols[0].minX) / pitchX), r = 1 + Math.floor((z - L.rows.firstGridRowMinZ) / pitchZ);
+    if (c + r >= L.crownFrom) return 'THE CROWN';
     return 'THE GRID';
   }
 

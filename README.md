@@ -1,12 +1,14 @@
 # PHANTOM GRID
 
 An open-world 3D web game set in **Port Meridian**, a fictional American coastal city in the year 2090.
-About 80% believable present-day city, 20% subtle future technology.
+A realistic city of the future: sculpted glass towers, hanging gardens, sky bridges,
+electric cars and a maglev line. No cartoon look, no neon-toy look.
 
 This is **Phase 1**: a playable, realistic first area of the city that runs in a phone browser.
-Since version 1.1 the buildings are put together from a **kit of parts** (real 3D windows,
-ledges, cornices, balconies, shop fronts ...) and come in many **types** - see
-"The buildings" below.
+Since version 1.2 all buildings are **futuristic** and are put together from a
+**kit of parts** (twisted tower bodies, glass curtain walls with fins, ribbon frames,
+garden terraces, helipads ...). Eleven **hero buildings** follow the reference pictures
+in `assets/reference/buildings/` - see "The buildings" below.
 
 - No build step, no npm, no bundler. Plain HTML + JavaScript modules.
 - three.js (version 0.170) is loaded from a CDN with an import map.
@@ -37,9 +39,9 @@ One game day lasts 12 real minutes. The game starts at golden hour.
 
 | Level | What you get |
 |---|---|
-| **Low** | No shadows, no bloom, 0.75 pixel ratio, short draw distance, thicker haze, windows are painted on the walls (no 3D window detail) |
-| **Medium** | Shadows, light bloom, film-like color grade, 3D windows and ledges within about 120 m |
-| **High** | Sharper shadows, more detail (3D windows within about 160 m), subtle vignette and film grain |
+| **Low** | No shadows, no bloom, 0.75 pixel ratio, short draw distance, thicker haze, no fins and no plants on the facades |
+| **Medium** | Shadows, light bloom, film-like color grade, fins, floor plates, plants and small parts within about 150 m |
+| **High** | Sharper shadows, more detail further away, subtle vignette and film grain |
 | **Auto** | Picks a level for your phone, and goes one level down if the game runs slowly |
 
 ### Address options (handy for testing)
@@ -72,15 +74,17 @@ src/
     materials.js           loads textures, builds all materials and their shader patches
     textures.js            textures made in code: signs, decals, windows, fallbacks ...
     ground.js              asphalt, sidewalks, curbs, lane markings, stains, beach
-    buildingKit.js         THE KIT OF PARTS: wall panel, window bay, shop front, door bay,
-                           corner piece, balcony, cornice, roofs, fences, graffiti ...
-    buildingTypes.js       THE BUILDING TYPES (walk-up, apartment block, corner building,
-                           shop row, office, warehouse, station ...) - add your own here
-    buildings.js           cuts every block into lots, picks a type for each lot,
-                           loads hero buildings (.glb files)
-    props.js               street lights, trees, cars, planters, meters, wires ... (instanced)
+    buildingKit.js         THE KIT OF PARTS: twisted / tapered tower body, glass curtain wall,
+                           fins, ribbon frame, terrace with plants, green wall, solar roof,
+                           helipad, drone pad, sky bridge, EV bay ...
+    heroBuildings.js       THE HERO BUILDINGS b01 ... b11 (one function each)
+    buildingTypes.js       THE FILL TYPES for all other lots (tower, trays, steps, podium,
+                           wave, arcade, retrofit, plaza) and the district rules
+    buildings.js           cuts every block into lots, places heroes and fill buildings,
+                           sky bridges, loads model files (.glb)
+    props.js               smart street lights, trees, cars, planters, EV posts ... (instanced)
     models.js              the small 3D models, built in code
-    backdrop.js            ocean, hills, The Crown skyline, highway, light rail
+    backdrop.js            ocean, hills, far Crown towers, highway, maglev line
   world/
     lighting.js            sky, sun, day / night, shadows, haze, reflections, street lamps
     weather.js             rain and wet streets
@@ -101,7 +105,9 @@ assets/
   characters/              put Nate_Calloway.glb here
   buildings/               hero buildings: put .glb model files here (see below)
   hdri/                    optional sky photo for reflections
-  reference/               put PortMeridian_districts.png here (the satellite map)
+  reference/               the reference pictures (buildings/b01 ... b11)
+docs/
+  building_notes.md        notes on every reference building (written before coding)
 ```
 
 ---
@@ -171,14 +177,32 @@ Then open `http://localhost:8000`.
 - The model has no skeleton yet, so it is only moved and turned.
 - If the file is missing, a simple mannequin with real human proportions is used.
 
-### Hero buildings (`assets/buildings/*.glb`, optional)
+### Hero buildings as model files (`assets/buildings/*.glb`, optional)
 
-Model files made in a 3D program can replace the generated building on a few
-corner lots.
+The hero buildings are made from code. If you later have real model files, the
+game uses them instead - same place, same size.
 
-- **Easiest:** name the files `hero1.glb`, `hero2.glb`, `hero3.glb`, `hero4.glb`
-  and upload them to `assets/buildings/`.
-- **Or** add a list file `assets/buildings/buildings.json`:
+- **Replace a hero:** upload a file with the same name as its reference picture:
+
+  | File name | Building | Real height |
+  |---|---|---|
+  | `b01_twist_tower.glb` | twist tower | 160 m |
+  | `b02_terrace_tower.glb` | terrace tower | 80 m |
+  | `b03_garden_midrise.glb` | garden midrise | 30 m |
+  | `b04_office_hub.glb` | office hub | 35 m |
+  | `b05_villa_cluster.glb` | villa cluster | 20 m |
+  | `b06_beach_hotel.glb` | beach hotel | 50 m |
+  | `b07_drone_ev_hub.glb` | drone + EV hub | 55 m with tower |
+  | `b08_retrofit_brick_tower.glb` | retrofit brick tower | 55 m |
+  | `b09_neon_arcade.glb` | Neon Mile arcade | 12 m |
+  | `b10_scurve_tower.glb` | S-curve tower | 180 m |
+  | `b11_hourglass_tower.glb` | hourglass tower | 140 m |
+
+  (The exact names are in the `HEROES` table in `src/city/heroBuildings.js`.)
+  The model is scaled to the real height, turned to the street and gets a collision box.
+- **Extra models:** files named `hero1.glb` ... `hero4.glb`, or a list file
+  `assets/buildings/buildings.json`, are put on extra corner lots
+  (`modelLots` in `src/city/layout.js`):
 
   ```json
   [
@@ -187,15 +211,9 @@ corner lots.
   ]
   ```
 
-  `height` = real height in meters (optional), `rotate` = extra turn in degrees (optional).
-- The front of a model should look toward **+Z**. The game turns it to the street,
-  scales it (to the given height, or so that it fits the lot), puts it on the
-  sidewalk and adds shadows and a collision box.
-- Where they stand is written in `src/city/layout.js` under `heroLots`
-  (the first one is the first corner south of the start point).
-- Without files nothing changes: the lots get normal generated buildings.
-- Models can be meshopt-compressed; keep them small (under about 20k triangles and
-  2 MB each) so phones stay fast.
+- The front of a model should look toward **+Z**.
+- Without files nothing changes.
+- Keep models small (under about 20k triangles and 2 MB each) so phones stay fast.
 
 ### Sky photo for reflections (`assets/hdri`, optional)
 
@@ -203,10 +221,11 @@ Put a file named `environment.hdr` (or `environment.jpg`, an equirectangular pan
 into `assets/hdri`. If it exists, shiny surfaces reflect it. If not, reflections are
 made from the game's own sky and change with the time of day.
 
-### Reference map (`assets/reference/PortMeridian_districts.png`)
+### Reference pictures (`assets/reference/buildings`)
 
-This file was not in the repository yet, so Phase 1 follows the written description.
-The map is defined in `src/city/layout.js` and is easy to adjust once the picture is added.
+Ten pictures (b01 ... b08, b10, b11), each showing one building from four sides.
+`docs/building_notes.md` describes what was read from them. The street map itself
+is defined in `src/city/layout.js`.
 
 ---
 
@@ -216,17 +235,18 @@ World rules: 1 unit = 1 meter. **North is +Z**, south is -Z, east is -X, west is
 (three.js is right-handed, so with north on +Z, east has to be -X; the minimap shows
 north up and east on the right, like a normal map).
 
-- **The Grid** - older working-class district. Blocks of 80 x 100 m, streets 14 m wide
-  (2 lanes each way), 3 m sidewalks with curbs, a few narrow alleys, and the
-  *Calloway Diagonal* avenue cutting from north-west to south-east.
-- **Neon Mile** - 26 m boulevard along the coast with a median of palm trees,
-  shops with glass fronts, awnings, lit signs and hologram billboards.
+- **The Grid** - mid-rise living district (6 to 12 floors). Blocks of 80 x 100 m, streets
+  14 m wide, 3 m sidewalks with trees and planters, a few alleys, and the
+  *Calloway Diagonal* avenue. About 15% of the houses are old brick buildings with
+  new glass parts (retrofits).
+- **Neon Mile** - 26 m boulevard along the coast with palm trees, glass arcades with
+  softly lit shop signs, a beach hotel and subtle holograms.
   South of it: promenade, 60 m of beach, then the ocean.
-- **The Crown** - downtown skyline in the north-west (outside the play area) with the
-  260 m Kessler-Vance (KVI) headquarters.
+- **The Crown** - the tower district in the north-west (60 to 180 m towers, sky
+  bridges, helipads). Its near corner is walkable; further out stand the far towers
+  and the 260 m Kessler-Vance (KVI) headquarters.
 - **Ironhill Highway** - raised concrete freeway on pillars along the east edge.
-  It ends in a ramp down to Neon Mile (closed for now).
-- **Meridian Line** - raised light-rail track on thin pillars with a station and a train.
+- **Meridian Maglev** - raised maglev track on thin pillars with a station and a train.
 - Dry brown hills close the horizon in the north and east.
 
 Everything is generated from `src/city/layout.js` with a fixed random seed, so the city
@@ -234,38 +254,46 @@ is the same every time. Change `seed` in that file to get a different city.
 
 ### The buildings
 
-Every block is cut into lots. Each lot gets a **building type**; the type puts
-**parts from the kit** together along its walls.
+**Hero buildings** (`src/city/heroBuildings.js`) and where to stand to see them.
+Add the text in the last column to the game address.
 
-| Type (`buildingTypes.js`) | What it is |
+| Building | District | Stand here |
+|---|---|---|
+| b05 villa cluster (20 m) | The Grid | the start point - it is on your left; or `?pos=1.6,112&yaw=90` |
+| b03 garden midrise (30 m) | The Grid | first corner south of the start: `?pos=1.6,34&yaw=60` |
+| b08 retrofit brick tower (55 m) | The Grid | first corner north of the start: `?pos=-15.8,140&yaw=315` |
+| b04 office hub (35 m) and b07 drone + EV hub | Neon Mile | south end of the start street: `?pos=-7,-407&yaw=0` (b04 on the right, b07 on the left) |
+| b09 arcade (3 floors) | Neon Mile | `?pos=134,-407&yaw=0` |
+| b06 beach hotel (50 m) | Neon Mile | `?pos=-148,-407&yaw=0` |
+| b11 hourglass tower (140 m) | Neon Mile | `?pos=228,-407&yaw=0` |
+| b01 twist tower (160 m) | The Crown | `?pos=369,250&yaw=300` and look up |
+| b10 S-curve tower (180 m) | The Crown | `?pos=369,150&yaw=300` and look up |
+| b02 terrace tower (80 m) | The Crown | `?pos=244,372&yaw=0` |
+| b11 hourglass tower (140 m) | The Crown | `?pos=181,458&yaw=270` |
+| Kessler-Vance HQ (260 m twist tower) | far Crown | `?pos=440,480&yaw=343` (it stands outside the walkable area) |
+
+**Fill buildings** (`src/city/buildingTypes.js`) use the same kit in many variations:
+
+| Type | What it is |
 |---|---|
-| `walkup` | old brick walk-up, 3 to 5 floors, stoop stairs, front fire escape, stone lintels and sills, corner stones, cornice |
-| `stucco` | plaster apartment block, 4 to 8 floors, balconies; box, L shape, U shape with a courtyard, or top floors set back; stair tower |
-| `corner` | corner building with a cut (chamfered) corner and the entrance on the corner |
-| `shoprow` | low row of shops, 1 or 2 floors, long awning, signs |
-| `office` | small office building: stripes of glass and concrete fins, glass lobby with a canopy |
-| `warehouse` | warehouse / garage with a sawtooth or curved metal roof and big roll-up doors |
-| `house` | small old house with a sloped roof, chimney and front yard |
-| `station` | fuel + charging station with a canopy, and `parking`: a small parking lot |
-| `emptylot` | empty lot with a fence, weeds, rubble and graffiti |
-| `neonshop` | Neon Mile shop house with glass fronts, awnings, lit signs, holograms |
+| `tower` | glass tower: straight, twisted, tapered or hourglass, with ribbons, sky gardens, helipad |
+| `trays` | mid-rise with deep planted terrace rings every second floor |
+| `steps` | floors that step back, a garden terrace on each step |
+| `podium` | rounded block on a glass podium with a roof wing |
+| `wave` | oval house with wave-shaped balcony bands |
+| `arcade` | low glass shop arcade with a floating canopy and lit signs |
+| `retrofit` | old brick house with a new glass volume, bronze frame and green wall |
+| `plaza` | small open square with trees |
 
-What makes them look real:
+District rules: The Crown gets towers of 60 m and more with sky bridges and helipads,
+Neon Mile gets 15 to 50 m buildings with shops, The Grid gets 6 to 12 floors and the
+brick retrofits. Two neighbours never get the same type and look.
 
-- **Real facade geometry.** Windows sit 13 to 21 cm inside the wall, with a stone
-  sill, a lintel on brick houses and reflecting glass. Some have blinds, curtains
-  or an air conditioner. Every floor has a thin ledge, old houses have a cornice,
-  flat roofs have a parapet. Ground floors are taller, with shop glass, roller
-  shutters, awnings, signs and doorways set back into the wall.
-- **Variety rules.** Never the same type twice in a row. Neighbours differ in
-  height and color. Some houses stand back behind a small front yard, now and
-  then there is a narrow gap you can walk through.
-- **Age.** Every building has an age from new to old. Old ones are more faded,
-  streaked, cracked and mossy; rust creeps over old metal sheets. Dirt gathers
-  near the ground, under roof edges and under window corners.
-- **Level of detail.** Far away a wall is one flat piece and its windows are
-  painted by the shader. Within about 120 m (Medium) the 3D parts are added.
-  Outside the play area buildings are simple boxes.
+**Level of detail.** The body of a building and its ribbons are always drawn.
+Fins, floor plates, plants, helipads and other small parts are instanced and only
+drawn within about 150 m. The far towers use only the simplest body with the glass
+shader. On Low the facade plants are removed and the fins are switched off.
+Every building has a collision box.
 
 To add a type: copy an entry in `TYPES` in `src/city/buildingTypes.js`, change
 the recipe, and give it a weight in `pickType()` at the bottom of that file.
@@ -273,7 +301,7 @@ the recipe, and give it a weight in `pickType()` at the bottom of that file.
 ### Things you can safely edit
 
 - `src/city/layout.js`: block sizes, street width, alleys, the diagonal avenue,
-  highway, rail line, skyline, spawn point.
+  highway, maglev line, where the hero buildings stand (`heroSites`), spawn point.
 - `src/config.js`: time of day, player and camera speeds, quality presets, fog,
   street light settings, texture sizes.
 - `src/city/textures.js`: the made-up shop names (`SIGN_NAMES`, `NEON_NAMES`) and
@@ -287,11 +315,12 @@ the recipe, and give it a weight in `pickType()` at the bottom of that file.
 
 - Almost all of the city is drawn with a handful of big merged meshes and
   instanced meshes. A whole frame uses well under 200 draw calls
-  (about 60 on Low, about 110 on Medium / High; tap `FPS` to see it).
-- All walls of all buildings are still only three meshes (brick, plaster, metal).
-  The 3D windows are ONE instanced mesh: copies of a single window model, drawn
-  only near the player and only on walls that face the player.
-- Props are only drawn near the player (bins 105 m, cars 200 m, trees 400 m ...).
+  (about 60 on Low, about 110 on Medium, at most about 150; tap `FPS` to see it).
+- All glass of all buildings is ONE mesh with one glass shader that paints floor
+  lines, mullions and lit rooms. All panels (concrete, metal, wood, solar) are one more.
+- Fins, floor plates and plants are instanced copies of a few small models, drawn
+  only near the player.
+- Props are only drawn near the player (bins 105 m, cars 150 m, trees 330 m ...).
 - One sun casts shadows: a sharp shadow map follows the player, a second soft one
   covers the far city and is only redrawn when the sun has moved.
 - At night only the 6 street lamps nearest to the player are real lights. All the
@@ -302,7 +331,8 @@ the recipe, and give it a weight in `pickType()` at the bottom of that file.
 
 ## Known limits of Phase 1
 
-- No traffic, no pedestrians, no missions yet. The highway and the light rail are scenery.
+- No traffic, no pedestrians, no missions yet. Cars are parked; the highway, the maglev and the drone pads are scenery.
+- Tested with a software renderer only; real phone frame rates still have to be checked on a device.
 - The player has no animation (the model has no skeleton yet).
 - Buildings cannot be entered.
 - Shop names, signs and adverts are invented. No real brands are used.

@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 1.1',
+  version: 'Phase 1.2',
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {
@@ -72,7 +72,7 @@ export const CONFIG = {
     realLights: 6,          // only the nearest lights are real point lights
     range: 34,              // meters
     intensity: 380,         // candela (three.js physical light units)
-    sodiumColor: 0xffa24a,  // old orange street lights in The Grid
+    sodiumColor: 0xe6eeff,  // smart street lights in The Grid: thin, cool white light
     ledColor: 0xffe2c0,     // warm white lights on Neon Mile
   },
 
@@ -96,7 +96,7 @@ export const CONFIG = {
       anisotropy: 2,
       envMapSize: 64,
       propDistance: 0.55,   // multiplier for how far props are drawn
-      buildingDetail: false, // no 3D windows and ledges (windows are painted on the walls)
+      buildingDetail: false, // no fins, no plants on facades, no 3D windows (the glass shader paints lines instead)
       fogMultiplier: 1.7,   // thicker fog hides the short draw distance
       cameraFar: 2600,
       rainStreaks: 700,
@@ -118,7 +118,7 @@ export const CONFIG = {
       anisotropy: 4,
       envMapSize: 64,
       propDistance: 1.0,
-      buildingDetail: true, // 3D windows, ledges, balconies near the player (about 120 m)
+      buildingDetail: true, // fins, floor slabs, plants near the player (about 150 m)
       fogMultiplier: 1.0,
       cameraFar: 9000,
       rainStreaks: 1400,
