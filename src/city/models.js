@@ -647,7 +647,7 @@ export function makeTrain() {
 // ---------------------------------------------------------------------------
 export function makeMannequin() {
   const skin = [0.62, 0.46, 0.38], hair = [0.07, 0.06, 0.05];
-  const jacket = [0.14, 0.15, 0.17], jeans = [0.13, 0.17, 0.25], shoe = [0.06, 0.055, 0.05], shirt = [0.45, 0.44, 0.42];
+  const jacket = [0.24, 0.25, 0.27], jeans = [0.2, 0.26, 0.38], shoe = [0.1, 0.09, 0.08], shirt = [0.55, 0.54, 0.5];
   const cap = (r, len) => new THREE.CapsuleGeometry(r, len, 4, 8);
   const cloth = 0.85;
   const parts = [
@@ -661,8 +661,8 @@ export function makeMannequin() {
     P(cap(0.14, 0.06), [0, 0.94, 0], jeans, cloth, 0, { scale: [1.2, 1.0, 0.85] }),
     P(box(0.1, 0.16, 0.02), [0, 1.36, 0.118], shirt, cloth, 0),
     // shoulders
-    P(sph(0.075, 8, 6), [0.205, 1.43, 0], jacket, cloth, 0),
-    P(sph(0.075, 8, 6), [-0.205, 1.43, 0], jacket, cloth, 0),
+    P(sph(0.068, 8, 6), [0.2, 1.425, 0], jacket, cloth, 0),
+    P(sph(0.068, 8, 6), [-0.2, 1.425, 0], jacket, cloth, 0),
   ];
   for (const s of [-1, 1]) {
     // arms hang down, slightly away from the body

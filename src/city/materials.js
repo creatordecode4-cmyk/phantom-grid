@@ -392,7 +392,9 @@ vec3 pgShopInterior( vec2 p, vec2 size, float seed, float lit ) {
 	} else {
 		col = wall * 0.75; // side walls
 	}
-	col *= exp( - t * 0.12 );
+	col *= exp( - t * 0.1 );
+	// lit shops are brighter near the ceiling lamps
+	col *= mix( 1.0, 0.55 + 0.75 * smoothstep( 0.0, roomH, hit.y ), lit );
 	// warm or cool lamps inside
 	vec3 lamp = pgHash( vec2( seed, 5.5 ) ) < 0.65 ? vec3( 1.0, 0.82, 0.6 ) : vec3( 0.8, 0.92, 1.0 );
 	return col * mix( vec3( 1.0 ), lamp, lit );
@@ -520,10 +522,10 @@ const PG_FRAGMENT_COLOR = /* glsl */ `
 		// glass towers: some office floors stay lit at night, most are dark
 		vec2 cell = floor( vPgUv * vec2( 5.0, 5.0 ) );
 		float h = pgHash( cell );
-		float busyFloor = step( pgHash( vec2( cell.y, 3.7 ) ), 0.3 );      // a few floors work late
-		float on = step( h, 0.06 + 0.5 * busyFloor ) * step( pgHash( cell + 9.1 ), uPgWinLight * 1.2 );
-		vec3 tint = pgHash( cell + 2.3 ) > 0.25 ? vec3( 1.0, 0.84, 0.6 ) : vec3( 0.75, 0.88, 1.0 );
-		pgEmit += tint * on * ( 0.35 + 0.5 * h );
+		float busyFloor = step( pgHash( vec2( cell.y, 3.7 ) ), 0.22 );     // a few floors work late
+		float on = step( h, 0.05 + 0.4 * busyFloor ) * step( pgHash( cell + 9.1 ), uPgWinLight * 1.2 );
+		vec3 tint = pgHash( cell + 2.3 ) > 0.25 ? vec3( 1.0, 0.82, 0.56 ) : vec3( 0.75, 0.88, 1.0 );
+		pgEmit += tint * on * ( 0.3 + 0.4 * h );
 	}
 #endif
 
@@ -647,7 +649,7 @@ const PG_FRAGMENT_EMISSIVE = /* glsl */ `
 		vec3 lamp = pgLampColor( pgLm, vPgWorld.xz ) * ( 1.0 - smoothstep( 1.0, 4.0, vPgWorld.y ) );
 		totalEmissiveRadiance += diffuseColor.rgb * lamp * 1.9;
 		// wet ground also mirrors a little of the lamp light
-		totalEmissiveRadiance += lamp * ( pgDamp * 0.06 + pgPud * 0.1 );
+		totalEmissiveRadiance += lamp * ( pgDamp * 0.14 + pgPud * 0.36 );
 	}
 #endif
 #if defined( PG_WALL ) || defined( PG_SHOP ) || defined( PG_SIGN ) || defined( PG_LAMP )
@@ -687,7 +689,7 @@ const PG_FRAGMENT_EMISSIVE = /* glsl */ `
 		float lit = step( pgShopSeed, 0.62 ) * uPgNight;
 		vec3 room = pgShopInterior( pgShopP, pgShopSize, vPgData.y, lit );
 		// by day a shop is much darker inside than the street outside
-		totalEmissiveRadiance += room * pgGlass * ( uPgDay * 0.07 + lit * 0.5 + 0.004 );
+		totalEmissiveRadiance += room * pgGlass * ( uPgDay * 0.07 + lit * 0.85 + 0.004 );
 	}
 #endif
 `;
@@ -751,6 +753,9 @@ export async function createMaterials(renderer, onProgress = () => {}) {
     })
   );
   const missing = names.filter((n) => !images[n]);
+  const pause = () => new Promise((r) => setTimeout(r, 0)); // lets the loading bar redraw
+  onProgress(1, 'Preparing surfaces');
+  await pause();
 
   // ---- 2. color textures (photo, or a generated fallback) ----
   const fallback = {
@@ -776,6 +781,7 @@ export async function createMaterials(renderer, onProgress = () => {}) {
     tex[n] = t;
   }
 
+  await pause();
   // ---- 3. bumps + roughness made from the color pictures ----
   const nr = {};
   nr.asphalt = makeNormalRoughTexture(sources.asphalt, { strength: T.asphalt.normal, roughness: T.asphalt.roughness, detailRadius: 8 });
@@ -784,6 +790,8 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   nr.plaster = makeNormalRoughTexture(sources.plaster, { strength: T.plaster.normal, roughness: T.plaster.roughness, detailRadius: 4 });
   nr.sand = makeNormalRoughTexture(sources.sand, { strength: T.sand.normal, roughness: T.sand.roughness, detailRadius: 10 });
 
+  onProgress(1, 'Painting signs and details');
+  await pause();
   // ---- 4. generated textures ----
   const win = TX.buildWindowAtlases(images.windowsDay, images.windowsNight, T.windowsDay, T.windowsNight);
   tex.noise = makeNoiseTexture(256);

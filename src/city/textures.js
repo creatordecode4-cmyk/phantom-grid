@@ -588,7 +588,9 @@ export function makeDecalTexture() {
     for (let i = 0; i < 16; i++) {
       const inset = 14 + i * 4;
       ctx.beginPath();
-      ctx.roundRect(x + inset, y + inset, C - inset * 2, C - inset * 2, 34);
+      // (older browsers do not know roundRect: a plain rectangle is fine too)
+      if (ctx.roundRect) ctx.roundRect(x + inset, y + inset, C - inset * 2, C - inset * 2, 34);
+      else ctx.rect(x + inset, y + inset, C - inset * 2, C - inset * 2);
       ctx.fill();
     }
   }

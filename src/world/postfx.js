@@ -32,8 +32,23 @@ function pass(fragmentShader, uniforms, extra = {}) {
 
 export function createPostFX(renderer) {
   // HDR pictures need this GPU feature. Almost every phone has it.
-  const supported = renderer.capabilities.isWebGL2 &&
-    (renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float'));
+  const hasFloat = renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float');
+  // Try it for real: can this GPU draw into an HDR picture, also with anti-aliasing?
+  // (a few phone GPUs claim support but fail; then we fall back so the screen never stays black)
+  function works(samples) {
+    const gl = renderer.getContext();
+    const rt = new THREE.WebGLRenderTarget(8, 8, { type: THREE.HalfFloatType, samples, depthBuffer: true });
+    let ok = false;
+    try {
+      renderer.setRenderTarget(rt);
+      ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    } catch (e) { ok = false; }
+    renderer.setRenderTarget(null);
+    rt.dispose();
+    return ok;
+  }
+  const supported = hasFloat && works(0);
+  const msaaOK = supported && works(4);
 
   const fsScene = new THREE.Scene();
   const fsCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -148,6 +163,7 @@ export function createPostFX(renderer) {
 
   function resize(w, h, msaa) {
     w = Math.max(2, Math.floor(w)); h = Math.max(2, Math.floor(h));
+    if (!msaaOK) msaa = 0;
     if (w === width && h === height && msaa === samples) return;
     width = w; height = h; samples = msaa;
     if (sceneRT) sceneRT.dispose();

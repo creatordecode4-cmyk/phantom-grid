@@ -103,7 +103,7 @@ export const CONFIG = {
     },
     medium: {
       label: 'MEDIUM',
-      pixelRatio: { scale: 0.5, min: 1.0, max: 1.5 },
+      pixelRatio: { scale: 0.5, min: 1.0, max: 1.3 },
       post: true,           // bloom + film-like color grade
       vignette: false,
       grain: false,

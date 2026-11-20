@@ -41,6 +41,7 @@ function guessQuality(renderer) {
   const cores = navigator.hardwareConcurrency || 4;
   if (/swiftshader|llvmpipe|software/.test(gpu)) return 'low';   // no real graphics chip
   if (!mobile) return /rtx|gtx|radeon rx|apple m\d|arc|rx \d{4}/.test(gpu) ? 'high' : 'medium';
+  if (/apple/.test(gpu)) return 'medium';              // iPhones and iPads: fast chips, but they do not tell us more
   if (memory <= 3 || cores <= 4 || /mali-4|mali-t|adreno \(tm\) [2-5]\d\d|powervr (sgx|rogue g)/.test(gpu)) return 'low';
   if (memory >= 8 && /adreno \(tm\) (7[3-9]\d|8\d\d)|immortalis|mali-g7[1-9]\d|mali-g[89]\d\d|apple/.test(gpu)) return 'high';
   return 'medium';
@@ -69,7 +70,7 @@ async function boot() {
   // ------------------------------------------------------------- load and build
   hud.setProgress(0.03, 'Loading textures');
   await nextFrame();
-  const materials = await createMaterials(renderer, (p) => hud.setProgress(0.03 + 0.27 * p, 'Loading textures'));
+  const materials = await createMaterials(renderer, (p, text) => hud.setProgress(0.03 + 0.27 * p, text || 'Loading textures'));
   hud.setProgress(0.32, 'Preparing materials');
   await nextFrame();
 
