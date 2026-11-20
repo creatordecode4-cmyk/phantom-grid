@@ -1,0 +1,872 @@
+// ---------------------------------------------------------------------------
+// materials.js - loads the textures and builds every material in the game.
+//
+// All big surfaces use three.js PBR materials (MeshStandardMaterial).
+// On top of that we add small pieces of shader code ("patches") for the
+// things three.js cannot do by itself:
+//   * break up repeating textures with large soft noise
+//   * dirt near the ground on walls
+//   * wet roads and puddles when it rains
+//   * windows on facades (day picture + glowing night picture)
+//   * light pools from street lamps, stored in one top-down texture
+// ---------------------------------------------------------------------------
+
+import * as THREE from 'three';
+import { CONFIG } from '../config.js';
+import { makeNoiseTexture, makeNormalRoughTexture, canvasTexture } from '../utils/noise.js';
+import * as TX from './textures.js';
+
+// ---------------------------------------------------------------------------
+// Values shared by all patched materials. Change ".value" and every material
+// sees the new value on the next frame.
+// ---------------------------------------------------------------------------
+export const shared = {
+  uPgTime: { value: 0 },                         // seconds since start
+  uPgWet: { value: 0 },                          // 0 = dry, 1 = soaked
+  uPgNight: { value: 0 },                        // 0 = lamps off, 1 = lamps on
+  uPgWinLight: { value: 0 },                     // share of windows that are lit
+  uPgDay: { value: 1 },                          // daylight level 0..1
+  uPgNoise: { value: null },                     // shared noise texture
+  uPgLightMap: { value: null },                  // lamp light seen from above
+  uPgLightRect: { value: new THREE.Vector4(-600, -600, 1 / 1200, 1 / 1200) },
+  uPgLightColA: { value: new THREE.Color(CONFIG.streetLights.sodiumColor) },
+  uPgLightColB: { value: new THREE.Color(CONFIG.streetLights.ledColor) },
+  uPgPlayer: { value: new THREE.Vector3() },     // player position
+  uPgWinAtlas: { value: null },                  // 8 x 8 day windows
+  uPgWinLit: { value: null },                    // 4 x 4 glowing windows
+  uPgShoreZ: { value: -470 },                    // where the sea meets the sand
+  uPgWaterNormal: { value: null },
+};
+
+// ---------------------------------------------------------------------------
+// Changes to three.js's own shader pieces. They apply to ALL materials.
+// Must run before the first frame is drawn.
+// ---------------------------------------------------------------------------
+export function installGlobalShaderPatches() {
+  const C = THREE.ShaderChunk;
+
+  // ---- 1. Ground haze: fog that is thick near the street and thin high up ----
+  C.fog_pars_vertex = /* glsl */ `
+#ifdef USE_FOG
+	varying float vFogDepth;
+	varying float vFogHeight;
+#endif`;
+  C.fog_vertex = /* glsl */ `
+#ifdef USE_FOG
+	vFogDepth = - mvPosition.z;
+	// world height of this point (camera space -> world space, y only)
+	vFogHeight = dot( viewMatrix[ 1 ].xyz, mvPosition.xyz ) + cameraPosition.y;
+#endif`;
+  C.fog_pars_fragment = /* glsl */ `
+#ifdef USE_FOG
+	uniform vec3 fogColor;
+	varying float vFogDepth;
+	varying float vFogHeight;
+	#ifdef FOG_EXP2
+		uniform float fogDensity;
+	#else
+		uniform float fogNear;
+		uniform float fogFar;
+	#endif
+	// How much haze lies between the camera and a point: 0 = none, 1 = hidden.
+	float pgFogAmount() {
+		#ifdef FOG_EXP2
+			float y0 = max( cameraPosition.y, 0.0 ) / ${CONFIG.fog.height.toFixed(1)};
+			float y1 = max( vFogHeight, 0.0 ) / ${CONFIG.fog.height.toFixed(1)};
+			float dy = y1 - y0;
+			// average haze thickness along the view line
+			float t = abs( dy ) > 0.01 ? ( exp( - y0 ) - exp( - y1 ) ) / dy : exp( - y0 );
+			float d = fogDensity * vFogDepth * t;
+			return 1.0 - exp( - d * d );
+		#else
+			return smoothstep( fogNear, fogFar, vFogDepth );
+		#endif
+	}
+#endif`;
+  C.fog_fragment = /* glsl */ `
+#ifdef USE_FOG
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, pgFogAmount() );
+#endif`;
+
+  // ---- 2. Shadows: a sharp map near the player + a soft map for the far city ----
+  // The game uses exactly ONE sun. A second, black "helper" light only carries
+  // the far shadow map. Here we teach the shader to blend the two maps.
+  const sunShadowLine =
+    'directLight.color *= ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowIntensity, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ) : 1.0;';
+  const marker = '#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )';
+  const src = C.lights_fragment_begin;
+  const at = src.indexOf(marker);
+  if (at >= 0 && src.includes(sunShadowLine)) {
+    let head = src.slice(0, at);
+    let tail = src.slice(at);
+    tail = tail.replace(
+      sunShadowLine,
+      `#if ( UNROLLED_LOOP_INDEX == 0 )
+		directLight.color *= ( directLight.visible && receiveShadow ) ? pgSunShadow() : 1.0;
+		#endif`
+    );
+    // only light number 0 (the sun) adds light; the helper light is skipped
+    tail = tail.replace(
+      'RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );',
+      `#if ( UNROLLED_LOOP_INDEX == 0 )
+		RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+		#endif`
+    );
+    C.lights_fragment_begin = head + tail;
+    C.shadowmap_pars_fragment += /* glsl */ `
+#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+	float pgSunShadow() {
+		vec3 c = vDirectionalShadowCoord[ 0 ].xyz / vDirectionalShadowCoord[ 0 ].w;
+		vec2 e = abs( c.xy - 0.5 );
+		// 0 inside the sharp map, 1 at (and beyond) its border
+		float w = smoothstep( 0.39, 0.49, max( e.x, e.y ) );
+		float nearS = 1.0;
+		float farS = 1.0;
+		if ( w < 1.0 ) nearS = getShadow( directionalShadowMap[ 0 ], directionalLightShadows[ 0 ].shadowMapSize, directionalLightShadows[ 0 ].shadowIntensity, directionalLightShadows[ 0 ].shadowBias, directionalLightShadows[ 0 ].shadowRadius, vDirectionalShadowCoord[ 0 ] );
+		#if NUM_DIR_LIGHT_SHADOWS > 1
+		if ( w > 0.0 ) farS = getShadow( directionalShadowMap[ 1 ], directionalLightShadows[ 1 ].shadowMapSize, directionalLightShadows[ 1 ].shadowIntensity, directionalLightShadows[ 1 ].shadowBias, directionalLightShadows[ 1 ].shadowRadius, vDirectionalShadowCoord[ 1 ] );
+		#endif
+		return mix( nearS, farS, w );
+	}
+#endif`;
+  } else {
+    console.warn('[materials] shadow patch skipped (three.js shader text changed)');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The shader patch. "defs" is a list of switches, for example
+// ['PG_GROUND', 'PG_ANTITILE'].
+// ---------------------------------------------------------------------------
+const PG_VERTEX_PARS = /* glsl */ `
+varying vec3 vPgWorld;
+varying vec3 vPgNormal;
+#ifdef PG_USE_DATA
+	attribute vec4 aData;
+	varying vec4 vPgData;
+#endif
+#if defined( PG_SHOP ) || defined( PG_TOWER )
+	varying vec2 vPgUv;
+#endif
+#ifdef PG_FOLIAGE
+	uniform float uPgTime;
+#endif
+`;
+
+// Vertex colors for props: the per-copy color only tints the "paint" parts.
+const PG_COLOR_VERTEX_PROP = /* glsl */ `
+#if defined( USE_COLOR_ALPHA )
+	vColor = vec4( 1.0 );
+#elif defined( USE_COLOR ) || defined( USE_INSTANCING_COLOR )
+	vColor = vec3( 1.0 );
+#endif
+#ifdef USE_COLOR
+	vColor *= color;
+#endif
+#ifdef USE_INSTANCING_COLOR
+	vColor.xyz *= mix( vec3( 1.0 ), instanceColor.xyz, aData.z );
+#endif
+`;
+
+const PG_VERTEX_MAIN = /* glsl */ `
+	vec4 pgWp = vec4( transformed, 1.0 );
+	vec3 pgN = objectNormal;
+	#ifdef USE_INSTANCING
+		pgWp = instanceMatrix * pgWp;
+		pgN = mat3( instanceMatrix ) * pgN;
+	#endif
+	pgWp = modelMatrix * pgWp;
+	vPgWorld = pgWp.xyz;
+	vPgNormal = normalize( mat3( modelMatrix ) * pgN );
+	#ifdef PG_USE_DATA
+		vPgData = aData;
+	#endif
+	#if defined( PG_SHOP ) || defined( PG_TOWER )
+		vPgUv = uv;
+	#endif
+`;
+
+// Leaves move a little in the wind (aData.x = how much this vertex may move).
+const PG_VERTEX_WIND = /* glsl */ `
+#ifdef PG_FOLIAGE
+	#ifdef USE_INSTANCING
+		float pgPhase = instanceMatrix[ 3 ].x * 0.37 + instanceMatrix[ 3 ].z * 0.23;
+	#else
+		float pgPhase = 0.0;
+	#endif
+	float pgSway = aData.x;
+	transformed.x += sin( uPgTime * 1.1 + pgPhase + position.y * 0.6 ) * 0.07 * pgSway;
+	transformed.z += cos( uPgTime * 0.83 + pgPhase * 1.7 + position.x * 0.5 ) * 0.06 * pgSway;
+	transformed.y += sin( uPgTime * 1.9 + pgPhase + position.x * 1.3 + position.z ) * 0.025 * pgSway;
+#endif
+`;
+
+const PG_FRAGMENT_PARS = /* glsl */ `
+uniform float uPgTime;
+uniform float uPgWet;
+uniform float uPgNight;
+uniform float uPgWinLight;
+uniform float uPgDay;
+uniform sampler2D uPgNoise;
+uniform sampler2D uPgLightMap;
+uniform vec4 uPgLightRect;
+uniform vec3 uPgLightColA;
+uniform vec3 uPgLightColB;
+uniform vec3 uPgPlayer;
+uniform float uPgShoreZ;
+varying vec3 vPgWorld;
+varying vec3 vPgNormal;
+#ifdef PG_USE_DATA
+	varying vec4 vPgData;
+#endif
+#if defined( PG_SHOP ) || defined( PG_TOWER )
+	varying vec2 vPgUv;
+#endif
+#ifdef PG_WINDOWS
+	uniform sampler2D uPgWinAtlas;
+	uniform sampler2D uPgWinLit;
+#endif
+#ifdef PG_OCEAN
+	uniform sampler2D uPgWaterNormal;
+#endif
+
+float pgHash( vec2 p ) {
+	return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 );
+}
+
+// Lamp light stored in a top-down picture: r = orange lamps, g = white lamps and shops.
+vec3 pgLampTexel( vec2 xz ) {
+	return texture2D( uPgLightMap, ( xz - uPgLightRect.xy ) * uPgLightRect.zw ).rgb;
+}
+// Real point lights already light the area near the player, so the fake
+// orange lamp light is turned down there (no double brightness).
+vec3 pgLampColor( vec3 lm, vec2 xz ) {
+	float nearPlayer = 1.0 - smoothstep( 16.0, 38.0, distance( xz, uPgPlayer.xz ) );
+	return ( lm.r * ( 1.0 - 0.65 * nearPlayer ) * uPgLightColA + lm.g * uPgLightColB ) * uPgNight;
+}
+
+// Soft-edged rectangle: 1 inside a..b, 0 outside. aa = blur width.
+float pgRect( vec2 p, vec2 a, vec2 b, vec2 aa ) {
+	vec2 s = smoothstep( a - aa, a + aa, p ) - smoothstep( b - aa, b + aa, p );
+	return s.x * s.y;
+}
+
+#ifdef PG_SHOP
+// ---------------------------------------------------------------------------
+// Ground floor shop fronts are drawn by math, so they stay sharp up close.
+//   p    = position on the opening in meters (x across, y up)
+//   size = width and height of the opening in meters
+//   type = 0 glass shop, 1 roller shutter, 2 door, 3 garage door
+// ---------------------------------------------------------------------------
+void pgShopFront( vec2 p, vec2 size, float type, float seed,
+	out vec3 alb, out float rough, out float metal, out float glass, out float ridge ) {
+	vec2 aa = fwidth( p ) + 0.0008;
+	float h1 = pgHash( vec2( seed * 91.7, 3.1 ) );
+	float h2 = pgHash( vec2( seed * 37.3, 7.7 ) );
+	float h3 = pgHash( vec2( seed * 13.9, 5.3 ) );
+	glass = 0.0;
+	ridge = 0.0;
+	if ( type < 0.5 ) {
+		// ---- glass shop front: frame, low wall, door, big panes ----
+		vec3 frame = h1 < 0.3 ? vec3( 0.03, 0.03, 0.034 ) : h1 < 0.55 ? vec3( 0.12, 0.085, 0.06 )
+			: h1 < 0.75 ? vec3( 0.42, 0.43, 0.44 ) : h1 < 0.9 ? vec3( 0.5, 0.48, 0.43 ) : vec3( 0.07, 0.14, 0.11 );
+		alb = frame;
+		rough = 0.42;
+		metal = ( h1 > 0.55 && h1 < 0.75 ) ? 0.85 : 0.15;
+		float fw = 0.05;
+		float plinthH = 0.32 + 0.3 * h2;
+		float transomY = min( 2.38, size.y - 0.35 );
+		float doorW = min( 1.0, size.x * 0.4 );
+		float doorX = h3 < 0.5 ? 0.1 : size.x - 0.1 - doorW;
+		float n = max( 1.0, floor( size.x / 1.9 + 0.5 ) );
+		float colW = size.x / n;
+		vec2 q = vec2( mod( p.x, colW ), p.y );
+		float pane = pgRect( q, vec2( fw, plinthH + fw ), vec2( colW - fw, size.y - fw ), aa );
+		pane *= 1.0 - pgRect( p, vec2( - 1.0, transomY - fw * 0.5 ), vec2( size.x + 1.0, transomY + fw * 0.5 ), aa );
+		float inDoor = pgRect( p, vec2( doorX, - 1.0 ), vec2( doorX + doorW, transomY ), aa );
+		float doorGlass = pgRect( p, vec2( doorX + 0.08, 0.28 ), vec2( doorX + doorW - 0.08, transomY - 0.08 ), aa );
+		doorGlass *= 1.0 - pgRect( p, vec2( doorX + 0.1, 1.0 ), vec2( doorX + doorW - 0.1, 1.06 ), aa ); // push bar
+		pane = mix( pane, doorGlass, inDoor );
+		float plinth = ( 1.0 - inDoor ) * ( 1.0 - smoothstep( plinthH - aa.y, plinthH + aa.y, p.y ) );
+		vec3 plinthCol = mix( frame * 1.5 + 0.02, vec3( 0.2, 0.19, 0.18 ), 0.55 );
+		alb = mix( alb, plinthCol, plinth );
+		rough = mix( rough, 0.75, plinth );
+		metal *= 1.0 - plinth;
+		glass = pane;
+	} else if ( type < 1.5 ) {
+		// ---- roller shutter: rounded metal slats ----
+		vec3 base = h1 < 0.4 ? vec3( 0.36, 0.37, 0.38 ) : h1 < 0.6 ? vec3( 0.1, 0.17, 0.14 )
+			: h1 < 0.8 ? vec3( 0.13, 0.17, 0.25 ) : vec3( 0.3, 0.22, 0.15 );
+		float slat = fract( p.y / 0.085 );
+		ridge = cos( slat * 3.14159 );
+		alb = base * ( 0.8 + 0.2 * sin( slat * 3.14159 ) );
+		rough = 0.48;
+		metal = h1 < 0.4 ? 0.85 : 0.35;
+		float flatPart = 1.0 - pgRect( p, vec2( 0.07, 0.11 ), vec2( size.x - 0.07, size.y - 0.28 ), aa );
+		alb = mix( alb, base * 0.7, flatPart );
+		ridge *= 1.0 - flatPart;
+		// rust and dirt creeping up from the bottom
+		float dirt = texture2D( uPgNoise, p * vec2( 0.31, 0.07 ) + seed ).a;
+		alb = mix( alb, vec3( 0.17, 0.1, 0.06 ), smoothstep( 0.5, 0.95, dirt + ( 1.0 - p.y / size.y ) * 0.35 ) * 0.55 );
+	} else if ( type < 2.5 ) {
+		// ---- plain door with a small window above ----
+		vec3 base = h1 < 0.35 ? vec3( 0.13, 0.05, 0.04 ) : h1 < 0.6 ? vec3( 0.06, 0.09, 0.13 )
+			: h1 < 0.8 ? vec3( 0.07, 0.07, 0.075 ) : vec3( 0.2, 0.16, 0.11 );
+		float leafTop = min( 2.15, size.y - 0.4 );
+		float leaf = pgRect( p, vec2( 0.07, - 1.0 ), vec2( size.x - 0.07, leafTop ), aa );
+		alb = mix( base * 0.55, base, leaf );
+		// two sunken panels
+		float pnl = pgRect( p, vec2( 0.2, 0.22 ), vec2( size.x - 0.2, 0.95 ), aa * 3.0 )
+			+ pgRect( p, vec2( 0.2, 1.12 ), vec2( size.x - 0.2, leafTop - 0.22 ), aa * 3.0 );
+		alb *= 1.0 - 0.22 * pnl * leaf;
+		float handle = pgRect( p, vec2( size.x - 0.2, 0.98 ), vec2( size.x - 0.14, 1.12 ), aa );
+		alb = mix( alb, vec3( 0.55 ), handle );
+		rough = mix( 0.5, 0.3, handle );
+		metal = handle * 0.9;
+		glass = pgRect( p, vec2( 0.12, leafTop + 0.07 ), vec2( size.x - 0.12, size.y - 0.07 ), aa );
+	} else {
+		// ---- garage door made of wide panels ----
+		vec3 base = h1 < 0.5 ? vec3( 0.4, 0.4, 0.38 ) : h1 < 0.75 ? vec3( 0.26, 0.24, 0.2 ) : vec3( 0.12, 0.15, 0.17 );
+		float seg = fract( p.y / 0.52 );
+		float groove = smoothstep( 0.0, 0.05, seg ) * ( 1.0 - smoothstep( 0.95, 1.0, seg ) );
+		alb = base * ( 0.72 + 0.28 * groove );
+		ridge = ( 1.0 - groove ) * 0.6;
+		rough = 0.55;
+		metal = 0.5;
+		// a row of small windows near the top
+		float wy = floor( ( size.y - 0.3 ) / 0.52 ) * 0.52 - 0.52;
+		float cw = size.x / max( 2.0, floor( size.x / 0.9 ) );
+		vec2 q = vec2( mod( p.x, cw ), p.y );
+		glass = pgRect( q, vec2( 0.12, wy + 0.12 ), vec2( cw - 0.12, wy + 0.4 ), aa );
+		float dirt = texture2D( uPgNoise, p * vec2( 0.27, 0.06 ) + seed ).a;
+		alb *= 1.0 - 0.35 * smoothstep( 0.55, 0.95, dirt );
+	}
+	alb = mix( alb, vec3( 0.012 ), glass );
+	rough = mix( rough, 0.05, glass );
+	metal *= 1.0 - glass;
+}
+
+// What you see through a shop window: a fake room with real depth
+// ("interior mapping"). Returns the light coming out of the room.
+vec3 pgShopInterior( vec2 p, vec2 size, float seed, float lit ) {
+	vec3 V = normalize( cameraPosition - vPgWorld );
+	vec3 N = normalize( vPgNormal );
+	vec3 T = normalize( cross( vec3( 0.0, 1.0, 0.0 ), N ) );
+	// view ray in wall space: x along the wall, y up, z out of the wall
+	vec3 d = - vec3( dot( V, T ), V.y, dot( V, N ) );
+	d.z = min( d.z, - 0.05 );
+	float depth = 3.5 + 2.0 * pgHash( vec2( seed, 1.7 ) );
+	float roomH = size.y + 0.35;
+	float tBack = depth / ( - d.z );
+	float tX = d.x > 0.0 ? ( size.x - p.x ) / max( d.x, 1e-4 ) : p.x / max( - d.x, 1e-4 );
+	float tY = d.y > 0.0 ? ( roomH - p.y ) / max( d.y, 1e-4 ) : p.y / max( - d.y, 1e-4 );
+	float t = min( tBack, min( tX, tY ) );
+	vec3 hit = vec3( p, 0.0 ) + d * t;
+	float hue = pgHash( vec2( seed, 9.3 ) );
+	vec3 wall = hue < 0.33 ? vec3( 0.55, 0.5, 0.42 ) : hue < 0.66 ? vec3( 0.42, 0.5, 0.5 ) : vec3( 0.56, 0.54, 0.5 );
+	vec3 col;
+	if ( t == tBack ) {
+		// back wall with shelves of boxes
+		vec2 cell = floor( vec2( hit.x / 0.28, hit.y / 0.46 ) );
+		float shelf = smoothstep( 0.0, 0.06, fract( hit.y / 0.46 ) );
+		float k = pgHash( cell + seed * 7.0 );
+		vec3 item = 0.25 + 0.5 * vec3( pgHash( cell + 1.3 ), pgHash( cell + 4.1 ), pgHash( cell + 8.7 ) );
+		col = mix( wall, item, step( 0.35, k ) * step( hit.y, 2.3 ) ) * ( 0.35 + 0.65 * shelf );
+	} else if ( t == tY ) {
+		// ceiling with light panels, or dark floor
+		float lights = smoothstep( 0.6, 0.8, sin( hit.z * 2.4 ) * 0.5 + 0.5 );
+		col = d.y > 0.0 ? mix( wall * 0.8, vec3( 1.6, 1.5, 1.3 ), lights * lit ) : vec3( 0.12, 0.11, 0.1 );
+	} else {
+		col = wall * 0.75; // side walls
+	}
+	col *= exp( - t * 0.12 );
+	// warm or cool lamps inside
+	vec3 lamp = pgHash( vec2( seed, 5.5 ) ) < 0.65 ? vec3( 1.0, 0.82, 0.6 ) : vec3( 0.8, 0.92, 1.0 );
+	return col * mix( vec3( 1.0 ), lamp, lit );
+}
+#endif
+`;
+
+// Texture lookup for surfaces that repeat a lot: blend with a second, turned
+// and shifted copy so the pattern never lines up in rows.
+const PG_MAP_FRAGMENT = /* glsl */ `
+#ifdef USE_MAP
+	vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+	#ifdef PG_ANTITILE
+		vec4 pgAlt = texture2D( map, vMapUv.yx * 0.83 + vec2( 0.37, 0.61 ) );
+		float pgSel = texture2D( uPgNoise, vPgWorld.xz * 0.029 + 0.13 ).b;
+		sampledDiffuseColor = mix( sampledDiffuseColor, pgAlt, smoothstep( 0.4, 0.6, pgSel ) );
+	#endif
+	diffuseColor *= sampledDiffuseColor;
+#endif
+`;
+
+// ---- A: color ----------------------------------------------------------------
+const PG_FRAGMENT_COLOR = /* glsl */ `
+	float pgPud = 0.0;     // puddle amount
+	float pgDamp = 0.0;    // wetness amount
+	float pgWin = 0.0;     // 1 on a window
+	float pgGlass = 0.0;   // 1 on shiny glass
+	float pgRidge = 0.0;   // bump for shutters
+	vec3 pgEmit = vec3( 0.0 );
+	vec3 pgLm = vec3( 0.0 );
+
+#if defined( PG_GROUND ) || defined( PG_DECAL )
+	{
+		vec2 xz = vPgWorld.xz;
+		vec4 n1 = texture2D( uPgNoise, xz * 0.0113 );
+		vec4 n2 = texture2D( uPgNoise, xz * 0.047 + 0.31 );
+		pgLm = pgLampTexel( xz );
+		#ifdef PG_GROUND
+			// big soft light/dark areas and a slight warm/cool shift
+			diffuseColor.rgb *= 0.8 + 0.4 * ( n1.r * 0.6 + n2.g * 0.4 );
+			diffuseColor.rgb *= mix( vec3( 1.03, 1.0, 0.96 ), vec3( 0.97, 1.0, 1.04 ), n1.b );
+		#endif
+		float flatness = smoothstep( 0.75, 0.97, vPgNormal.y );
+		float wet = uPgWet;
+		#ifdef PG_BEACH
+			// sand near the water line is always wet
+			float shore = 1.0 - smoothstep( 1.0, 13.0 + 5.0 * n2.r, vPgWorld.z - uPgShoreZ );
+			wet = max( wet, shore );
+			pgPud = shore * shore * 0.55;
+		#endif
+		if ( wet > 0.001 ) {
+			vec4 n3 = texture2D( uPgNoise, xz * 0.105 + 0.71 );
+			pgDamp = wet * ( 0.7 + 0.3 * n2.g ) * flatness;
+			// puddles collect in low spots; pgLm.b marks gutters along the curbs
+			float low = n3.r * 0.55 + n2.b * 0.45 + pgLm.b * 0.3;
+			#ifndef PG_BEACH
+				pgPud = smoothstep( 0.64, 0.72, low + ( uPgWet - 1.0 ) * 0.3 ) * flatness;
+			#endif
+			diffuseColor.rgb *= mix( 1.0, 0.6, pgDamp );
+			diffuseColor.rgb *= mix( 1.0, 0.6, pgPud );
+		}
+	}
+#endif
+
+#ifdef PG_WALL
+	{
+		// position on the wall: (x + z) runs along axis-aligned walls, y is up
+		vec2 wc = vec2( vPgWorld.x + vPgWorld.z, vPgWorld.y );
+		vec4 n1 = texture2D( uPgNoise, wc * 0.021 );
+		vec4 n2 = texture2D( uPgNoise, wc * 0.113 + 0.5 );
+		diffuseColor.rgb *= 0.82 + 0.36 * ( n1.r * 0.6 + n2.g * 0.4 );
+		// dark streaks where rain water runs down
+		diffuseColor.rgb *= 1.0 - 0.3 * smoothstep( 0.62, 0.95, n2.a ) * ( 0.4 + 0.6 * n1.b );
+		// grime near the ground, with a ragged upper edge
+		float grime = smoothstep( 0.0, 1.0, ( vPgWorld.y - 0.05 ) / ( 0.9 + 2.4 * n2.r ) );
+		diffuseColor.rgb *= mix( vec3( 0.46, 0.44, 0.41 ), vec3( 1.0 ), grime );
+		// rain makes walls a little darker too
+		diffuseColor.rgb *= 1.0 - 0.22 * uPgWet * n1.g;
+	}
+#endif
+
+#ifdef PG_WINDOWS
+	if ( vPgData.z > 0.5 ) {
+		// vPgData.xy counts window bays across and floors up
+		vec2 g = vPgData.xy;
+		vec2 cell = floor( g );
+		vec2 f = g - cell;
+		const vec2 rMin = vec2( 0.2, 0.25 );
+		const vec2 rSize = vec2( 0.6, 0.5 );
+		vec2 w = ( f - rMin ) / rSize;             // 0..1 inside the window
+		vec2 fw = fwidth( g ) / rSize;
+		vec2 edge = min( w, 1.0 - w );
+		vec2 m2 = smoothstep( vec2( 0.0 ), fw * 1.2 + 0.002, edge );
+		float m = m2.x * m2.y;
+		if ( m > 0.0 ) {
+			float h1 = pgHash( cell );
+			float h2 = pgHash( cell + 17.31 );
+			float h3 = pgHash( cell + 41.7 );
+			vec2 pick = floor( vec2( h1, fract( h1 * 57.31 ) ) * 8.0 );
+			vec2 wc2 = clamp( w, 0.012, 0.988 );
+			vec2 gx = dFdx( g ) / rSize;
+			vec2 gy = dFdy( g ) / rSize;
+			vec4 wt = textureGrad( uPgWinAtlas, ( pick + wc2 ) / 8.0, gx / 8.0, gy / 8.0 );
+			// the window sits a little inside the wall: shade the top and the sides
+			float reveal = smoothstep( 0.0, 0.09, 1.0 - w.y ) * smoothstep( 0.0, 0.035, edge.x );
+			vec3 winCol = wt.rgb * mix( 1.0, 0.6, wt.a ) * mix( 0.5, 1.0, reveal );
+			diffuseColor.rgb = mix( diffuseColor.rgb, winCol, m );
+			pgWin = m;
+			pgGlass = wt.a * m;
+			// lit at night: vPgData.w = share of windows in this building that can be lit
+			float on = step( h2, vPgData.w ) * step( h3, uPgWinLight );
+			if ( on > 0.5 ) {
+				vec2 pick2 = floor( vec2( h3, fract( h3 * 31.7 ) ) * 4.0 );
+				vec3 lit = textureGrad( uPgWinLit, ( pick2 + wc2 ) / 4.0, gx / 4.0, gy / 4.0 ).rgb;
+				// most rooms are warm, a few have a cold screen glow
+				vec3 tint = h1 > 0.86 ? vec3( 0.55, 0.75, 1.15 ) : vec3( 1.0, 0.92, 0.8 );
+				pgEmit += lit * tint * m * ( 1.1 + 1.3 * h2 );
+			}
+		}
+	}
+#endif
+
+#ifdef PG_TOWER
+	{
+		// glass towers: whole office floors light up at night
+		vec2 cell = floor( vPgUv * vec2( 5.0, 5.0 ) );
+		float h = pgHash( cell );
+		float rowOn = step( pgHash( vec2( cell.y, 3.7 ) ), 0.55 );
+		float on = step( h, 0.2 + 0.5 * rowOn ) * step( pgHash( cell + 9.1 ), uPgWinLight * 1.3 );
+		vec3 tint = h > 0.12 ? vec3( 1.0, 0.86, 0.62 ) : vec3( 0.7, 0.86, 1.0 );
+		pgEmit += diffuseColor.rgb * tint * on * 2.6;
+	}
+#endif
+
+#ifdef PG_SHOP
+	vec2 pgShopSize = vPgData.zw;
+	vec2 pgShopP = vPgUv * pgShopSize;
+	float pgShopSeed = fract( vPgData.y );
+	{
+		vec3 alb; float rough; float metal;
+		pgShopFront( pgShopP, pgShopSize, vPgData.x, vPgData.y, alb, rough, metal, pgGlass, pgRidge );
+		// street dirt on the lower part
+		float dirt = texture2D( uPgNoise, vec2( vPgWorld.x + vPgWorld.z, vPgWorld.y ) * 0.21 ).g;
+		alb *= mix( 0.55 + 0.3 * dirt, 1.0, smoothstep( 0.0, 0.9, vPgWorld.y ) ) * ( 1.0 - pgGlass ) + pgGlass;
+		diffuseColor.rgb = alb;
+		pgWin = 1.0; // (re-used: the roughness and metal values come from the shop code)
+		pgShopRough = rough;
+		pgShopMetal = metal;
+	}
+#endif
+
+#ifdef PG_PROP
+	{
+		// a little dirt so painted metal is never one flat color
+		float n = texture2D( uPgNoise, vPgWorld.xz * 0.31 + vPgWorld.y * 0.17 ).g;
+		diffuseColor.rgb *= 0.86 + 0.28 * n;
+	}
+#endif
+`;
+
+// ---- B: roughness (how shiny) ------------------------------------------------------
+const PG_FRAGMENT_ROUGH = /* glsl */ `
+#if defined( PG_ROUGH_FROM_NORMAL ) && defined( USE_NORMALMAP_TANGENTSPACE )
+	// our normal maps keep the roughness in their alpha channel
+	vec4 pgNR = texture2D( normalMap, vNormalMapUv );
+	roughnessFactor *= pgNR.a;
+#endif
+#if defined( PG_GROUND ) || defined( PG_DECAL )
+	roughnessFactor = mix( roughnessFactor, roughnessFactor * 0.42, pgDamp );
+	roughnessFactor = mix( roughnessFactor, 0.035, pgPud );
+#endif
+#ifdef PG_WALL
+	roughnessFactor = mix( roughnessFactor, roughnessFactor * 0.75, uPgWet );
+#endif
+#ifdef PG_WINDOWS
+	roughnessFactor = mix( roughnessFactor, mix( 0.5, 0.07, pgGlass ), pgWin );
+#endif
+#ifdef PG_SHOP
+	roughnessFactor = pgShopRough;
+#endif
+#ifdef PG_PROP
+	roughnessFactor = mix( vPgData.x, vPgData.x * 0.6, uPgWet );
+#endif
+`;
+
+// ---- C: metalness -----------------------------------------------------------------------
+const PG_FRAGMENT_METAL = /* glsl */ `
+#ifdef PG_SHOP
+	metalnessFactor = pgShopMetal;
+#endif
+#ifdef PG_PROP
+	metalnessFactor = vPgData.y;
+#endif
+`;
+
+// ---- D: surface normal ---------------------------------------------------------------------
+const PG_FRAGMENT_NORMAL = /* glsl */ `
+#if defined( PG_GROUND ) || defined( PG_DECAL )
+	// water fills the small bumps: wet ground is smoother, puddles are flat
+	normal = normalize( mix( normal, nonPerturbedNormal, max( pgPud, pgDamp * 0.55 ) ) );
+	#ifndef PG_BEACH
+	if ( pgPud > 0.02 ) {
+		// rain drops disturb the puddles
+		vec2 xz = vPgWorld.xz;
+		vec2 r1 = texture2D( uPgNoise, xz * 1.7 + vec2( uPgTime * 1.3, uPgTime * 0.9 ) ).rg - 0.5;
+		vec2 r2 = texture2D( uPgNoise, xz * 2.9 - vec2( uPgTime * 1.1, uPgTime * 1.6 ) ).gb - 0.5;
+		vec2 rip = ( r1 + r2 ) * 0.085 * pgPud;
+		normal = normalize( normal + ( viewMatrix * vec4( rip.x, 0.0, rip.y, 0.0 ) ).xyz );
+	}
+	#endif
+#endif
+#ifdef PG_WINDOWS
+	normal = normalize( mix( normal, nonPerturbedNormal, pgWin ) );
+#endif
+#ifdef PG_SHOP
+	// shutters: tilt the normal up and down to shade the slats
+	normal = normalize( normal + viewMatrix[ 1 ].xyz * pgRidge * 0.55 );
+#endif
+#ifdef PG_OCEAN
+	{
+		vec2 xz = vPgWorld.xz;
+		float dist = length( vPgWorld - cameraPosition );
+		vec2 t = vec2( uPgTime );
+		vec3 a = texture2D( uPgWaterNormal, xz * 0.058 + t * vec2( 0.021, 0.013 ) ).xyz * 2.0 - 1.0;
+		vec3 b = texture2D( uPgWaterNormal, xz * 0.023 - t * vec2( 0.009, 0.016 ) ).xyz * 2.0 - 1.0;
+		vec3 c = texture2D( uPgWaterNormal, xz * 0.0057 + t * vec2( 0.004, - 0.003 ) ).xyz * 2.0 - 1.0;
+		vec2 slope = a.xy * 0.5 + b.xy * 0.8 + c.xy * 1.1;
+		// far away the waves are too small to see one by one
+		slope *= mix( 0.42, 0.12, smoothstep( 40.0, 1200.0, dist ) );
+		vec3 nw = normalize( vec3( slope.x, 1.0, slope.y ) );
+		normal = normalize( ( viewMatrix * vec4( nw, 0.0 ) ).xyz );
+		roughnessFactor = mix( 0.07, 0.3, smoothstep( 30.0, 1500.0, dist ) );
+		// shallow water near the beach is lighter; white foam at the edge
+		float off = uPgShoreZ - vPgWorld.z;      // meters out to sea
+		float shallow = exp( - max( off, 0.0 ) / 22.0 );
+		diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.07, 0.19, 0.18 ), shallow * 0.8 );
+		float n = texture2D( uPgNoise, xz * vec2( 0.05, 0.09 ) + t * vec2( 0.01, 0.03 ) ).r;
+		float wave = sin( off * 0.42 - uPgTime * 0.9 + n * 5.0 + sin( xz.x * 0.03 ) * 2.0 );
+		float foam = smoothstep( 0.55, 0.95, wave ) * ( 1.0 - smoothstep( 2.0, 26.0, off ) ) * ( 0.4 + 0.6 * n );
+		foam = max( foam, 1.0 - smoothstep( 0.0, 2.5, off + n * 1.5 ) );
+		diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.82, 0.85, 0.85 ), foam * 0.85 );
+		roughnessFactor = mix( roughnessFactor, 0.75, foam );
+	}
+#endif
+`;
+
+// ---- E: light that the surface gives off -----------------------------------------------------
+const PG_FRAGMENT_EMISSIVE = /* glsl */ `
+	totalEmissiveRadiance += pgEmit * step( 0.001, uPgWinLight + uPgNight );
+#if defined( PG_GROUND ) || defined( PG_DECAL )
+	if ( uPgNight > 0.001 ) {
+		vec3 lamp = pgLampColor( pgLm, vPgWorld.xz ) * ( 1.0 - smoothstep( 1.0, 4.0, vPgWorld.y ) );
+		totalEmissiveRadiance += diffuseColor.rgb * lamp * 1.9;
+		// wet ground also mirrors a little of the lamp light
+		totalEmissiveRadiance += lamp * ( pgDamp * 0.06 + pgPud * 0.1 );
+	}
+#endif
+#if defined( PG_WALL ) || defined( PG_SHOP ) || defined( PG_SIGN ) || defined( PG_LAMP )
+	if ( uPgNight > 0.001 ) {
+		// walls catch lamp light from the street in front of them, fading with height
+		vec2 q = vPgWorld.xz + vPgNormal.xz * 2.2;
+		vec3 lamp = pgLampColor( pgLampTexel( q ), q );
+		float up = exp( - max( vPgWorld.y - 1.5, 0.0 ) * 0.17 );
+		totalEmissiveRadiance += diffuseColor.rgb * lamp * up * 1.25;
+	}
+#endif
+#if defined( PG_PROP ) || defined( PG_FOLIAGE )
+	if ( uPgNight > 0.001 ) {
+		vec3 lamp = pgLampColor( pgLampTexel( vPgWorld.xz ), vPgWorld.xz );
+		float up = exp( - max( vPgWorld.y - 2.0, 0.0 ) * 0.2 );
+		totalEmissiveRadiance += diffuseColor.rgb * lamp * up * 1.3;
+	}
+#endif
+#ifdef PG_PROP
+	// glowing parts: data.w from 0..1 glows only at night, 1..2 glows always
+	{
+		float gl = vPgData.w;
+		float always = max( gl - 1.0, 0.0 );
+		float atNight = min( gl, 1.0 ) * step( gl, 1.0 ) * uPgNight;
+		totalEmissiveRadiance += vColor.rgb * ( always + atNight ) * 7.0;
+	}
+#endif
+#ifdef PG_SIGN
+	#ifdef USE_MAP
+		// lit signs: data.x = brightness of this sign at night
+		totalEmissiveRadiance += sampledDiffuseColor.rgb * sampledDiffuseColor.rgb * vPgData.x * uPgNight * 3.2;
+	#endif
+#endif
+#ifdef PG_SHOP
+	if ( pgGlass > 0.01 ) {
+		// shops with a seed below 0.62 keep their lights on at night
+		float lit = step( pgShopSeed, 0.62 ) * uPgNight;
+		vec3 room = pgShopInterior( pgShopP, pgShopSize, vPgData.y, lit );
+		totalEmissiveRadiance += room * pgGlass * ( uPgDay * 0.2 + lit * 1.5 + 0.004 );
+	}
+#endif
+`;
+
+// Turn a plain three.js material into a "patched" one.
+function patch(material, defs) {
+  const defines = defs.map((d) => `#define ${d}`).join('\n') + '\n';
+  const usesData = defs.some((d) => ['PG_WINDOWS', 'PG_SHOP', 'PG_PROP', 'PG_SIGN', 'PG_FOLIAGE'].includes(d));
+  const head = defines + (usesData ? '#define PG_USE_DATA\n' : '');
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, shared);
+    let vs = shader.vertexShader;
+    vs = vs.replace('#include <common>', '#include <common>\n' + PG_VERTEX_PARS);
+    if (defs.includes('PG_PROP')) vs = vs.replace('#include <color_vertex>', PG_COLOR_VERTEX_PROP);
+    vs = vs.replace('#include <begin_vertex>', '#include <begin_vertex>\n' + PG_VERTEX_WIND);
+    vs = vs.replace('#include <project_vertex>', '#include <project_vertex>\n' + PG_VERTEX_MAIN);
+    shader.vertexShader = head + vs;
+
+    let fs = shader.fragmentShader;
+    fs = fs.replace('#include <common>', '#include <common>\n' + PG_FRAGMENT_PARS);
+    fs = fs.replace('#include <map_fragment>', PG_MAP_FRAGMENT);
+    fs = fs.replace(
+      '#include <color_fragment>',
+      '#include <color_fragment>\n\tfloat pgShopRough = 0.5;\n\tfloat pgShopMetal = 0.0;\n' + PG_FRAGMENT_COLOR
+    );
+    fs = fs.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + PG_FRAGMENT_ROUGH);
+    fs = fs.replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n' + PG_FRAGMENT_METAL);
+    // re-use the normal map sample we already took for the roughness
+    let normalChunk = THREE.ShaderChunk.normal_fragment_maps;
+    if (defs.includes('PG_ROUGH_FROM_NORMAL')) {
+      normalChunk = normalChunk.replace(
+        'vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;',
+        'vec3 mapN = pgNR.xyz * 2.0 - 1.0;'
+      );
+    }
+    fs = fs.replace('#include <normal_fragment_maps>', normalChunk + '\n' + PG_FRAGMENT_NORMAL);
+    fs = fs.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n' + PG_FRAGMENT_EMISSIVE);
+    shader.fragmentShader = head + fs;
+  };
+  // three.js re-uses compiled shaders between materials with the same key
+  material.customProgramCacheKey = () => 'pg:' + defs.join(',');
+  return material;
+}
+
+// ---------------------------------------------------------------------------
+// createMaterials: load everything. Returns { mats, tex, setQuality }.
+// ---------------------------------------------------------------------------
+export async function createMaterials(renderer, onProgress = () => {}) {
+  const T = CONFIG.textures;
+  const maxAniso = renderer.capabilities.getMaxAnisotropy();
+
+  // ---- 1. load the pictures (a missing file gives null) ----
+  const names = ['asphalt', 'sidewalk', 'brick', 'plaster', 'sand', 'glassTower', 'windowsDay', 'windowsNight'];
+  let loaded = 0;
+  const images = {};
+  await Promise.all(
+    names.map(async (n) => {
+      images[n] = await TX.loadImage(T.path + T[n].file);
+      if (!images[n]) console.warn(`[materials] ${T[n].file} is missing - using a generated texture instead`);
+      onProgress(++loaded / names.length);
+    })
+  );
+  const missing = names.filter((n) => !images[n]);
+
+  // ---- 2. color textures (photo, or a generated fallback) ----
+  const fallback = {
+    asphalt: TX.fallbackAsphalt, sidewalk: TX.fallbackSidewalk, brick: TX.fallbackBrick,
+    plaster: TX.fallbackPlaster, sand: TX.fallbackSand, glassTower: TX.fallbackGlassTower,
+  };
+  const tex = {};
+  const sources = {};
+  for (const n of ['asphalt', 'sidewalk', 'brick', 'plaster', 'sand', 'glassTower']) {
+    const src = images[n] || fallback[n]();
+    sources[n] = src;
+    const t = new THREE.Texture(src);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.magFilter = THREE.LinearFilter;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.generateMipmaps = true;
+    t.needsUpdate = true;
+    tex[n] = t;
+  }
+
+  // ---- 3. bumps + roughness made from the color pictures ----
+  const nr = {};
+  nr.asphalt = makeNormalRoughTexture(sources.asphalt, { strength: T.asphalt.normal, roughness: T.asphalt.roughness, detailRadius: 8 });
+  nr.sidewalk = makeNormalRoughTexture(sources.sidewalk, { strength: T.sidewalk.normal, roughness: T.sidewalk.roughness, detailRadius: 6 });
+  nr.brick = makeNormalRoughTexture(sources.brick, { strength: T.brick.normal, roughness: T.brick.roughness, mode: 'saturation', detailRadius: 10 });
+  nr.plaster = makeNormalRoughTexture(sources.plaster, { strength: T.plaster.normal, roughness: T.plaster.roughness, detailRadius: 4 });
+  nr.sand = makeNormalRoughTexture(sources.sand, { strength: T.sand.normal, roughness: T.sand.roughness, detailRadius: 10 });
+
+  // ---- 4. generated textures ----
+  const win = TX.buildWindowAtlases(images.windowsDay, images.windowsNight, T.windowsDay, T.windowsNight);
+  tex.noise = makeNoiseTexture(256);
+  tex.markings = TX.makeMarkingsTexture();
+  tex.decals = TX.makeDecalTexture();
+  tex.signs = TX.makeSignTexture();
+  tex.holo = TX.makeHoloTexture();
+  tex.leaf = TX.makeLeafTexture();
+  tex.frond = TX.makeFrondTexture();
+  tex.glow = TX.makeGlowTexture();
+  tex.awning = TX.makeAwningTexture();
+  tex.waterNormal = TX.makeWaterNormalTexture();
+  tex.skyline = TX.makeSkylineTextures();
+  tex.winDay = win.day;
+  tex.winLit = win.lit;
+
+  shared.uPgNoise.value = tex.noise;
+  shared.uPgWinAtlas.value = tex.winDay;
+  shared.uPgWinLit.value = tex.winLit;
+  shared.uPgWaterNormal.value = tex.waterNormal;
+  // a tiny black picture until the real lamp light map is drawn by the city builder
+  const blank = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
+  blank.needsUpdate = true;
+  shared.uPgLightMap.value = blank;
+
+  // ---- 5. materials ----
+  const std = (opts) => new THREE.MeshStandardMaterial({ metalness: 0, roughness: 1, vertexColors: true, ...opts });
+  const mats = {};
+
+  // Road asphalt (also used for flat roofs).
+  mats.asphalt = patch(std({ map: tex.asphalt, normalMap: nr.asphalt }), ['PG_GROUND', 'PG_ANTITILE', 'PG_ROUGH_FROM_NORMAL']);
+  // Sidewalk slabs and curbs.
+  mats.sidewalk = patch(std({ map: tex.sidewalk, normalMap: nr.sidewalk }), ['PG_GROUND', 'PG_ROUGH_FROM_NORMAL']);
+  // Beach sand.
+  mats.sand = patch(std({ map: tex.sand, normalMap: nr.sand }), ['PG_GROUND', 'PG_ANTITILE', 'PG_BEACH', 'PG_ROUGH_FROM_NORMAL']);
+  // Stains, cracks, manholes, soft shadows (see-through quads on the ground).
+  mats.decal = patch(
+    std({ map: tex.decals, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6, roughness: 0.85 }),
+    ['PG_DECAL']
+  );
+  // Painted road markings.
+  mats.marking = patch(
+    std({ map: tex.markings, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -10, roughness: 0.7 }),
+    ['PG_DECAL']
+  );
+  // Building walls.
+  mats.brick = patch(std({ map: tex.brick, normalMap: nr.brick }), ['PG_WALL', 'PG_WINDOWS', 'PG_ROUGH_FROM_NORMAL']);
+  mats.plaster = patch(std({ map: tex.plaster, normalMap: nr.plaster }), ['PG_WALL', 'PG_WINDOWS', 'PG_ROUGH_FROM_NORMAL']);
+  // Glass towers of The Crown.
+  mats.tower = patch(std({ map: tex.glassTower, roughness: 0.16, metalness: 0.55 }), ['PG_TOWER']);
+  // Ground floor shop fronts (drawn by the shader).
+  mats.shop = patch(std({ roughness: 0.5 }), ['PG_SHOP']);
+  // Shop signs.
+  mats.sign = patch(std({ map: tex.signs, roughness: 0.55 }), ['PG_SIGN']);
+  // Cloth awnings.
+  mats.awning = patch(std({ map: tex.awning, roughness: 0.85, side: THREE.DoubleSide }), ['PG_LAMP']);
+  // All small objects: color, roughness and metal come from the vertices.
+  mats.prop = patch(std({}), ['PG_PROP']);
+  mats.propDouble = patch(std({ side: THREE.DoubleSide }), ['PG_PROP']);
+  // Leaves and palm fronds.
+  const leafOpts = { alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.75 };
+  mats.leaf = patch(std({ map: tex.leaf, ...leafOpts }), ['PG_FOLIAGE']);
+  mats.frond = patch(std({ map: tex.frond, ...leafOpts }), ['PG_FOLIAGE']);
+  // Ocean.
+  mats.ocean = patch(
+    new THREE.MeshPhysicalMaterial({ color: 0x06222e, roughness: 0.1, metalness: 0, ior: 1.34, reflectivity: 0.5 }),
+    ['PG_OCEAN']
+  );
+  // Far hills.
+  mats.hills = std({ map: tex.sand, roughness: 1 });
+  // Thin wires between power poles.
+  mats.wire = new THREE.LineBasicMaterial({ color: 0x101012 });
+
+  // Remember the settings we switch with the quality level.
+  const normalMapped = [
+    [mats.asphalt, nr.asphalt, T.asphalt.roughness],
+    [mats.sidewalk, nr.sidewalk, T.sidewalk.roughness],
+    [mats.sand, nr.sand, T.sand.roughness],
+    [mats.brick, nr.brick, T.brick.roughness],
+    [mats.plaster, nr.plaster, T.plaster.roughness],
+  ];
+  const anisoTextures = [tex.asphalt, tex.sidewalk, tex.sand, tex.brick, tex.plaster, tex.markings, tex.decals, tex.glassTower, nr.asphalt, nr.sidewalk];
+
+  function setQuality(q) {
+    for (const [m, map, rough] of normalMapped) {
+      const want = q.normalMaps ? map : null;
+      if (m.normalMap !== want) {
+        m.normalMap = want;
+        m.needsUpdate = true;
+      }
+      // with the map, the roughness comes from its alpha channel
+      m.roughness = q.normalMaps ? 1.0 : rough;
+    }
+    const a = Math.min(q.anisotropy, maxAniso);
+    for (const t of anisoTextures) {
+      if (t.anisotropy !== a) {
+        t.anisotropy = a;
+        t.needsUpdate = true;
+      }
+    }
+  }
+
+  return { mats, tex, nr, shared, missing, setQuality };
+}
