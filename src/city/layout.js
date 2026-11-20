@@ -132,10 +132,23 @@ export const LAYOUT = {
     eastX: -1350,   // where the east hills start
   },
 
+  // ----- Hero buildings ------------------------------------------------------------
+  // Model files (.glb) from assets/buildings/ are placed on these corner lots,
+  // the first file on the first lot and so on. Without files the lots get
+  // normal buildings.
+  //   col / row: which block,  corner: 'sw' 'se' 'nw' 'ne' (s = south, w = west ...)
+  //   front: which way the model looks,  width / depth: size of the lot in meters
+  heroLots: [
+    { col: 4, row: 4, corner: 'sw', front: 'W', width: 24, depth: 24 },  // first corner south of the start
+    { col: 5, row: 5, corner: 'se', front: 'E', width: 24, depth: 24 },  // first corner north of the start
+    { col: 2, row: 1, corner: 'sw', front: 'S', width: 24, depth: 24 },
+    { col: 6, row: 0, corner: 'sw', front: 'S', width: 22, depth: 22 },  // on Neon Mile
+  ],
+
   // ----- Where the player starts ----------------------------------------------------
   spawn: {
-    x: 1.6,            // on the sidewalk on the west side of the street
-    z: 104,
+    x: -15.8,          // on the sidewalk on the east side of the street
+    z: 108,
     facingDeg: 180,    // compass direction: 180 = south (toward the ocean)
   },
 };

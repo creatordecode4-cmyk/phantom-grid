@@ -1,8 +1,12 @@
 // ---------------------------------------------------------------------------
 // props.js - puts all the small things into the city:
-// street lights, traffic lights, trees, palms, bins, benches, bus stops,
-// hydrants, power poles with wires, parked cars, EV chargers, drones,
-// roof equipment, fire escapes, barriers at the edge of the map ...
+// street lights, traffic lights, trees with tree grates, palms, bins,
+// benches, bus stops, hydrants, planters, newspaper boxes, parking meters,
+// street signs, power poles with sagging wires, parked cars, EV chargers,
+// drones, dumpsters and puddles in the alleys, barriers at the edge of the map.
+//
+// (Things that belong to a building - balconies, fire escapes, roof
+// equipment - are placed by buildingKit.js.)
 //
 // Each kind of prop is ONE instanced mesh (one draw call for all copies).
 // ---------------------------------------------------------------------------
@@ -11,7 +15,6 @@ import * as THREE from 'three';
 import { InstancedSet } from '../utils/geometry.js';
 import { blockEdges, addDecal } from './ground.js';
 import * as M from './models.js';
-import { signUV, SIGN_COLS, SIGN_ROWS, NEON_FIRST_ROW, HOLO_COUNT } from './textures.js';
 import { shared } from './materials.js';
 
 // Car paint colors (screen colors). Common colors appear more often.
@@ -22,6 +25,7 @@ const CAR_COLORS = [
 ];
 const HYDRANT_COLORS = [[0.78, 0.6, 0.1], [0.78, 0.6, 0.1], [0.6, 0.1, 0.07]];
 const DUMPSTER_COLORS = [[0.1, 0.22, 0.14], [0.12, 0.2, 0.36], [0.3, 0.3, 0.3], [0.35, 0.16, 0.1]];
+const NEWSBOX_COLORS = [[0.55, 0.08, 0.06], [0.08, 0.2, 0.45], [0.7, 0.55, 0.08], [0.1, 0.3, 0.16], [0.75, 0.75, 0.72], [0.06, 0.06, 0.07]];
 
 // Turn a point of a model (lx, ly, lz) by "rot" around the up axis and move it.
 function place(x, y, z, rot, lx, ly, lz) {
@@ -187,7 +191,7 @@ export function buildProps(ctx) {
   const mTree = M.makeTree(11);
   const mPalm = M.makePalm(12);
 
-  const sets = {};
+  const sets = ctx.sets; // shared with buildingKit.js, which has already added the building details
   const S = (name, geom, mat, opts) => (sets[name] = new InstancedSet(name, geom, mat, opts));
   S('streetLight', mStreet.geometry, mats.prop, { maxDistance: 320 });
   S('led1', mLed1.geometry, mats.prop, { maxDistance: 380 });
@@ -208,13 +212,10 @@ export function buildProps(ctx) {
   S('sedan', M.makeCar('sedan'), mats.prop, { maxDistance: 200, useColor: true });
   S('suv', M.makeCar('suv'), mats.prop, { maxDistance: 200, useColor: true });
   S('van', M.makeCar('van'), mats.prop, { maxDistance: 200, useColor: true });
-  S('roofAC', M.makeRoofAC(), mats.prop, { maxDistance: 150, castShadow: false });
-  S('tank', M.makeWaterTank(), mats.prop, { maxDistance: 420, castShadow: false });
-  S('solar', M.makeSolarPanels(), mats.prop, { maxDistance: 170, castShadow: false });
-  S('winAC', M.makeWindowAC(), mats.prop, { maxDistance: 115, castShadow: false });
-  S('fireEscape', M.makeFireEscape(true), mats.prop, { maxDistance: 150, castShadow: false });
-  S('fireEscapeTop', M.makeFireEscape(false), mats.prop, { maxDistance: 150, castShadow: false });
   S('lifeguard', M.makeLifeguardTower(), mats.prop, { maxDistance: 700 });
+  S('newsBox', M.makeNewsBox(), mats.prop, { maxDistance: 90, useColor: true });
+  S('meter', M.makeParkingMeter(), mats.prop, { maxDistance: 80, castShadow: false });
+  S('streetSign', M.makeStreetSign(), mats.prop, { maxDistance: 150 });
 
   // lamps of the traffic lights: tiny glowing balls with their own color
   const bitMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -294,7 +295,7 @@ export function buildProps(ctx) {
         circles.push({ x: p[0], z: p[1], r: 0.2 });
         const key = Math.round(e.a.z);
         if (!poleRows.has(key)) poleRows.set(key, []);
-        poleRows.get(key).push({ x: p[0], y: ground, z: p[1] });
+        poleRows.get(key).push({ x: p[0], y: ground, z: p[1], inX: e.inX, inZ: e.inZ, reach: sw });
       }
     }
 
@@ -357,12 +358,57 @@ export function buildProps(ctx) {
       }
     }
 
+    // ---- street sign near the corner ----
+    if (len > 20 && free(4.0, 0.3)) {
+      const p = P(4.0, 0.5);
+      sets.streetSign.add(p[0], ground, p[1], toStreet + rng.range(-0.06, 0.06));
+      take(4.0, 0.35);
+      circles.push({ x: p[0], z: p[1], r: 0.14 });
+    }
+
+    // ---- planters with bushes ----
+    if (block.playable && rng.chance(neon ? 0.55 : 0.3)) {
+      for (let s = rng.range(10, 16); s < len - 9; s += rng.range(9, 20)) {
+        if (!free(s, 1.0)) continue;
+        const p = P(s, 0.7);
+        sets.planter.add(p[0], ground, p[1], e.inX, e.inZ);
+        const sc = rng.range(1.0, 1.5);
+        sets.shrub.add(p[0], ground + 0.5, p[1], 0, 1, sc, sc * rng.range(0.9, 1.2), sc);
+        take(s, 1.0);
+        circles.push({ x: p[0] - e.dirX * 0.35, z: p[1] - e.dirZ * 0.35, r: 0.42 }, { x: p[0] + e.dirX * 0.35, z: p[1] + e.dirZ * 0.35, r: 0.42 });
+        blob(p[0], p[1], 1.2, 1.9, toStreet + Math.PI / 2, ground + 0.012, 0.6);
+      }
+    }
+
+    // ---- a row of newspaper boxes ----
+    if (block.playable && rng.chance(0.14)) {
+      const s0 = rng.chance(0.5) ? rng.range(6.5, 9) : len - rng.range(6.5, 9);
+      const n = rng.int(1, 3);
+      if (free(s0, 0.4 + n * 0.3)) {
+        for (let i = 0; i < n; i++) {
+          const p = P(s0 + (i - (n - 1) / 2) * 0.56, 0.55);
+          sets.newsBox.add(p[0], ground, p[1], toHouse + rng.range(-0.05, 0.05), 1, lin(rng.pick(NEWSBOX_COLORS)));
+        }
+        const c = P(s0, 0.55);
+        circles.push({ x: c[0], z: c[1], r: 0.3 + n * 0.14 });
+        take(s0, 0.4 + n * 0.3);
+        blob(c[0], c[1], 0.9, 0.6 + n * 0.5, toStreet + Math.PI / 2, ground + 0.012, 0.6);
+      }
+    }
+
     // ---- parked cars at the curb (they face the driving direction) + EV chargers ----
     const fx = e.inZ, fz = -e.inX;          // driving direction on this side of the road
     const carRot = Math.atan2(fx, fz);
     const fill = neon ? 0.42 : e.type === 'avenue' ? 0.3 : 0.33;
+    const metered = block.playable && !neon && rng.chance(0.4); // parking meters on some streets
     for (let s = 9; s + 5.6 < len - 8; s += 6.2) {
       const sc = s + 2.8;
+      if (metered && free(s, 0.25)) {
+        const q = P(s, 0.42);
+        sets.meter.add(q[0], ground, q[1], toHouse);
+        take(s, 0.25);
+        circles.push({ x: q[0], z: q[1], r: 0.12 });
+      }
       if (noPark.some(([a, b]) => sc > a && sc < b)) continue;
       if (rng.chance(fill)) {
         const r = rng.next();
@@ -416,6 +462,57 @@ export function buildProps(ctx) {
             pts.push(a.x + (b.x - a.x) * t1, a.y + wp[1] - sag * 4 * t1 * (1 - t1), z0 + (z1 - z0) * t1);
           }
         }
+      }
+    }
+    // Find the building that stands at a point (for wires that end on a wall).
+    const cellOf = (x, z) => Math.floor(x / 40) * 1000 + Math.floor(z / 40);
+    const grid = new Map();
+    for (const b of ctx.buildings) {
+      if (!b.playable) continue;
+      for (let cx = Math.floor(b.minX / 40); cx <= Math.floor(b.maxX / 40); cx++) {
+        for (let cz = Math.floor(b.minZ / 40); cz <= Math.floor(b.maxZ / 40); cz++) {
+          const k = cx * 1000 + cz;
+          if (!grid.has(k)) grid.set(k, []);
+          grid.get(k).push(b);
+        }
+      }
+    }
+    const buildingAt = (x, z) => (grid.get(cellOf(x, z)) || []).find((b) => x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ) || null;
+    // one hanging wire from a to b ([x, y, z]); sag = how far it hangs down in the middle
+    const hang = (a, b, sag, N = 6) => {
+      for (let k = 0; k < N; k++) {
+        const t0 = k / N, t1 = (k + 1) / N;
+        pts.push(a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0 - sag * 4 * t0 * (1 - t0), a[2] + (b[2] - a[2]) * t0);
+        pts.push(a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1 - sag * 4 * t1 * (1 - t1), a[2] + (b[2] - a[2]) * t1);
+      }
+    };
+    // from the poles to the houses next to them (power and telephone lines)
+    for (const row of poleRows.values()) {
+      for (const pole of row) {
+        for (const off of [-7, -2.5, 3, 8]) {
+          if (!rng.chance(0.7)) continue;
+          const tx = pole.x + pole.inX * (pole.reach + 3) + pole.inZ * off, tz = pole.z + pole.inZ * (pole.reach + 3) - pole.inX * off;
+          const b = buildingAt(tx, tz);
+          if (!b || b.top < 6.5) continue;
+          // the point of the wall that is nearest to the pole side
+          const wx = Math.min(b.maxX, Math.max(b.minX, tx - pole.inX * 6)), wz = Math.min(b.maxZ, Math.max(b.minZ, tz - pole.inZ * 6));
+          hang([pole.x, pole.y + (rng.chance(0.5) ? 7.75 : 6.2), pole.z], [wx, Math.min(b.top - 0.4, rng.range(5.6, 8.2)), wz], rng.range(0.25, 0.6));
+        }
+      }
+    }
+    // across the alleys, from wall to wall
+    for (const al of L.alleyRects) {
+      const long = al.axis === 'x' ? al.maxX - al.minX : al.maxZ - al.minZ;
+      for (let t = rng.range(5, 12); t < long - 4; t += rng.range(6, 14)) {
+        const a = al.axis === 'x' ? [al.minX + t, al.minZ - 0.6] : [al.minX - 0.6, al.minZ + t];
+        const b = al.axis === 'x' ? [al.minX + t + rng.range(-2, 2), al.maxZ + 0.6] : [al.maxX + 0.6, al.minZ + t + rng.range(-2, 2)];
+        const ba = buildingAt(al.axis === 'x' ? a[0] : a[0] - 1.5, al.axis === 'x' ? a[1] - 1.5 : a[1]);
+        const bb = buildingAt(al.axis === 'x' ? b[0] : b[0] + 1.5, al.axis === 'x' ? b[1] + 1.5 : b[1]);
+        if (!ba || !bb) continue;
+        const h = Math.min(ba.top, bb.top) - 0.5;
+        if (h < 4.5) continue;
+        const y = rng.range(4.2, Math.min(h, 10));
+        hang([a[0], y, a[1]], [b[0], y + rng.range(-0.8, 0.8), b[1]], rng.range(0.2, 0.5), 5);
       }
     }
     if (pts.length) {
@@ -511,7 +608,25 @@ export function buildProps(ctx) {
       circles.push({ x, z, r: 1.0 });
       blob(x, z, 1.9, 2.6, rot + Math.PI / 2, 0.021, 0.85);
     }
+    // puddles that never quite dry up
+    for (let t = rng.range(3, 9); t < long - 3; t += rng.range(6, 15)) {
+      const o = rng.range(-1.3, 1.3);
+      const x = al.axis === 'x' ? al.minX + t : (al.minX + al.maxX) / 2 + o;
+      const z = al.axis === 'x' ? (al.minZ + al.maxZ) / 2 + o : al.minZ + t;
+      addDecal(ctx.mb.puddle, rng.pick(['oil1', 'blob', 'oil2']), x, z, rng.range(1.4, 3.2), rng.range(1.2, 2.6), rng.range(0, 6.28), 0.019, rng.range(0.75, 1));
+    }
   }
+
+  // cars in the parking lots and the lamps that light them
+  for (const c of ctx.parked) {
+    const r = rng.next();
+    const kind = r < 0.55 ? 'sedan' : r < 0.85 ? 'suv' : 'van';
+    sets[kind].add(c.x, curb + 0.03, c.z, c.rot, 1, lin(rng.pick(CAR_COLORS)));
+    const fx = Math.sin(c.rot), fz = Math.cos(c.rot);
+    for (const o of [-1.45, 0, 1.45]) circles.push({ x: c.x + fx * o, z: c.z + fz * o, r: 1.0 });
+    blob(c.x, c.z, 2.3, 5.2, c.rot, curb + 0.05, 0.9);
+  }
+  for (const l of ctx.lotLamps) addStreetLight(1, l.x, curb, l.z, l.rot);
 
   // =============================================================================
   // 6. BARRIERS where the streets leave the play area
@@ -536,107 +651,7 @@ export function buildProps(ctx) {
   }
 
   // =============================================================================
-  // 7. ROOFS, FIRE ESCAPES, WINDOW AIR CONDITIONERS
-  // =============================================================================
-  const holoMb = ctx.mb.holo;
-  for (const b of ctx.buildings) {
-    const w = b.maxX - b.minX, d = b.maxZ - b.minZ;
-    const near = inPlay((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2, 120);
-    if (!near) continue;
-    const r = rng.fork();
-    const roofY = b.top;
-    // air conditioning units
-    const acs = r.int(0, 2);
-    for (let i = 0; i < acs && w > 5 && d > 5; i++) {
-      sets.roofAC.add(r.range(b.minX + 1.6, b.maxX - 1.6), roofY, r.range(b.minZ + 1.6, b.maxZ - 1.6), r.int(0, 3) * Math.PI / 2);
-    }
-    // wooden water tank on older, taller houses
-    if (!b.neonStyle && b.floors >= 4 && w > 7 && d > 7 && r.chance(0.22)) {
-      sets.tank.add(r.range(b.minX + 2.6, b.maxX - 2.6), roofY, r.range(b.minZ + 2.6, b.maxZ - 2.6), r.range(0, 6.28));
-    }
-    // solar panels, facing the midday sun in the south
-    if (w > 8 && d > 6 && r.chance(0.26)) {
-      sets.solar.add((b.minX + b.maxX) / 2 + r.range(-1, 1), roofY, (b.minZ + b.maxZ) / 2 + r.range(-1, 1), Math.PI);
-    }
-    if (!b.playable) continue;
-
-    // fire escape on some brick houses
-    if (b.brick && b.floors >= 3 && r.chance(0.36)) {
-      const options = ['N', 'S', 'E', 'W'].filter((s) => (b.sides[s].kind === 'front' || b.sides[s].kind === 'back') && b.sides[s].len > 7);
-      if (options.length) {
-        const info = b.sides[r.pick(options)];
-        const f = info.frame;
-        const bay = r.int(0, info.bays - 1);
-        const s = ((bay + 0.5) * f.len) / info.bays;
-        const rot = Math.atan2(f.nx, f.nz);
-        const x = f.ox + f.dx * s + f.nx * 0.03, z = f.oz + f.dz * s + f.nz * 0.03;
-        for (let k = 1; k < b.floors; k++) {
-          const y = b.groundH + (k - 1) * 3.5 + 0.55;
-          (k < b.floors - 1 ? sets.fireEscape : sets.fireEscapeTop).add(x, y, z, rot);
-        }
-      }
-    }
-    // air conditioners hanging in a few windows
-    if (!b.neonStyle) {
-      for (const sName of ['N', 'S', 'E', 'W']) {
-        const info = b.sides[sName];
-        if (info.kind !== 'front' && info.kind !== 'back') continue;
-        const f = info.frame, bw = f.len / info.bays;
-        for (let k = 1; k < b.floors; k++) {
-          for (let i = 0; i < info.bays; i++) {
-            if (!r.chance(0.06)) continue;
-            const s = (i + 0.36) * bw;
-            const y = b.groundH + (k - 1) * 3.5 + 0.25 * 3.5 + 0.2;
-            sets.winAC.add(f.ox + f.dx * s + f.nx * 0.02, y, f.oz + f.dz * s + f.nz * 0.02, Math.atan2(f.nx, f.nz));
-          }
-        }
-      }
-    }
-    // Neon Mile: a big glowing roof sign or a hologram on some houses
-    if (b.neonStyle && b.sides.S.kind === 'front') {
-      const f = b.sides.S.frame;
-      const roll = r.next();
-      if (roll < 0.34 && f.len > 9) {
-        const idx = SIGN_COLS * NEON_FIRST_ROW + r.int(0, SIGN_COLS * (SIGN_ROWS - NEON_FIRST_ROW) - 1);
-        const uv = signUV(idx);
-        const sw = Math.min(f.len - 1.5, 8), sh = sw / 4, y0 = b.top + b.parapet + 0.5;
-        const c = f.len / 2;
-        const P = (s, y, o) => [f.ox + f.dx * s + f.nx * o, y, f.oz + f.dz * s + f.nz * o];
-        ctx.mb.sign.color(1, 1, 1, 1).data(1.0, 0, 0, 0);
-        ctx.mb.sign.quad(P(c - sw / 2, y0, -0.4), P(c + sw / 2, y0, -0.4), P(c + sw / 2, y0 + sh, -0.4), P(c - sw / 2, y0 + sh, -0.4),
-          [f.nx, 0, f.nz], [uv.u0, uv.v0], [uv.u1, uv.v0], [uv.u1, uv.v1], [uv.u0, uv.v1]);
-        // dark back side and two posts
-        const ps = ctx.mb.propStatic;
-        ps.color(0.02, 0.02, 0.022, 1).data(0.7, 0.3, 0, 0);
-        ps.quadAuto(P(c + sw / 2, y0, -0.46), P(c - sw / 2, y0, -0.46), P(c - sw / 2, y0 + sh, -0.46), P(c + sw / 2, y0 + sh, -0.46), [-f.nx, 0, -f.nz]);
-        for (const o of [-sw * 0.32, sw * 0.32]) {
-          const p = P(c + o, 0, -0.5);
-          ps.box(p[0] - 0.06, b.top, p[2] - 0.06, p[0] + 0.06, y0 + sh * 0.5, p[2] + 0.06, 1, 'nsew');
-        }
-        const lp = P(c, 0, 2.5);
-        ctx.shopLights.push({ x: lp[0], z: lp[2], r: 9, power: 0.2 });
-      } else if (roll < 0.52 && f.len > 7) {
-        // hologram: a tall glowing panel floating above the roof
-        const k = r.int(0, HOLO_COUNT - 1);
-        const hw = 2.6, hh = 5.2, y0 = b.top + b.parapet + 1.4, c = f.len / 2;
-        const P = (s, y) => [f.ox + f.dx * s + f.nx * -1.2, y, f.oz + f.dz * s + f.nz * -1.2];
-        const u0 = k / HOLO_COUNT, u1 = (k + 1) / HOLO_COUNT;
-        const v = (px, py, lu, lv, uu, vv) => { holoMb.color(lu, lv, 0, 1); return holoMb.vertex(px[0], px[1], px[2], f.nx, 0, f.nz, uu, vv); };
-        const i0 = v(P(c - hw, y0), 0, 0, 0, u0, 0), i1 = v(P(c + hw, y0), 0, 1, 0, u1, 0);
-        const i2 = v(P(c + hw, y0 + hh * 2), 0, 1, 1, u1, 1), i3 = v(P(c - hw, y0 + hh * 2), 0, 0, 1, u0, 1);
-        holoMb.quadIdx(i0, i1, i2, i3);
-        // projector box on the roof
-        const ps = ctx.mb.propStatic;
-        const p = P(c, 0);
-        ps.color(0.03, 0.03, 0.035, 1).data(0.4, 0.6, 0, 0);
-        ps.box(p[0] - 0.7, b.top, p[2] - 0.4, p[0] + 0.7, b.top + b.parapet + 0.5, p[2] + 0.4, 1, 'nsewt');
-        ps.color(0.02, 0.2, 0.25, 1).data(0.3, 0, 0, 1.4);
-        ps.box(p[0] - 0.6, b.top + b.parapet + 0.5, p[2] - 0.08, p[0] + 0.6, b.top + b.parapet + 0.56, p[2] + 0.08, 1, 'nsewt');
-      }
-    }
-  }
-  // =============================================================================
-  // 8. DRONES (animated every frame)
+  // 7. DRONES (animated every frame)
   // =============================================================================
   const drones = [];
   const playStreets = L.streetsNS.filter((s) => s.playable).concat(L.streetsEW.filter((s) => s.playable));
@@ -688,10 +703,15 @@ export function buildProps(ctx) {
     cullX = x; cullZ = z; cullMul = mul;
     for (const s of Object.values(sets)) s.cull(x, z, mul, force);
   }
+  // LOW quality: no 3D windows and ledges (the walls show painted windows instead)
+  function setDetail(on) {
+    for (const s of Object.values(sets)) if (s.group === 'window') s.setEnabled(on);
+    cull(cullX > 1e8 ? 0 : cullX, cullZ > 1e8 ? 0 : cullZ, cullMul, true);
+  }
 
   function update(dt, time, x, z, mul) {
     // re-pick the visible copies when the player has moved a bit
-    const moved = (x - cullX) ** 2 + (z - cullZ) ** 2 > 12 * 12 || mul !== cullMul;
+    const moved = (x - cullX) ** 2 + (z - cullZ) ** 2 > 8 * 8 || mul !== cullMul;
     if (moved) cull(x, z, mul);
     if (updateSignals(time) && !moved) bits.cull(cullX, cullZ, cullMul, true);
     // traffic lamps are brighter at night
@@ -718,5 +738,5 @@ export function buildProps(ctx) {
     lampGlow.material.uniforms.uPixel.value = (2 * Math.tan((fovDeg * Math.PI) / 360)) / heightPx;
   }
 
-  return { sets, lampGlow, cull, update, setViewport };
+  return { sets, lampGlow, cull, update, setViewport, setDetail };
 }

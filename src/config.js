@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 1',
+  version: 'Phase 1.1',
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {
@@ -96,6 +96,7 @@ export const CONFIG = {
       anisotropy: 2,
       envMapSize: 64,
       propDistance: 0.55,   // multiplier for how far props are drawn
+      buildingDetail: false, // no 3D windows and ledges (windows are painted on the walls)
       fogMultiplier: 1.7,   // thicker fog hides the short draw distance
       cameraFar: 2600,
       rainStreaks: 700,
@@ -117,6 +118,7 @@ export const CONFIG = {
       anisotropy: 4,
       envMapSize: 64,
       propDistance: 1.0,
+      buildingDetail: true, // 3D windows, ledges, balconies near the player (about 120 m)
       fogMultiplier: 1.0,
       cameraFar: 9000,
       rainStreaks: 1400,
@@ -138,6 +140,7 @@ export const CONFIG = {
       anisotropy: 8,
       envMapSize: 128,
       propDistance: 1.35,
+      buildingDetail: true,
       fogMultiplier: 1.0,
       cameraFar: 9000,
       rainStreaks: 2600,

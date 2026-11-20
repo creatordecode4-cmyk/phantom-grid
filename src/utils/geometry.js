@@ -4,6 +4,9 @@
 // MeshBuilder  : glue thousands of quads / boxes into ONE mesh.
 // InstancedSet : draw the same small model many times (street lights, cars..)
 //                and only draw the copies that are near the player.
+// DetailSet    : the same idea for building details (windows, ledges,
+//                balconies ...). There are tens of thousands of them, so they
+//                are stored in a compact way and sorted into a grid.
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
@@ -103,6 +106,20 @@ export class MeshBuilder {
     const flat = Math.abs(n[1]) > 0.5;
     const uv = (p) => (flat ? [p[0] / tile, p[2] / tile] : [(p[0] + p[2]) / tile, p[1] / tile]);
     return this.quad(pts[0], pts[1], pts[2], pts[3], n, uv(pts[0]), uv(pts[1]), uv(pts[2]), uv(pts[3]));
+  }
+
+  // One triangle from 3 points [x,y,z] with one normal. The winding is fixed
+  // automatically. Texture coordinates come from the positions (like quadAuto).
+  triAuto(p0, p1, p2, n, tile = 1) {
+    const ax = p1[0] - p0[0], ay = p1[1] - p0[1], az = p1[2] - p0[2];
+    const bx = p2[0] - p0[0], by = p2[1] - p0[1], bz = p2[2] - p0[2];
+    const cx = ay * bz - az * by, cy = az * bx - ax * bz, cz = ax * by - ay * bx;
+    const flip = cx * n[0] + cy * n[1] + cz * n[2] < 0;
+    const pts = flip ? [p0, p2, p1] : [p0, p1, p2];
+    const flat = Math.abs(n[1]) > 0.5;
+    const idx = pts.map((p) => this.vertex(p[0], p[1], p[2], n[0], n[1], n[2],
+      flat ? p[0] / tile : (p[0] + p[2]) / tile, flat ? p[2] / tile : p[1] / tile));
+    this.tri(idx[0], idx[1], idx[2]);
   }
 
   // A flat rectangle lying on the ground (facing up) at height y.
@@ -317,6 +334,201 @@ export class InstancedSet {
       mesh.instanceColor.addUpdateRange(0, Math.max(n, 1) * 3);
       mesh.instanceColor.needsUpdate = true;
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DetailSet - building details near the player (3D windows, ledges, balconies).
+//
+// Differences to InstancedSet:
+//   * every copy stands upright and is only turned around the up axis, so we
+//     store just position + the direction it faces (much less memory)
+//   * the copies are sorted into a grid of 64 m cells, so picking the ones
+//     near the player is fast even with 50 000 copies
+//   * "facing": copies on walls that look away from the player are skipped
+//   * up to two extra numbers-of-four per copy (aInst, aInstB) for the shader
+//   * "companions": other meshes drawn with exactly the same copies
+// ---------------------------------------------------------------------------
+const DETAIL_CELL = 64;
+const REC = 16; // numbers stored per copy
+
+export class DetailSet {
+  // opts: { maxDistance, facing, attrA, attrB, color, castShadow, receiveShadow, renderOrder, group }
+  //   group: 'window' sets are switched off on LOW quality
+  constructor(name, geometry, material, opts = {}) {
+    this.name = name;
+    this.baseGeometry = geometry;
+    this.material = material;
+    this.maxDistance = opts.maxDistance || 120;
+    this.facing = !!opts.facing;
+    this.attrA = !!opts.attrA;
+    this.attrB = !!opts.attrB;
+    this.color = !!opts.color;          // per-copy color (uses the first 3 numbers of "b")
+    this.castShadow = !!opts.castShadow;
+    this.receiveShadow = opts.receiveShadow !== false;
+    this.renderOrder = opts.renderOrder || 0;
+    this.group = opts.group || 'detail';
+    this.enabled = true;
+    this.cap = 256;
+    this.rec = new Float32Array(this.cap * REC);
+    this.total = 0;
+    this.mesh = null;
+    this.companions = [];
+    this.cells = [];
+  }
+
+  // Add one copy.
+  //   (x, y, z): position,  (nx, nz): the direction its front (+z) looks at
+  //   sx, sy, sz: stretch,  a / b: optional arrays of 4 numbers for the shader
+  add(x, y, z, nx, nz, sx = 1, sy = 1, sz = 1, a = null, b = null) {
+    if (this.total === this.cap) {
+      this.cap *= 2;
+      const bigger = new Float32Array(this.cap * REC);
+      bigger.set(this.rec);
+      this.rec = bigger;
+    }
+    const o = this.total * REC, r = this.rec;
+    r[o] = x; r[o + 1] = y; r[o + 2] = z; r[o + 3] = nx; r[o + 4] = nz;
+    r[o + 5] = sx; r[o + 6] = sy; r[o + 7] = sz;
+    if (a) { r[o + 8] = a[0]; r[o + 9] = a[1]; r[o + 10] = a[2]; r[o + 11] = a[3]; }
+    if (b) { r[o + 12] = b[0]; r[o + 13] = b[1]; r[o + 14] = b[2]; r[o + 15] = b.length > 3 ? b[3] : 0; }
+    return this.total++;
+  }
+
+  // A second mesh that always shows exactly the same copies (it shares the
+  // per-copy data). Used for the invisible "window hole" mask.
+  addCompanion(name, geometry, material, opts = {}) {
+    this.companions.push({ name, geometry, material, opts, mesh: null });
+  }
+
+  finish(parent) {
+    const total = this.total;
+    if (total === 0) return null;
+    // ---- sort the copies into grid cells ----
+    const src = this.rec;
+    const keys = new Array(total);
+    for (let i = 0; i < total; i++) {
+      keys[i] = [Math.floor(src[i * REC] / DETAIL_CELL) * 4096 + Math.floor(src[i * REC + 2] / DETAIL_CELL), i];
+    }
+    keys.sort((p, q) => p[0] - q[0]);
+    const rec = new Float32Array(total * REC);
+    this.cells = [];
+    let cell = null;
+    for (let k = 0; k < total; k++) {
+      const [key, i] = keys[k];
+      rec.set(src.subarray(i * REC, i * REC + REC), k * REC);
+      if (!cell || cell.key !== key) {
+        cell = { key, start: k, end: k, minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+        this.cells.push(cell);
+      }
+      cell.end = k + 1;
+      const x = rec[k * REC], z = rec[k * REC + 2];
+      if (x < cell.minX) cell.minX = x;
+      if (x > cell.maxX) cell.maxX = x;
+      if (z < cell.minZ) cell.minZ = z;
+      if (z > cell.maxZ) cell.maxZ = z;
+    }
+    this.rec = rec;
+
+    // ---- the mesh ----
+    const withAttrs = (base) => {
+      const g = new THREE.BufferGeometry();
+      g.index = base.index;
+      for (const n of Object.keys(base.attributes)) g.setAttribute(n, base.attributes[n]);
+      g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
+      return g;
+    };
+    const geo = withAttrs(this.baseGeometry);
+    const dyn = (arr, size) => { const a = new THREE.InstancedBufferAttribute(arr, size); a.setUsage(THREE.DynamicDrawUsage); return a; };
+    this.aA = this.attrA ? dyn(new Float32Array(total * 4), 4) : null;
+    this.aB = this.attrB ? dyn(new Float32Array(total * 4), 4) : null;
+    if (this.aA) geo.setAttribute('aInst', this.aA);
+    if (this.aB) geo.setAttribute('aInstB', this.aB);
+    const mesh = new THREE.InstancedMesh(geo, this.material, total);
+    mesh.name = this.name;
+    mesh.castShadow = this.castShadow;
+    mesh.receiveShadow = this.receiveShadow;
+    mesh.frustumCulled = false;
+    mesh.matrixAutoUpdate = false;
+    mesh.renderOrder = this.renderOrder;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    if (this.color) {
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(total * 3), 3);
+      mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    }
+    this.mesh = mesh;
+    parent.add(mesh);
+    for (const c of this.companions) {
+      const g = withAttrs(c.geometry);
+      if (this.aA) g.setAttribute('aInst', this.aA);
+      if (this.aB) g.setAttribute('aInstB', this.aB);
+      const m = new THREE.InstancedMesh(g, c.material, total);
+      m.instanceMatrix = mesh.instanceMatrix; // shared: one upload for both meshes
+      m.name = c.name;
+      m.castShadow = false;
+      m.receiveShadow = false;
+      m.frustumCulled = false;
+      m.matrixAutoUpdate = false;
+      m.renderOrder = c.opts.renderOrder || 0;
+      c.mesh = m;
+      parent.add(m);
+    }
+    this.cull(0, 0, 1, true);
+    return mesh;
+  }
+
+  setEnabled(on) {
+    this.enabled = on;
+  }
+
+  // Keep only the copies near (cx, cz) that can be seen from there.
+  cull(cx, cz, distMul = 1) {
+    const mesh = this.mesh;
+    if (!mesh) return;
+    let n = 0;
+    if (this.enabled) {
+      const rec = this.rec;
+      const maxD = this.maxDistance * distMul, max2 = maxD * maxD;
+      const out = mesh.instanceMatrix.array;
+      const A = this.aA ? this.aA.array : null, B = this.aB ? this.aB.array : null;
+      const col = this.color ? mesh.instanceColor.array : null;
+      const facing = this.facing;
+      for (const c of this.cells) {
+        // distance from the player to the nearest point of this cell
+        const ex = cx < c.minX ? c.minX - cx : cx > c.maxX ? cx - c.maxX : 0;
+        const ez = cz < c.minZ ? c.minZ - cz : cz > c.maxZ ? cz - c.maxZ : 0;
+        if (ex * ex + ez * ez > max2) continue;
+        for (let i = c.start; i < c.end; i++) {
+          const o = i * REC;
+          const dx = rec[o] - cx, dz = rec[o + 2] - cz;
+          if (dx * dx + dz * dz > max2) continue;
+          const nx = rec[o + 3], nz = rec[o + 4];
+          // the wall looks away from the player (with some room to spare)
+          if (facing && dx * nx + dz * nz > 10) continue;
+          const sx = rec[o + 5], sy = rec[o + 6], sz = rec[o + 7];
+          const t = n * 16;
+          out[t] = nz * sx; out[t + 1] = 0; out[t + 2] = -nx * sx; out[t + 3] = 0;
+          out[t + 4] = 0; out[t + 5] = sy; out[t + 6] = 0; out[t + 7] = 0;
+          out[t + 8] = nx * sz; out[t + 9] = 0; out[t + 10] = nz * sz; out[t + 11] = 0;
+          out[t + 12] = rec[o]; out[t + 13] = rec[o + 1]; out[t + 14] = rec[o + 2]; out[t + 15] = 1;
+          if (A) { const q = n * 4; A[q] = rec[o + 8]; A[q + 1] = rec[o + 9]; A[q + 2] = rec[o + 10]; A[q + 3] = rec[o + 11]; }
+          if (B) { const q = n * 4; B[q] = rec[o + 12]; B[q + 1] = rec[o + 13]; B[q + 2] = rec[o + 14]; B[q + 3] = rec[o + 15]; }
+          if (col) { const q = n * 3; col[q] = rec[o + 12]; col[q + 1] = rec[o + 13]; col[q + 2] = rec[o + 14]; }
+          n++;
+        }
+      }
+    }
+    mesh.count = n;
+    for (const c of this.companions) c.mesh.count = n;
+    const send = (attr, size) => {
+      attr.clearUpdateRanges();
+      attr.addUpdateRange(0, Math.max(n, 1) * size);
+      attr.needsUpdate = true;
+    };
+    send(mesh.instanceMatrix, 16);
+    if (this.aA) send(this.aA, 4);
+    if (this.aB) send(this.aB, 4);
+    if (this.color) send(mesh.instanceColor, 3);
   }
 }
 

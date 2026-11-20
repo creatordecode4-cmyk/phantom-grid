@@ -4,6 +4,9 @@ An open-world 3D web game set in **Port Meridian**, a fictional American coastal
 About 80% believable present-day city, 20% subtle future technology.
 
 This is **Phase 1**: a playable, realistic first area of the city that runs in a phone browser.
+Since version 1.1 the buildings are put together from a **kit of parts** (real 3D windows,
+ledges, cornices, balconies, shop fronts ...) and come in many **types** - see
+"The buildings" below.
 
 - No build step, no npm, no bundler. Plain HTML + JavaScript modules.
 - three.js (version 0.170) is loaded from a CDN with an import map.
@@ -34,9 +37,9 @@ One game day lasts 12 real minutes. The game starts at golden hour.
 
 | Level | What you get |
 |---|---|
-| **Low** | No shadows, no bloom, 0.75 pixel ratio, short draw distance, thicker haze |
-| **Medium** | Shadows, light bloom, film-like color grade |
-| **High** | Sharper shadows, more detail, subtle vignette and film grain |
+| **Low** | No shadows, no bloom, 0.75 pixel ratio, short draw distance, thicker haze, windows are painted on the walls (no 3D window detail) |
+| **Medium** | Shadows, light bloom, film-like color grade, 3D windows and ledges within about 120 m |
+| **High** | Sharper shadows, more detail (3D windows within about 160 m), subtle vignette and film grain |
 | **Auto** | Picks a level for your phone, and goes one level down if the game runs slowly |
 
 ### Address options (handy for testing)
@@ -69,8 +72,13 @@ src/
     materials.js           loads textures, builds all materials and their shader patches
     textures.js            textures made in code: signs, decals, windows, fallbacks ...
     ground.js              asphalt, sidewalks, curbs, lane markings, stains, beach
-    buildings.js           procedural buildings: walls, windows, shops, signs, awnings
-    props.js               street lights, trees, cars, traffic lights, drones ... (instanced)
+    buildingKit.js         THE KIT OF PARTS: wall panel, window bay, shop front, door bay,
+                           corner piece, balcony, cornice, roofs, fences, graffiti ...
+    buildingTypes.js       THE BUILDING TYPES (walk-up, apartment block, corner building,
+                           shop row, office, warehouse, station ...) - add your own here
+    buildings.js           cuts every block into lots, picks a type for each lot,
+                           loads hero buildings (.glb files)
+    props.js               street lights, trees, cars, planters, meters, wires ... (instanced)
     models.js              the small 3D models, built in code
     backdrop.js            ocean, hills, The Crown skyline, highway, light rail
   world/
@@ -86,12 +94,12 @@ src/
     hud.js                 text, buttons, menus, loading screen
   utils/
     math.js                small math helpers, seeded random numbers, polygons
-    geometry.js            MeshBuilder (many shapes -> one mesh), InstancedSet
+    geometry.js            MeshBuilder (many shapes -> one mesh), InstancedSet, DetailSet
     noise.js               noise, normal maps made from photos, canvas helpers
 assets/
   textures/                the tileable photo textures (see below)
   characters/              put Nate_Calloway.glb here
-  buildings/               (for later phases)
+  buildings/               hero buildings: put .glb model files here (see below)
   hdri/                    optional sky photo for reflections
   reference/               put PortMeridian_districts.png here (the satellite map)
 ```
@@ -163,6 +171,32 @@ Then open `http://localhost:8000`.
 - The model has no skeleton yet, so it is only moved and turned.
 - If the file is missing, a simple mannequin with real human proportions is used.
 
+### Hero buildings (`assets/buildings/*.glb`, optional)
+
+Model files made in a 3D program can replace the generated building on a few
+corner lots.
+
+- **Easiest:** name the files `hero1.glb`, `hero2.glb`, `hero3.glb`, `hero4.glb`
+  and upload them to `assets/buildings/`.
+- **Or** add a list file `assets/buildings/buildings.json`:
+
+  ```json
+  [
+    { "file": "bank.glb", "height": 32, "rotate": 90 },
+    "diner.glb"
+  ]
+  ```
+
+  `height` = real height in meters (optional), `rotate` = extra turn in degrees (optional).
+- The front of a model should look toward **+Z**. The game turns it to the street,
+  scales it (to the given height, or so that it fits the lot), puts it on the
+  sidewalk and adds shadows and a collision box.
+- Where they stand is written in `src/city/layout.js` under `heroLots`
+  (the first one is the first corner south of the start point).
+- Without files nothing changes: the lots get normal generated buildings.
+- Models can be meshopt-compressed; keep them small (under about 20k triangles and
+  2 MB each) so phones stay fast.
+
 ### Sky photo for reflections (`assets/hdri`, optional)
 
 Put a file named `environment.hdr` (or `environment.jpg`, an equirectangular panorama)
@@ -198,21 +232,65 @@ north up and east on the right, like a normal map).
 Everything is generated from `src/city/layout.js` with a fixed random seed, so the city
 is the same every time. Change `seed` in that file to get a different city.
 
+### The buildings
+
+Every block is cut into lots. Each lot gets a **building type**; the type puts
+**parts from the kit** together along its walls.
+
+| Type (`buildingTypes.js`) | What it is |
+|---|---|
+| `walkup` | old brick walk-up, 3 to 5 floors, stoop stairs, front fire escape, stone lintels and sills, corner stones, cornice |
+| `stucco` | plaster apartment block, 4 to 8 floors, balconies; box, L shape, U shape with a courtyard, or top floors set back; stair tower |
+| `corner` | corner building with a cut (chamfered) corner and the entrance on the corner |
+| `shoprow` | low row of shops, 1 or 2 floors, long awning, signs |
+| `office` | small office building: stripes of glass and concrete fins, glass lobby with a canopy |
+| `warehouse` | warehouse / garage with a sawtooth or curved metal roof and big roll-up doors |
+| `house` | small old house with a sloped roof, chimney and front yard |
+| `station` | fuel + charging station with a canopy, and `parking`: a small parking lot |
+| `emptylot` | empty lot with a fence, weeds, rubble and graffiti |
+| `neonshop` | Neon Mile shop house with glass fronts, awnings, lit signs, holograms |
+
+What makes them look real:
+
+- **Real facade geometry.** Windows sit 13 to 21 cm inside the wall, with a stone
+  sill, a lintel on brick houses and reflecting glass. Some have blinds, curtains
+  or an air conditioner. Every floor has a thin ledge, old houses have a cornice,
+  flat roofs have a parapet. Ground floors are taller, with shop glass, roller
+  shutters, awnings, signs and doorways set back into the wall.
+- **Variety rules.** Never the same type twice in a row. Neighbours differ in
+  height and color. Some houses stand back behind a small front yard, now and
+  then there is a narrow gap you can walk through.
+- **Age.** Every building has an age from new to old. Old ones are more faded,
+  streaked, cracked and mossy; rust creeps over old metal sheets. Dirt gathers
+  near the ground, under roof edges and under window corners.
+- **Level of detail.** Far away a wall is one flat piece and its windows are
+  painted by the shader. Within about 120 m (Medium) the 3D parts are added.
+  Outside the play area buildings are simple boxes.
+
+To add a type: copy an entry in `TYPES` in `src/city/buildingTypes.js`, change
+the recipe, and give it a weight in `pickType()` at the bottom of that file.
+
 ### Things you can safely edit
 
 - `src/city/layout.js`: block sizes, street width, alleys, the diagonal avenue,
   highway, rail line, skyline, spawn point.
 - `src/config.js`: time of day, player and camera speeds, quality presets, fog,
   street light settings, texture sizes.
-- `src/city/textures.js`: the made-up shop names (`SIGN_NAMES`, `NEON_NAMES`).
+- `src/city/textures.js`: the made-up shop names (`SIGN_NAMES`, `NEON_NAMES`) and
+  the graffiti tags (`makeGraffitiTexture`).
+- `src/city/buildingTypes.js`: sizes, floors, colors and how often each building
+  type appears.
 
 ---
 
 ## How it stays fast on a phone
 
 - Almost all of the city is drawn with a handful of big merged meshes and
-  instanced meshes. A whole frame uses well under 150 draw calls
-  (about 40 on Low, about 80 on Medium / High; tap `FPS` to see it).
+  instanced meshes. A whole frame uses well under 200 draw calls
+  (about 60 on Low, about 110 on Medium / High; tap `FPS` to see it).
+- All walls of all buildings are still only three meshes (brick, plaster, metal).
+  The 3D windows are ONE instanced mesh: copies of a single window model, drawn
+  only near the player and only on walls that face the player.
 - Props are only drawn near the player (bins 105 m, cars 200 m, trees 400 m ...).
 - One sun casts shadows: a sharp shadow map follows the player, a second soft one
   covers the far city and is only redrawn when the sun has moved.

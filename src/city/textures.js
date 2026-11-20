@@ -540,16 +540,38 @@ export function makeDecalTexture() {
       ctx.fillRect(x + 128 + Math.cos(a) * d, y + 128 + Math.sin(a) * d, rng.range(1, 5), rng.range(1, 4));
     }
   }
-  // --- tree pit (square of dark soil with an iron edge) ---
+  // --- tree grate: a square cast-iron grate with slots around a round hole of soil ---
   {
     const [x, y] = cell('treePit');
-    ctx.fillStyle = '#2c2b29';
-    ctx.fillRect(x + 8, y + 8, 240, 240);
+    const cx = x + 128, cy = y + 128;
+    ctx.fillStyle = '#242321';
+    ctx.fillRect(x + 6, y + 6, 244, 244);          // dark gap around the grate
+    ctx.fillStyle = '#3f3c38';
+    ctx.fillRect(x + 12, y + 12, 232, 232);        // the iron plate
+    // slots: short dark lines pointing at the tree
+    ctx.strokeStyle = '#141312';
+    ctx.lineWidth = 5;
+    for (let i = 0; i < 44; i++) {
+      const a = (i / 44) * Math.PI * 2;
+      const r1 = 118 / Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a))) - 12; // reach toward the square edge
+      for (const [r0, rr] of [[62, Math.min(86, r1)], [94, Math.min(150, r1)]]) {
+        if (rr - r0 < 6) continue;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+        ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+        ctx.stroke();
+      }
+    }
+    // the two halves of the grate meet in the middle
+    ctx.fillStyle = '#1b1a19';
+    ctx.fillRect(cx - 2, y + 12, 4, 232);
+    // soil with small stones and leaves
     ctx.fillStyle = '#3b3126';
-    ctx.fillRect(x + 20, y + 20, 216, 216);
-    for (let i = 0; i < 900; i++) {
+    ctx.beginPath(); ctx.arc(cx, cy, 52, 0, 7); ctx.fill();
+    for (let i = 0; i < 420; i++) {
+      const a = rng.range(0, 6.28), d = Math.sqrt(rng.next()) * 50;
       ctx.fillStyle = `rgba(${rng.int(30, 90)},${rng.int(24, 70)},${rng.int(16, 46)},0.7)`;
-      ctx.fillRect(x + rng.range(20, 232), y + rng.range(20, 232), rng.range(1, 5), rng.range(1, 4));
+      ctx.fillRect(cx + Math.cos(a) * d, cy + Math.sin(a) * d, rng.range(1, 5), rng.range(1, 4));
     }
   }
   // --- big repaving patch (newer, darker asphalt) ---
@@ -962,4 +984,251 @@ export function makeSkylineTextures() {
     shape: canvasToAlphaTexture(cv, [120, 118, 112], { wrapS: THREE.RepeatWrapping }),
     lights: canvasTexture(lv, { wrapS: THREE.RepeatWrapping, wrapT: THREE.ClampToEdgeWrapping }),
   };
+}
+
+
+// ===========================================================================
+// 9. GRAFFITI: spray-painted tags for ground floor walls and shutters.
+//    All names are made up. 4 x 2 cells, see-through background.
+// ===========================================================================
+export const GRAFFITI_COLS = 4, GRAFFITI_ROWS = 2;
+export function graffitiUV(i) {
+  const c = i % GRAFFITI_COLS, r = Math.floor(i / GRAFFITI_COLS) % GRAFFITI_ROWS;
+  const pad = 0.004;
+  return { u0: c / GRAFFITI_COLS + pad, u1: (c + 1) / GRAFFITI_COLS - pad, v0: 1 - (r + 1) / GRAFFITI_ROWS + pad, v1: 1 - r / GRAFFITI_ROWS - pad };
+}
+export function makeGraffitiTexture() {
+  const C = 256;
+  const [cv, ctx] = makeCanvas(C * GRAFFITI_COLS, C * GRAFFITI_ROWS);
+  const rng = new RNG(909);
+  const fat = '"Arial Black", "Roboto", Impact, "Helvetica Neue", Arial, sans-serif';
+  const hand = '"Brush Script MT", "Comic Sans MS", "Segoe Print", cursive, sans-serif';
+  const stencil = '"Courier New", "Cutive Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  // soft cloud of spray around a piece
+  const mist = (x, y, r, color) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  };
+  // paint that ran down the wall
+  const drips = (x, y, w, color, n) => {
+    ctx.strokeStyle = color;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      ctx.lineWidth = rng.range(1.5, 3.5);
+      const px = x + rng.range(-w / 2, w / 2);
+      ctx.beginPath(); ctx.moveTo(px, y); ctx.lineTo(px, y + rng.range(14, 60)); ctx.stroke();
+    }
+  };
+  const pieces = [
+    { text: 'ZEKO', kind: 'bubble', fill: '#d9d4c8', edge: '#16161a', glow: 'rgba(60,150,220,0.35)' },
+    { text: 'RIFT', kind: 'bubble', fill: '#d8452e', edge: '#f1e9d2', glow: 'rgba(20,20,24,0.5)' },
+    { text: 'mrdn', kind: 'tag', fill: '#101014' },
+    { text: 'KVI LIES', kind: 'stencil', fill: '#b3261c' },
+    { text: 'HEXA', kind: 'bubble', fill: '#3fae8a', edge: '#0e1f1a', glow: 'rgba(240,220,90,0.3)' },
+    { text: 'oko!', kind: 'tag', fill: '#e9e4d6' },
+    { text: 'GRID KIDS', kind: 'stencil', fill: '#15161a' },
+    { text: 'nite owl', kind: 'tag', fill: '#7a2aa0' },
+  ];
+  pieces.forEach((p, i) => {
+    const x = (i % GRAFFITI_COLS) * C, y = Math.floor(i / GRAFFITI_COLS) * C;
+    const cx = x + C / 2, cy = y + C / 2;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x + 3, y + 3, C - 6, C - 6); ctx.clip();
+    if (p.kind === 'bubble') {
+      mist(cx, cy, 122, p.glow);
+      ctx.translate(cx, cy);
+      ctx.rotate(rng.range(-0.12, 0.08));
+      ctx.transform(1, 0, -0.18, 1, 0, 0);          // lean the letters
+      const px = fitText(ctx, p.text, C - 54, 96, fat, '900');
+      ctx.scale(1, Math.min(1.7, 150 / px));        // tall, fat letters
+      ctx.lineWidth = 13; ctx.strokeStyle = p.edge; ctx.strokeText(p.text, 0, 0);
+      ctx.fillStyle = p.fill; ctx.fillText(p.text, 0, 0);
+      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.strokeText(p.text, -2, -3);
+    } else if (p.kind === 'tag') {
+      // quick one-line marker tag with an underline
+      ctx.translate(cx, cy);
+      ctx.rotate(rng.range(-0.3, -0.08));
+      fitText(ctx, p.text, C - 60, 92, hand, '700', 'italic');
+      ctx.fillStyle = p.fill;
+      ctx.fillText(p.text, 0, -8);
+      ctx.strokeStyle = p.fill; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-96, 44); ctx.quadraticCurveTo(0, 30, 100, 50); ctx.stroke();
+      ctx.beginPath(); ctx.arc(104, -62, 9, 0, 7); ctx.stroke();
+    } else {
+      // stencil letters with a little overspray
+      mist(cx, cy, 118, 'rgba(120,110,100,0.12)');
+      ctx.translate(cx, cy);
+      const words = p.text.split(' ');
+      ctx.fillStyle = p.fill;
+      words.forEach((w, k) => {
+        fitText(ctx, w, C - 50, 84, stencil, '700');
+        ctx.fillText(w, 0, (k - (words.length - 1) / 2) * 82);
+      });
+    }
+    ctx.restore();
+    if (p.kind !== 'stencil') {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x + 3, y + 3, C - 6, C - 6); ctx.clip();
+      drips(cx, cy + 34, 150, p.kind === 'bubble' ? p.edge : p.fill, p.kind === 'bubble' ? 5 : 2);
+      ctx.restore();
+    }
+  });
+  // worn paint: holes in the see-through channel
+  const img = ctx.getImageData(0, 0, cv.width, cv.height);
+  const f = makeFbm(40, 3, 911);
+  for (let yy = 0; yy < cv.height; yy++) {
+    for (let xx = 0; xx < cv.width; xx++) {
+      const i = (yy * cv.width + xx) * 4;
+      img.data[i + 3] *= 0.5 + 0.62 * f(xx / cv.width, yy / cv.height);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvasToAlphaTexture(cv, [70, 66, 60]);
+}
+
+// ===========================================================================
+// 10. FENCES AND RAILINGS: see-through pictures that repeat sideways.
+//     4 rows: chain-link fence | balcony railing | iron picket fence | wood fence
+// ===========================================================================
+// For each row: v range in the texture and how many meters one repeat is wide.
+export const RAIL = {
+  chain: { v0: 0.752, v1: 0.998, tile: 2.4 },
+  bars: { v0: 0.502, v1: 0.748, tile: 1.0 },
+  picket: { v0: 0.252, v1: 0.498, tile: 1.5 },
+  planks: { v0: 0.002, v1: 0.248, tile: 2.0 },
+};
+export function makeRailTexture() {
+  const S = 512, R = 128;
+  const [cv, ctx] = makeCanvas(S, S);
+  const rng = new RNG(1212);
+  // ---- row 0: chain-link fence with a top rail and one post per repeat ----
+  {
+    const y = 0;
+    ctx.strokeStyle = 'rgba(150,154,156,0.95)';
+    ctx.lineWidth = 1.6;
+    const step = 16;
+    for (let k = -R; k < S + R; k += step) {
+      ctx.beginPath(); ctx.moveTo(k, y + 8); ctx.lineTo(k + R, y + R - 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(k + R, y + 8); ctx.lineTo(k, y + R - 2); ctx.stroke();
+    }
+    ctx.fillStyle = '#8f9496';
+    ctx.fillRect(0, y + 4, S, 6);              // top rail
+    ctx.fillRect(0, y + R - 6, S, 3);          // bottom wire
+    ctx.fillStyle = '#767b7d';
+    ctx.fillRect(0, y + 2, 9, R - 2);          // post (the picture repeats, so one is enough)
+    ctx.clearRect(0, y, S, 2);
+  }
+  // ---- row 1: balcony railing: thin upright bars between two rails ----
+  {
+    const y = R;
+    ctx.fillStyle = '#1b1b1e';
+    for (let k = 0; k < 9; k++) ctx.fillRect(Math.round((k + 0.5) * (S / 9)) - 4, y + 10, 8, R - 22);
+    ctx.fillRect(0, y + 4, S, 11);             // hand rail
+    ctx.fillRect(0, y + R - 16, S, 7);         // bottom rail
+    ctx.clearRect(0, y, S, 3);
+  }
+  // ---- row 2: iron fence with pointed pickets ----
+  {
+    const y = R * 2;
+    ctx.fillStyle = '#161618';
+    for (let k = 0; k < 10; k++) {
+      const px = (k + 0.5) * (S / 10);
+      ctx.fillRect(px - 4, y + 16, 8, R - 18);
+      ctx.beginPath(); ctx.moveTo(px - 7, y + 20); ctx.lineTo(px, y + 3); ctx.lineTo(px + 7, y + 20); ctx.fill();
+    }
+    ctx.fillRect(0, y + 30, S, 8);
+    ctx.fillRect(0, y + R - 22, S, 8);
+    ctx.fillRect(0, y + 10, 14, R - 10);       // thicker post
+  }
+  // ---- row 3: old wooden boards with gaps (around empty lots) ----
+  {
+    const y = R * 3;
+    const boards = 12;
+    for (let k = 0; k < boards; k++) {
+      const bx = (k * S) / boards;
+      const g = rng.int(74, 112);
+      ctx.fillStyle = `rgb(${g + 16},${g + 4},${g - 14})`;
+      const top = y + 4 + rng.int(0, 7);
+      ctx.fillRect(bx + 2, top, S / boards - 4, y + R - top);
+      // wood grain
+      ctx.strokeStyle = 'rgba(40,30,22,0.35)';
+      ctx.lineWidth = 1;
+      for (let j = 0; j < 4; j++) {
+        const gx = bx + rng.range(6, S / boards - 6);
+        ctx.beginPath(); ctx.moveTo(gx, top + 4); ctx.lineTo(gx + rng.range(-2, 2), y + R); ctx.stroke();
+      }
+    }
+    // weather stains
+    const g = ctx.createLinearGradient(0, y, 0, y + R);
+    g.addColorStop(0, 'rgba(30,26,20,0.05)');
+    g.addColorStop(1, 'rgba(30,26,20,0.4)');
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y, S, R);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  return canvasToAlphaTexture(cv, [90, 92, 94], { wrapS: THREE.RepeatWrapping });
+}
+
+// ===========================================================================
+// 11. WALL DETAIL (not a color picture, just patterns the wall shader uses):
+//     red = thin cracks, green = water drips, blue = fine pitting
+// ===========================================================================
+export function makeWallDetailTexture() {
+  const S = 256;
+  const [cv, ctx] = makeCanvas(S, S);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, S, S);
+  const rng = new RNG(321);
+  // cracks: wobbly lines that branch. Each is drawn 9 times, shifted by the
+  // picture size, so the texture repeats without seams.
+  ctx.globalCompositeOperation = 'lighter';
+  const lines = [];
+  for (let i = 0; i < 9; i++) {
+    let x = rng.range(0, S), y = rng.range(0, S), ang = rng.range(0, 6.28);
+    const pts = [[x, y]];
+    const len = rng.range(60, 190);
+    for (let d = 0; d < len; d += 5) {
+      ang += rng.range(-0.55, 0.55);
+      // cracks like to run up and down
+      ang += Math.sin(ang - Math.PI / 2) * -0.12;
+      x += Math.cos(ang) * 5; y += Math.sin(ang) * 5;
+      pts.push([x, y]);
+      if (rng.chance(0.06)) lines.push({ pts: [[x, y], [x + rng.range(-26, 26), y + rng.range(-26, 26)]], w: 0.8 });
+    }
+    lines.push({ pts, w: rng.range(0.9, 1.7) });
+  }
+  ctx.strokeStyle = 'rgb(255,0,0)';
+  for (const l of lines) {
+    ctx.lineWidth = l.w;
+    for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) {
+      ctx.beginPath();
+      l.pts.forEach(([px, py], k) => (k ? ctx.lineTo(px + ox, py + oy) : ctx.moveTo(px + ox, py + oy)));
+      ctx.stroke();
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  const img = ctx.getImageData(0, 0, S, S);
+  const d = img.data;
+  const drip = makeFbm(40, 2, 331);
+  const dripLen = makeFbm(5, 2, 332);
+  const pit = makeFbm(64, 2, 333);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const i = (y * S + x) * 4;
+      // drips: thin columns that change quickly sideways and slowly downward
+      const col = drip(x / S, (y / S) * 0.04);
+      d[i + 1] = clamp(smoothstep(0.52, 0.8, col) * (0.4 + 0.6 * dripLen(x / S, y / S)), 0, 1) * 255;
+      d[i + 2] = clamp(smoothstep(0.55, 0.85, pit(x / S, y / S)), 0, 1) * 255;
+      d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvasTexture(cv, { linear: true });
 }

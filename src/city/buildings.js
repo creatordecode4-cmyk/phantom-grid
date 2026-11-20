@@ -1,153 +1,180 @@
 // ---------------------------------------------------------------------------
-// buildings.js - fills every block with buildings.
+// buildings.js - decides WHERE buildings go and WHICH type each one is.
 //
-// Step 1 (plan):  place simple boxes along the edges of each block.
-// Step 2 (build): give every box walls, windows, a shop floor, signs,
-//                 awnings, a roof and a collision box.
+//   1. plan:  cut the street front of every block into lots (pieces of land)
+//   2. look:  find out what each side of a lot faces (street, alley,
+//             neighbour, back yard)
+//   3. build: let the building type of each lot put its parts together
+//             (buildingTypes.js + buildingKit.js)
 //
-// All walls of all buildings end up in just two meshes (brick and plaster).
+// Rules that keep the streets varied:
+//   * never the same type twice in a row, and neighbours differ in height
+//     and color (see pickType / floorsBetween / pickTint in buildingTypes.js)
+//   * some lots stay open: a parking lot, a station, an empty lot
+//   * now and then there is a narrow gap between two houses
+//
+// HERO BUILDINGS: .glb model files in assets/buildings/ are placed on a few
+// corner lots (see "heroLots" in layout.js and loadHeroModels below).
 // ---------------------------------------------------------------------------
 
-import { CONFIG } from '../config.js';
+import * as THREE from 'three';
 import { RNG, insetConvex, pointInConvex, polygonArea } from '../utils/math.js';
 import { blockEdges, addDecal } from './ground.js';
-import { signUV, SIGN_COLS, NEON_FIRST_ROW, SIGN_ROWS } from './textures.js';
+import { createKit, sideFrame } from './buildingKit.js';
+import { TYPES, pickType } from './buildingTypes.js';
 
-const T = CONFIG.textures;
-const FLOOR_H = 3.5;     // meters per floor
-const SHOP_OPEN_H = 3.05; // height of a shop opening
-const RECESS = 0.16;     // shop fronts sit this far inside the wall
+const RIGHT_OF = { N: 'W', W: 'S', S: 'E', E: 'N' };
+const isStreet = (t) => t === 'street' || t === 'neon' || t === 'avenue';
 
-// Wall colors. They multiply the texture, so 1 = the photo as it is.
-const BRICK_TINTS = [
-  [1.0, 1.0, 1.0], [0.82, 0.8, 0.8], [1.12, 1.02, 0.94], [0.72, 0.7, 0.72], [1.2, 1.12, 1.0],
-  [0.9, 0.84, 0.8], [1.05, 0.9, 0.82], [0.66, 0.62, 0.6],
-];
-const PLASTER_TINTS = [
-  [1.0, 1.0, 1.0], [1.05, 1.08, 1.14], [0.84, 0.92, 1.02], [1.06, 0.92, 0.9], [0.86, 0.9, 0.78],
-  [0.7, 0.72, 0.76], [1.04, 0.8, 0.68], [0.9, 0.88, 0.84], [0.6, 0.58, 0.56],
-];
-const NEON_TINTS = [
-  [1.08, 1.1, 1.14], [1.1, 0.94, 0.94], [0.84, 1.0, 0.98], [1.08, 1.02, 0.86], [0.86, 0.96, 1.1],
-  [1.12, 0.98, 0.84], [0.98, 1.02, 1.04],
-];
-const ROOF_TINTS = [[0.8, 0.8, 0.82], [1.25, 1.22, 1.16], [0.55, 0.55, 0.56], [1.6, 1.6, 1.55], [1.0, 0.95, 0.9]];
-const AWNING_TINTS = [[0.5, 0.1, 0.09], [0.1, 0.27, 0.17], [0.1, 0.16, 0.32], [0.62, 0.46, 0.12], [0.3, 0.3, 0.31], [0.08, 0.3, 0.32], [0.55, 0.3, 0.12]];
-
-// The four sides of a box. For each side:
-//   (ox, oz) = the left end of the wall when you look at it from outside
-//   (dx, dz) = direction from left to right,  (nx, nz) = points out of the wall
-function sideFrame(b, side) {
-  switch (side) {
-    case 'N': return { side, ox: b.minX, oz: b.maxZ, dx: 1, dz: 0, nx: 0, nz: 1, len: b.maxX - b.minX };
-    case 'S': return { side, ox: b.maxX, oz: b.minZ, dx: -1, dz: 0, nx: 0, nz: -1, len: b.maxX - b.minX };
-    case 'W': return { side, ox: b.maxX, oz: b.maxZ, dx: 0, dz: -1, nx: 1, nz: 0, len: b.maxZ - b.minZ };
-    default: return { side, ox: b.minX, oz: b.minZ, dx: 0, dz: 1, nx: -1, nz: 0, len: b.maxZ - b.minZ };
-  }
+// Which side of a lot looks out of the block across this edge?
+function sideOfEdge(e) {
+  return e.inZ > 0.9 ? 'S' : e.inZ < -0.9 ? 'N' : e.inX > 0.9 ? 'E' : 'W';
 }
-// Point on a wall: s meters from the left end, y meters up, "out" meters in front.
-function fp(f, s, y, out = 0) {
-  return [f.ox + f.dx * s + f.nx * out, y, f.oz + f.dz * s + f.nz * out];
-}
+const overlap = (a, b, m = 0.02) => a.maxX > b.minX + m && a.minX < b.maxX - m && a.maxZ > b.minZ + m && a.minZ < b.maxZ - m;
 
 // ---------------------------------------------------------------------------
-// STEP 1: plan the boxes of one block
+// STEP 1: cut one block into lots
 // ---------------------------------------------------------------------------
-function styleFor(block, edgeType) {
-  if (edgeType === 'neon') return { minW: 9, maxW: 20, minD: 14, maxD: 22, neon: true };
-  if (block.district === 'neon') return { minW: 8, maxW: 18, minD: 10, maxD: 15, neon: false, low: true };
-  if (edgeType === 'alley') return { minW: 8, maxW: 18, minD: 9, maxD: 14, neon: false };
-  return { minW: 7, maxW: 22, minD: 11, maxD: 19, neon: false };
-}
-
-function pickFloors(rng, style, corner) {
-  if (style.neon || style.low) return rng.int(2, 4);
-  // The Grid: mostly 3 to 5 floors, a few taller ones
-  const r = rng.next();
-  let f = r < 0.1 ? 2 : r < 0.32 ? 3 : r < 0.58 ? 4 : r < 0.78 ? 5 : r < 0.9 ? 6 : r < 0.96 ? 7 : 8;
-  if (corner && f < 8 && rng.chance(0.5)) f++;
-  return f;
-}
-
-function planBlock(block, rng) {
-  const lot = insetConvex(block.poly, block.poly.map((p) => p.edge.sidewalk));
-  if (lot.length < 3 || polygonArea(lot) < 90) return [];
-  const lotBlock = { poly: lot };
-  const edges = blockEdges(lotBlock);
-  const placed = [];
+function planBlock(block, rng, reserved) {
+  const poly = insetConvex(block.poly, block.poly.map((p) => p.edge.sidewalk));
+  if (poly.length < 3 || polygonArea(poly) < 90) return [];
+  const edges = blockEdges({ poly });
+  const lots = reserved.slice(); // hero lots are already taken
+  let openUsed = false;
 
   const fits = (r) => {
-    if (!pointInConvex(lot, r.minX, r.minZ) || !pointInConvex(lot, r.maxX, r.minZ) ||
-        !pointInConvex(lot, r.maxX, r.maxZ) || !pointInConvex(lot, r.minX, r.maxZ)) return false;
-    for (const b of placed) {
-      if (r.maxX > b.minX + 0.02 && r.minX < b.maxX - 0.02 && r.maxZ > b.minZ + 0.02 && r.minZ < b.maxZ - 0.02) return false;
-    }
+    if (!pointInConvex(poly, r.minX, r.minZ) || !pointInConvex(poly, r.maxX, r.minZ) ||
+        !pointInConvex(poly, r.maxX, r.maxZ) || !pointInConvex(poly, r.minX, r.maxZ)) return false;
+    for (const l of lots) if (overlap(r, l.rect)) return false;
     return true;
   };
+  // rectangle on edge e: from s to s + w along the edge, d deep into the block
+  const rectOn = (e, s, w, d) => {
+    const x0 = e.a.x + e.dirX * s, z0 = e.a.z + e.dirZ * s;
+    const x1 = x0 + e.dirX * w + e.inX * d, z1 = z0 + e.dirZ * w + e.inZ * d;
+    return { minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) };
+  };
+  // how far along edge e does something already stand (seen from position s)?
+  const takenUntil = (e, s) => {
+    const probe = rectOn(e, s + 0.05, 1.0, 5);
+    let end = -1;
+    for (const l of lots) {
+      if (!overlap(probe, l.rect)) continue;
+      const a = (l.rect.minX - e.a.x) * e.dirX + (l.rect.minZ - e.a.z) * e.dirZ;
+      const b = (l.rect.maxX - e.a.x) * e.dirX + (l.rect.maxZ - e.a.z) * e.dirZ;
+      end = Math.max(end, a, b);
+    }
+    return end;
+  };
+  // free street front from s up to the next lot (or the end of the edge)
+  const freeUntil = (e, s) => {
+    let lim = e.len;
+    const strip = rectOn(e, s + 0.05, e.len - s - 0.05, 6);
+    for (const l of lots) {
+      if (!overlap(strip, l.rect)) continue;
+      const a = (l.rect.minX - e.a.x) * e.dirX + (l.rect.minZ - e.a.z) * e.dirZ;
+      const b = (l.rect.maxX - e.a.x) * e.dirX + (l.rect.maxZ - e.a.z) * e.dirZ;
+      lim = Math.min(lim, Math.max(s, Math.min(a, b)));
+    }
+    return lim;
+  };
 
-  // --- straight edges: a row of buildings with shared walls or small gaps ---
-  // start with a different edge in every block so corners vary
-  const order = edges.map((e, i) => i);
-  const shift = block.id % Math.max(1, order.length);
-  for (let k = 0; k < order.length; k++) {
-    const e = edges[order[(k + shift) % order.length]];
+  // ---- straight edges: a row of lots, side by side ----
+  // start with a different edge in every block so the corners vary
+  const shift = block.id % Math.max(1, edges.length);
+  for (let k = 0; k < edges.length; k++) {
+    const ei = (k + shift) % edges.length;
+    const e = edges[ei];
     if (!e.axis) continue;
-    const style = styleFor(block, e.type);
-    let s = 0;
-    while (s < e.len - style.minW + 0.01) {
-      const remain = e.len - s;
-      let w = rng.range(style.minW, style.maxW);
-      if (w > remain || remain - w < style.minW) w = remain;
-      let d = rng.range(style.minD, style.maxD);
+    const before = edges[(ei - 1 + edges.length) % edges.length], after = edges[(ei + 1) % edges.length];
+    const low = block.district === 'neon' && e.type !== 'neon';
+    let s = 0, prev = null, guard = 0;
+    while (s < e.len - 6 && guard++ < 60) {
+      const t0 = takenUntil(e, s);
+      if (t0 > s + 0.01) { s = t0; prev = null; continue; }
+      const lim = freeUntil(e, s);
+      const space = lim - s;
+      if (space < 6.4) { s = lim + 0.01; continue; }
+      const cornerStart = s < 0.01 && isStreet(before.type) && before.axis;
+      const cornerEnd = lim > e.len - 0.01 && isStreet(after.type) && after.axis && space <= TYPES.corner.w[1] && space >= TYPES.corner.w[0] - 2;
+      const id = pickType(rng, {
+        district: block.district, edgeType: e.type, playable: block.playable, space, openUsed,
+        corner: isStreet(e.type) && (cornerStart || cornerEnd), prevType: prev ? prev.type : null,
+      });
+      if (!id) { s += 2; continue; }
+      const T = TYPES[id];
+      let w = rng.range(T.w[0], Math.min(T.w[1], space));
+      if (id === 'corner' && cornerEnd && !cornerStart) w = space;
+      // do not leave a strip that is too narrow for any building
+      if (space - w < 6.5) w = space <= T.w[1] * 1.3 ? space : Math.max(T.w[0], space - 7.5);
+      let d = rng.range(T.d[0], T.d[1]);
+      if (id === 'corner') d = Math.min(T.d[1], Math.max(T.d[0], w + rng.range(-2, 2)));
       let rect = null;
-      for (let attempt = 0; attempt < 5; attempt++) {
-        const x0 = e.a.x + e.dirX * s, z0 = e.a.z + e.dirZ * s;
-        const x1 = x0 + e.dirX * w + e.inX * d, z1 = z0 + e.dirZ * w + e.inZ * d;
-        const r = { minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) };
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const r = rectOn(e, s, w, d);
         if (fits(r)) { rect = r; break; }
-        d *= 0.74;
-        if (attempt >= 1) w = Math.max(style.minW, w * 0.8);
-        if (d < 6) break;
+        d *= 0.8;
+        if (attempt >= 2) w = Math.max(T.w[0], w * 0.85);
+        if (d < Math.min(T.d[0], 8.5)) break;
       }
-      if (rect) {
-        const corner = s < 0.5 || s + w > e.len - 0.5;
-        placed.push({ ...rect, style, floors: pickFloors(rng, style, corner), edgeType: e.type, diag: null });
-        // neighbours often share a wall; sometimes there is a small gap
-        s += w + (rng.chance(0.32) ? rng.range(1.0, 2.6) : 0);
-      } else {
-        s += 2;
-      }
+      if (!rect) { s += 2; prev = null; continue; }
+      const atEnd = s + w > e.len - 0.01;
+      const lot = {
+        rect, type: id, front: sideOfEdge(e), edgeType: e.type, block, district: block.district, low,
+        cornerSide: s < 0.01 && isStreet(before.type) ? 'right' : atEnd && isStreet(after.type) ? 'left' : null,
+        prevLot: prev, diag: null,
+      };
+      lots.push(lot);
+      if (T.open) openUsed = true;
+      prev = lot;
+      // houses mostly share a wall; now and then there is a narrow gap
+      s += w + (!T.open && rng.chance(0.14) ? rng.range(1.3, 2.4) : 0);
     }
   }
 
-  // --- diagonal edge (along the avenue): boxes in a stair pattern ---
+  // ---- slanted edge (along the avenue): lots in a stair pattern ----
   for (const e of edges) {
     if (e.axis) continue;
     const sx = Math.sign(e.inX), sz = Math.sign(e.inZ);
-    const style = styleFor(block, e.type);
+    let prev = null;
     for (let t = 0.5; t < e.len - 3; t += 1.5) {
       const px = e.a.x + e.dirX * t, pz = e.a.z + e.dirZ * t;
-      let w = rng.range(9, 18), d = rng.range(9, 16);
+      const id = prev && prev.type === 'corner' ? rng.pick(['stucco', 'walkup', 'office']) : rng.chance(0.6) ? 'corner' : rng.pick(['stucco', 'walkup']);
+      const T = TYPES[id];
+      let w = rng.range(Math.max(9, T.w[0]), Math.min(17, T.w[1])), d = rng.range(Math.max(10, T.d[0]), Math.min(16, T.d[1]));
       for (let attempt = 0; attempt < 4; attempt++) {
         const r = { minX: Math.min(px, px + sx * w), maxX: Math.max(px, px + sx * w), minZ: Math.min(pz, pz + sz * d), maxZ: Math.max(pz, pz + sz * d) };
         if (fits(r)) {
-          placed.push({ ...r, style, floors: pickFloors(rng, style, false), edgeType: 'avenue', diag: { outX: -e.inX, outZ: -e.inZ } });
+          // the two sides that look at the avenue; the longer one is the front
+          const sideX = sx > 0 ? 'E' : 'W', sideZ = sz > 0 ? 'S' : 'N';
+          const front = w >= d ? sideZ : sideX, other = w >= d ? sideX : sideZ;
+          const lot = {
+            rect: r, type: id, front, edgeType: 'avenue', block, district: block.district, low: false,
+            cornerSide: RIGHT_OF[front] === other ? 'right' : 'left', prevLot: prev, diag: { outX: -e.inX, outZ: -e.inZ },
+          };
+          lots.push(lot);
+          prev = lot;
           break;
         }
-        w *= 0.76; d *= 0.76;
-        if (w < 6.5 || d < 6.5) break;
+        w *= 0.8; d *= 0.8;
+        if (w < T.w[0] - 1.5 || d < 8.5) break;
       }
     }
   }
 
-  // --- decide what each side of each box faces ---
-  for (const b of placed) {
-    b.sides = {};
+  // -------------------------------------------------------------------------
+  // STEP 2: what does each side of each lot face?
+  //   'front' a street,  'alley' an alley (or an open lot next door),
+  //   'party' a neighbour's wall,  'gap' a narrow gap,  'back' the back yard
+  // -------------------------------------------------------------------------
+  for (const lot of lots) {
+    const b = lot.rect;
+    lot.sides = {};
     for (const side of ['N', 'S', 'E', 'W']) {
       const f = sideFrame(b, side);
       const mx = f.ox + f.dx * f.len / 2, mz = f.oz + f.dz * f.len / 2;
       let kind = 'back', edgeType = null;
-      // on the edge of the lot? then it faces a street (or an alley)
+      // on the edge of the block? then it faces a street (or an alley)
       for (const e of edges) {
         if (!e.axis) continue;
         const dist = Math.abs((mx - e.a.x) * e.inX + (mz - e.a.z) * e.inZ);
@@ -158,267 +185,196 @@ function planBlock(block, rng) {
           edgeType = e.type;
         }
       }
-      // boxes on the diagonal: the two sides that look toward the avenue
-      if (kind === 'back' && b.diag && f.nx * b.diag.outX + f.nz * b.diag.outZ > 0.1) {
-        kind = 'front';
-        edgeType = 'avenue';
-      }
-      if (kind === 'back' || (kind === 'front' && b.diag)) {
-        // is another building right in front of this wall?
+      // lots on the slanted edge: the two sides that look toward the avenue
+      const towardAvenue = lot.diag && f.nx * lot.diag.outX + f.nz * lot.diag.outZ > 0.1;
+      if (kind === 'back' && towardAvenue) { kind = 'front'; edgeType = 'avenue'; }
+      if (kind === 'back' || towardAvenue) {
+        // is another lot right in front of this wall? how far away?
+        const reach = 3.6, inset = Math.min(1.2, f.len * 0.3);
+        const ax = f.ox + f.dx * inset, az = f.oz + f.dz * inset, bx = f.ox + f.dx * (f.len - inset), bz = f.oz + f.dz * (f.len - inset);
         const zone = {
-          minX: Math.min(mx - f.dx * (f.len / 2 - 0.6), mx + f.dx * (f.len / 2 - 0.6)) + Math.min(0, f.nx * 3.2),
-          maxX: Math.max(mx - f.dx * (f.len / 2 - 0.6), mx + f.dx * (f.len / 2 - 0.6)) + Math.max(0, f.nx * 3.2),
-          minZ: Math.min(mz - f.dz * (f.len / 2 - 0.6), mz + f.dz * (f.len / 2 - 0.6)) + Math.min(0, f.nz * 3.2),
-          maxZ: Math.max(mz - f.dz * (f.len / 2 - 0.6), mz + f.dz * (f.len / 2 - 0.6)) + Math.max(0, f.nz * 3.2),
+          minX: Math.min(ax, bx) + Math.min(0, f.nx * reach), maxX: Math.max(ax, bx) + Math.max(0, f.nx * reach),
+          minZ: Math.min(az, bz) + Math.min(0, f.nz * reach), maxZ: Math.max(az, bz) + Math.max(0, f.nz * reach),
         };
-        for (const o of placed) {
-          if (o === b) continue;
-          if (zone.maxX > o.minX && zone.minX < o.maxX && zone.maxZ > o.minZ && zone.minZ < o.maxZ) { kind = 'blocked'; break; }
+        let gap = Infinity, openNext = false;
+        for (const o of lots) {
+          if (o === lot || !overlap(zone, o.rect, 0)) continue;
+          const g = f.nx > 0.5 ? o.rect.minX - b.maxX : f.nx < -0.5 ? b.minX - o.rect.maxX : f.nz > 0.5 ? o.rect.minZ - b.maxZ : b.minZ - o.rect.maxZ;
+          if (g < gap) { gap = g; openNext = !!TYPES[o.type] && !!TYPES[o.type].open; }
+        }
+        if (gap < 3.6) {
+          if (openNext) { kind = 'alley'; edgeType = 'lot'; }
+          else kind = gap < 0.3 ? 'party' : 'gap';
         }
       }
-      b.sides[side] = { kind, edgeType, len: f.len };
+      lot.sides[side] = { kind, edgeType };
     }
+    // a corner lot must really have a second street side, otherwise it is a normal lot
+    if (lot.cornerSide) {
+      const other = lot.cornerSide === 'right' ? RIGHT_OF[lot.front] : Object.keys(RIGHT_OF).find((k) => RIGHT_OF[k] === lot.front);
+      if (lot.sides[other].kind !== 'front') lot.cornerSide = null;
+    }
+    lot.corner = !!lot.cornerSide;
+    if (lot.type === 'corner' && !lot.corner) lot.type = 'stucco';
   }
-  return placed;
+  return lots;
 }
 
 // ---------------------------------------------------------------------------
-// STEP 2: turn one planned box into walls, windows, shops ...
+// HERO BUILDINGS: model files made in a 3D program.
+//
+// Put .glb files into assets/buildings/ and either
+//   * name them hero1.glb, hero2.glb, hero3.glb, hero4.glb, or
+//   * list them in assets/buildings/buildings.json, for example
+//       [ { "file": "bank.glb", "height": 32, "rotate": 90 }, "diner.glb" ]
+//     height = real height in meters (optional), rotate = extra turn in degrees
+// A model is scaled to fit its corner lot unless a height is given.
 // ---------------------------------------------------------------------------
-function buildOne(ctx, block, b, rng) {
-  const L = ctx.layout;
-  const neonStyle = !!b.style.neon;
-  const inNeon = block.district === 'neon';
-  const brick = !neonStyle && rng.chance(inNeon ? 0.25 : 0.56);
-  const mb = brick ? ctx.mb.brick : ctx.mb.plaster;
-  const tile = brick ? T.brick.size : T.plaster.size;
-  const tint = brick ? rng.pick(BRICK_TINTS) : neonStyle || inNeon ? rng.pick(NEON_TINTS) : rng.pick(PLASTER_TINTS);
-
-  const hasShops = neonStyle || rng.chance(0.72);
-  const groundH = hasShops ? 4.0 : FLOOR_H;
-  const top = groundH + (b.floors - 1) * FLOOR_H;
-  const parapet = rng.range(0.55, 1.15);
-  const cornice = brick && rng.chance(0.55);
-  const bayTarget = rng.range(3.3, 4.5);
-  const offU = rng.int(0, 180), offV = rng.int(0, 180);
-  const litShare = neonStyle ? rng.range(0.2, 0.5) : rng.chance(0.12) ? 0.04 : rng.range(0.14, 0.5);
-  const uOff = rng.range(0, 50), vOff = rng.range(0, 50);
-
-  Object.assign(b, { id: ctx.buildings.length, block, brick, tint, groundH, top, parapet, hasShops, neonStyle, playable: block.playable, bays: {} });
-
-  // One wall rectangle. win = null or { u0, u1, v0, v1 } (window bays / floors).
-  const wall = (f, s0, s1, y0, y1, out, shade, win) => {
-    if (s1 - s0 < 0.01 || y1 - y0 < 0.01) return;
-    mb.color(tint[0] * shade, tint[1] * shade, tint[2] * shade, 1);
-    const u0 = (s0 + uOff) / tile, u1 = (s1 + uOff) / tile, v0 = (y0 + vOff) / tile, v1 = (y1 + vOff) / tile;
-    const p0 = fp(f, s0, y0, out), p1 = fp(f, s1, y0, out), p2 = fp(f, s1, y1, out), p3 = fp(f, s0, y1, out);
-    const w = win || { u0: 0, u1: 0, v0: 0, v1: 0 };
-    const on = win ? 1 : 0;
-    mb.data(w.u0, w.v0, on, litShare); const a = mb.vertex(p0[0], p0[1], p0[2], f.nx, 0, f.nz, u0, v0);
-    mb.data(w.u1, w.v0, on, litShare); const c = mb.vertex(p1[0], p1[1], p1[2], f.nx, 0, f.nz, u1, v0);
-    mb.data(w.u1, w.v1, on, litShare); const d = mb.vertex(p2[0], p2[1], p2[2], f.nx, 0, f.nz, u1, v1);
-    mb.data(w.u0, w.v1, on, litShare); const e = mb.vertex(p3[0], p3[1], p3[2], f.nx, 0, f.nz, u0, v1);
-    mb.quadIdx(a, c, d, e);
-  };
-  // Small wall piece that faces sideways or down (the sides of a shop opening).
-  const reveal = (pts, n, shade) => {
-    mb.color(tint[0] * shade, tint[1] * shade, tint[2] * shade, 1);
-    mb.data(0, 0, 0, 0);
-    mb.quadAuto(pts[0], pts[1], pts[2], pts[3], n, tile);
-  };
-
-  for (const side of ['N', 'S', 'E', 'W']) {
-    const f = sideFrame(b, side);
-    const info = b.sides[side];
-    const len = f.len;
-    const bays = Math.max(1, Math.floor(len / bayTarget));
-    info.bays = bays;
-    info.frame = f;
-
-    if (info.kind === 'blocked') {
-      // a neighbour is right in front: blank, darker wall (little light gets in)
-      wall(f, 0, len, 0, top + parapet, 0, 0.62, null);
-      continue;
-    }
-    const upperWin = { u0: offU, u1: offU + bays, v0: offV, v1: offV + b.floors - 1 };
-
-    if (info.kind === 'front' && hasShops) {
-      // ---------------- ground floor with shops ----------------
-      const n = Math.max(1, Math.round(len / rng.range(4.3, 5.6)));
-      const bayW = len / n;
-      const doorBay = n >= 2 && rng.chance(0.6) ? rng.int(0, n - 1) : -1; // entrance to the flats above
-      const openings = [];
-      for (let i = 0; i < n; i++) {
-        let s0 = i * bayW + 0.32, s1 = (i + 1) * bayW - 0.32, h = SHOP_OPEN_H, type;
-        if (i === doorBay) {
-          type = 2;
-          const c = (s0 + s1) / 2;
-          s0 = c - 0.6; s1 = c + 0.6; h = 2.6;
-        } else {
-          const r = rng.next();
-          type = r < (neonStyle ? 0.86 : 0.6) ? 0 : r < 0.9 ? 1 : bayW > 4.4 ? 3 : 1;
-        }
-        openings.push({ s0, s1, h, type });
-      }
-      info.openings = openings;
-      // wall between and above the openings
-      let cur = 0;
-      for (const o of openings) {
-        wall(f, cur, o.s0, 0, groundH, 0, 1, null);
-        wall(f, o.s0, o.s1, o.h, groundH, 0, 1, null);
-        cur = o.s1;
-        // sides and top of the opening (it goes a little into the wall)
-        reveal([fp(f, o.s0, 0, 0), fp(f, o.s0, 0, -RECESS), fp(f, o.s0, o.h, -RECESS), fp(f, o.s0, o.h, 0)], [f.dx, 0, f.dz], 0.7);
-        reveal([fp(f, o.s1, 0, 0), fp(f, o.s1, 0, -RECESS), fp(f, o.s1, o.h, -RECESS), fp(f, o.s1, o.h, 0)], [-f.dx, 0, -f.dz], 0.7);
-        reveal([fp(f, o.s0, o.h, 0), fp(f, o.s1, o.h, 0), fp(f, o.s1, o.h, -RECESS), fp(f, o.s0, o.h, -RECESS)], [0, -1, 0], 0.55);
-
-        // the shop front itself (drawn by the shader)
-        const sm = ctx.mb.shop;
-        const seed = rng.int(1, 60) + (neonStyle || inNeon ? rng.range(0.0, 0.55) : rng.range(0.38, 0.99));
-        const w = o.s1 - o.s0;
-        sm.color(1, 1, 1, 1).data(o.type, seed, w, o.h);
-        sm.quad(fp(f, o.s0, 0, -RECESS), fp(f, o.s1, 0, -RECESS), fp(f, o.s1, o.h, -RECESS), fp(f, o.s0, o.h, -RECESS),
-          [f.nx, 0, f.nz], [0, 0], [1, 0], [1, 1], [0, 1]);
-        const lit = o.type === 0 && seed % 1 < 0.62;
-        if (lit && block.playable) {
-          const c = fp(f, (o.s0 + o.s1) / 2, 0, 1.6);
-          ctx.shopLights.push({ x: c[0], z: c[2], r: w * 0.6 + 3.2, power: neonStyle ? 0.5 : 0.36 });
-        }
-
-        // sign above the shop
-        if (o.type !== 2 && rng.chance(neonStyle ? 0.95 : 0.78)) {
-          const neonSign = (neonStyle || inNeon) && rng.chance(0.6);
-          const idx = neonSign ? SIGN_COLS * NEON_FIRST_ROW + rng.int(0, SIGN_COLS * (SIGN_ROWS - NEON_FIRST_ROW) - 1) : rng.int(0, SIGN_COLS * NEON_FIRST_ROW - 1);
-          const sh = Math.min(0.74, groundH - o.h - 0.16);
-          const sw = Math.min(w - 0.2, sh * 4);
-          const c = (o.s0 + o.s1) / 2, y0 = (o.h + groundH) / 2 - sh / 2;
-          const uv = signUV(idx);
-          const glow = neonSign ? 1.0 : rng.chance(neonStyle || inNeon ? 0.8 : 0.45) ? rng.range(0.35, 0.6) : 0;
-          ctx.mb.sign.color(1, 1, 1, 1).data(glow, 0, 0, 0);
-          ctx.mb.sign.quad(fp(f, c - sw / 2, y0, 0.05), fp(f, c + sw / 2, y0, 0.05), fp(f, c + sw / 2, y0 + sh, 0.05), fp(f, c - sw / 2, y0 + sh, 0.05),
-            [f.nx, 0, f.nz], [uv.u0, uv.v0], [uv.u1, uv.v0], [uv.u1, uv.v1], [uv.u0, uv.v1]);
-          if (glow > 0 && block.playable) {
-            const p = fp(f, c, 0, 1.2);
-            ctx.shopLights.push({ x: p[0], z: p[2], r: 4.5, power: 0.14 * glow });
-          }
-        }
-
-        // cloth awning over some glass shops
-        if (o.type === 0 && rng.chance(neonStyle ? 0.5 : 0.3)) {
-          const am = ctx.mb.awning;
-          const at = rng.pick(AWNING_TINTS);
-          const striped = rng.chance(0.55);
-          const a0 = o.s0 - 0.12, a1 = o.s1 + 0.12, yT = o.h - 0.02, yB = o.h - 0.58, reach = rng.range(1.1, 1.5);
-          const uA = striped ? a0 / 1.6 : 0.03, uB = striped ? a1 / 1.6 : 0.09;
-          am.color(at[0], at[1], at[2], 1).data(0, 0, 0, 0);
-          // sloping top
-          am.quad(fp(f, a0, yB, reach), fp(f, a1, yB, reach), fp(f, a1, yT, 0.03), fp(f, a0, yT, 0.03),
-            [f.nx * 0.37, 0.93, f.nz * 0.37], [uA, 0], [uB, 0], [uB, 0.9], [uA, 0.9]);
-          // hanging front flap
-          am.quad(fp(f, a0, yB - 0.22, reach), fp(f, a1, yB - 0.22, reach), fp(f, a1, yB, reach), fp(f, a0, yB, reach),
-            [f.nx, 0, f.nz], [uA, 0.8], [uB, 0.8], [uB, 1.0], [uA, 1.0]);
-          info.awnings = (info.awnings || 0) + 1;
-        }
-      }
-      wall(f, cur, len, 0, groundH, 0, 1, null);
-    } else {
-      // ---------------- ground floor without shops ----------------
-      const winRow = info.kind === 'alley' ? null : { u0: offU, u1: offU + bays, v0: offV - 1, v1: offV };
-      if ((info.kind === 'front' || info.kind === 'alley') && len > 5) {
-        // one door, the rest of the wall has windows
-        const dBay = rng.int(0, bays - 1);
-        const bw = len / bays;
-        const c = (dBay + 0.5) * bw, s0 = c - 0.6, s1 = c + 0.6, h = 2.6;
-        const split = (a, bq) => (winRow ? { u0: winRow.u0 + a / bw, u1: winRow.u0 + bq / bw, v0: winRow.v0, v1: winRow.v1 } : null);
-        // windows only in whole bays next to the door bay
-        wall(f, 0, dBay * bw, 0, groundH, 0, 1, split(0, dBay * bw));
-        wall(f, dBay * bw, s0, 0, groundH, 0, 1, null);
-        wall(f, s0, s1, h, groundH, 0, 1, null);
-        wall(f, s1, (dBay + 1) * bw, 0, groundH, 0, 1, null);
-        wall(f, (dBay + 1) * bw, len, 0, groundH, 0, 1, split((dBay + 1) * bw, len));
-        reveal([fp(f, s0, 0, 0), fp(f, s0, 0, -RECESS), fp(f, s0, h, -RECESS), fp(f, s0, h, 0)], [f.dx, 0, f.dz], 0.7);
-        reveal([fp(f, s1, 0, 0), fp(f, s1, 0, -RECESS), fp(f, s1, h, -RECESS), fp(f, s1, h, 0)], [-f.dx, 0, -f.dz], 0.7);
-        reveal([fp(f, s0, h, 0), fp(f, s1, h, 0), fp(f, s1, h, -RECESS), fp(f, s0, h, -RECESS)], [0, -1, 0], 0.55);
-        ctx.mb.shop.color(1, 1, 1, 1).data(2, rng.int(1, 60) + rng.range(0.7, 0.99), s1 - s0, h);
-        ctx.mb.shop.quad(fp(f, s0, 0, -RECESS), fp(f, s1, 0, -RECESS), fp(f, s1, h, -RECESS), fp(f, s0, h, -RECESS),
-          [f.nx, 0, f.nz], [0, 0], [1, 0], [1, 1], [0, 1]);
-      } else {
-        wall(f, 0, len, 0, groundH, 0, info.kind === 'back' ? 0.9 : 1, info.kind === 'back' ? null : winRow);
-      }
-    }
-
-    // ---------------- upper floors, roof edge ----------------
-    const shade = info.kind === 'back' ? 0.92 : 1;
-    wall(f, 0, len, groundH, top, 0, shade, upperWin);
-    wall(f, 0, len, top, top + parapet, 0, shade, null);
-    if (cornice && info.kind === 'front') {
-      // a ledge sticking out under the roof line (typical for old brick houses)
-      const o = 0.26, y0 = top - 0.12, y1 = top + 0.34;
-      wall(f, -0.02, len + 0.02, y0, y1, o, 0.8, null);
-      reveal([fp(f, 0, y0, 0), fp(f, len, y0, 0), fp(f, len, y0, o), fp(f, 0, y0, o)], [0, -1, 0], 0.5);
-      reveal([fp(f, 0, y1, 0), fp(f, len, y1, 0), fp(f, len, y1, o), fp(f, 0, y1, o)], [0, 1, 0], 0.9);
-    }
-
-    // soft dark line where the wall meets the sidewalk
-    if (block.playable) {
-      const wdt = info.kind === 'alley' ? 0.5 : 0.95;
-      const c = fp(f, len / 2, 0, wdt / 2);
-      addDecal(ctx.mb.decal, 'ao', c[0], c[2], len, wdt, Math.atan2(f.nx, f.nz), L.street.curbHeight + 0.011, 0.9);
+export async function loadHeroModels() {
+  const base = 'assets/buildings/';
+  let list = null;
+  try {
+    const r = await fetch(base + 'buildings.json', { cache: 'no-cache' });
+    if (r.ok) list = await r.json();
+  } catch (e) { /* no list file: that is fine */ }
+  if (!Array.isArray(list)) {
+    list = [];
+    for (let i = 1; i <= 4; i++) {
+      try {
+        const head = await fetch(`${base}hero${i}.glb`, { method: 'HEAD' });
+        if (head.ok) list.push({ file: `hero${i}.glb` });
+      } catch (e) { /* missing */ }
     }
   }
-
-  // ---- roof ----
-  const rt = rng.pick(ROOF_TINTS);
-  ctx.mb.asphalt.color(rt[0], rt[1], rt[2], 1);
-  ctx.mb.asphalt.groundRect(b.minX, b.minZ, b.maxX, b.maxZ, top, T.asphalt.size, uOff * 0.1, vOff * 0.1);
-
-  // ---- collision box ----
-  ctx.colliders.boxes.push({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ, h: top + parapet });
-  ctx.buildings.push(b);
+  if (!list.length) return [];
+  const [{ GLTFLoader }, { MeshoptDecoder }] = await Promise.all([
+    import('three/addons/loaders/GLTFLoader.js'),
+    import('three/addons/libs/meshopt_decoder.module.js'),
+  ]);
+  const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  const out = [];
+  for (const item of list.slice(0, 8)) {
+    const entry = typeof item === 'string' ? { file: item } : item;
+    if (!entry || !entry.file) continue;
+    try {
+      const gltf = await loader.loadAsync(base + entry.file);
+      out.push({ ...entry, scene: gltf.scene });
+    } catch (e) {
+      console.warn(`[buildings] could not load ${entry.file}`, e);
+    }
+  }
+  return out;
 }
 
-// ---------------------------------------------------------------------------
-// A plain building for the scenery outside the play area: four walls with
-// windows and a roof. No shops, no collision box.
-//   box = { minX, maxX, minZ, maxZ },  opts = { brick, tint, windows }
-// ---------------------------------------------------------------------------
-export function simpleBuilding(ctx, box, floors, rng, opts = {}) {
-  const brick = opts.brick ?? rng.chance(0.4);
-  const mb = brick ? ctx.mb.brick : ctx.mb.plaster;
-  const tile = brick ? T.brick.size : T.plaster.size;
-  const tint = opts.tint || (brick ? rng.pick(BRICK_TINTS) : rng.pick(PLASTER_TINTS));
-  const top = floors * FLOOR_H + rng.range(0.5, 1.2);
-  const offU = rng.int(0, 180), offV = rng.int(0, 180), uOff = rng.range(0, 50);
-  const lit = rng.range(0.1, 0.45);
-  mb.color(tint[0], tint[1], tint[2], 1);
-  for (const side of ['N', 'S', 'E', 'W']) {
-    const f = sideFrame(box, side);
-    const bays = Math.max(1, Math.floor(f.len / rng.range(3.4, 4.6)));
-    const win = opts.windows === false ? 0 : 1;
-    const u0 = uOff / tile, u1 = (f.len + uOff) / tile, v1 = top / tile;
-    const p0 = fp(f, 0, 0), p1 = fp(f, f.len, 0), p2 = fp(f, f.len, top), p3 = fp(f, 0, top);
-    // window rows end a little below the roof edge
-    const rows = top / FLOOR_H;
-    mb.data(offU, offV, win, lit); const a = mb.vertex(p0[0], p0[1], p0[2], f.nx, 0, f.nz, u0, 0);
-    mb.data(offU + bays, offV, win, lit); const b = mb.vertex(p1[0], p1[1], p1[2], f.nx, 0, f.nz, u1, 0);
-    mb.data(offU + bays, offV + rows, win, lit); const c = mb.vertex(p2[0], p2[1], p2[2], f.nx, 0, f.nz, u1, v1);
-    mb.data(offU, offV + rows, win, lit); const d = mb.vertex(p3[0], p3[1], p3[2], f.nx, 0, f.nz, u0, v1);
-    mb.quadIdx(a, b, c, d);
+// Put one hero model on its lot: scale it to real size, turn its front to the
+// street, add shadows and a collision box.
+function placeHero(ctx, lot, hero) {
+  const L = ctx.layout, curb = L.street.curbHeight;
+  const model = hero.scene;
+  const f = sideFrame(lot.rect, lot.front);
+  const lotW = lot.rect.maxX - lot.rect.minX, lotD = lot.rect.maxZ - lot.rect.minZ;
+  // models are expected to look toward +z; turn that toward the street
+  model.rotation.y = Math.atan2(f.nx, f.nz) + ((hero.rotate || 0) * Math.PI) / 180;
+  model.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  if (size.x < 1e-4 || size.y < 1e-4 || size.z < 1e-4) return false;
+  let scale;
+  if (hero.height) scale = hero.height / size.y;                     // real height given in the list
+  else {
+    scale = Math.min((lotW - 0.6) / size.x, (lotD - 0.6) / size.z);  // fit the lot
+    if (size.y * scale > 70) scale = 70 / size.y;                    // never taller than 70 m
   }
-  const rt = rng.pick(ROOF_TINTS);
-  ctx.mb.asphalt.color(rt[0], rt[1], rt[2], 1);
-  ctx.mb.asphalt.groundRect(box.minX, box.minZ, box.maxX, box.maxZ, top - 0.6, T.asphalt.size);
-  return top;
+  model.scale.setScalar(scale);
+  model.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(model);
+  const c = box.getCenter(new THREE.Vector3());
+  // stand in the middle of the lot, feet on the sidewalk
+  model.position.x += (lot.rect.minX + lot.rect.maxX) / 2 - c.x;
+  model.position.z += (lot.rect.minZ + lot.rect.maxZ) / 2 - c.z;
+  model.position.y += curb - box.min.y;
+  model.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(model);
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    const list = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of list) if (m && m.isMeshStandardMaterial && ctx.lampPatch) ctx.lampPatch(m);
+  });
+  model.name = `hero:${hero.file}`;
+  ctx.group.add(model);
+  ctx.colliders.boxes.push({ minX: box.min.x + 0.1, maxX: box.max.x - 0.1, minZ: box.min.z + 0.1, maxZ: box.max.z - 0.1, h: box.max.y });
+  ctx.buildings.push({ minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z, top: box.max.y, floors: Math.round(box.max.y / 3.5), mat: 'hero', playable: true, block: lot.block, type: 'hero', file: hero.file });
+  // soft shadow where the model meets the ground
+  addDecal(ctx.mb.decal, 'blobRect', (box.min.x + box.max.x) / 2, (box.min.z + box.max.z) / 2, box.max.x - box.min.x + 2.5, box.max.z - box.min.z + 2.5, 0, curb + 0.012, 0.8);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
 // MAIN
 // ---------------------------------------------------------------------------
-export function buildBuildings(ctx) {
-  for (const block of ctx.layout.blocks) {
+export function buildBuildings(ctx, heroes = []) {
+  const L = ctx.layout;
+  const kit = createKit(ctx);
+  ctx.kit = kit;
+  const counts = {};
+  const heroLots = (L.raw.heroLots || []).slice(0, heroes.length);
+
+  for (const block of L.blocks) {
     // every block has its own random numbers, so editing one block does not change the others
-    const r = new RNG(ctx.layout.seed * 7919 + block.id * 104729);
-    const plan = planBlock(block, r);
-    for (const b of plan) buildOne(ctx, block, b, r);
+    const rng = new RNG(L.seed * 7919 + block.id * 104729);
+
+    // ---- outside the play area: simple boxes with painted windows ----
+    if (!block.playable) {
+      const lots = planBlock(block, rng, []);
+      for (const lot of lots) {
+        const T = TYPES[lot.type];
+        if (T.open && rng.chance(0.6)) continue;
+        const neon = block.district === 'neon';
+        kit.simple(lot.rect, lot.type === 'shoprow' || lot.type === 'warehouse' ? rng.int(1, 2) : neon ? rng.int(2, 4) : rng.int(3, 8), rng);
+      }
+      continue;
+    }
+
+    // ---- hero models take a corner of their block ----
+    const reserved = [];
+    heroLots.forEach((h, i) => {
+      if (h.col !== block.col || h.row !== block.row || !block.isRect || block.half) return;
+      const inner = insetConvex(block.poly, block.poly.map((p) => p.edge.sidewalk));
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const p of inner) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z); }
+      const w = h.width || 24, d = h.depth || 24;
+      const south = h.corner[0] === 's', east = h.corner[1] === 'e';
+      const rect = {
+        minX: east ? minX : maxX - w, maxX: east ? minX + w : maxX,
+        minZ: south ? minZ : maxZ - d, maxZ: south ? minZ + d : maxZ,
+      };
+      reserved.push({ rect, type: 'hero', hero: heroes[i], front: h.front || (south ? 'S' : 'N'), edgeType: 'street', block, district: block.district, prevLot: null, diag: null, cornerSide: null });
+    });
+
+    const lots = planBlock(block, rng, reserved);
+    for (const lot of lots) {
+      if (lot.type === 'hero') {
+        if (!placeHero(ctx, lot, lot.hero)) console.warn('[buildings] hero model is empty:', lot.hero.file);
+        continue;
+      }
+      lot.prev = lot.prevLot ? lot.prevLot.summary || null : null;
+      const r = new RNG(L.seed * 31 + block.id * 7907 + Math.round(lot.rect.minX * 13 + lot.rect.minZ * 7));
+      lot.summary = TYPES[lot.type].build(kit, lot, r);
+      if (lot.summary) lot.summary.type = lot.type;
+      counts[lot.type] = (counts[lot.type] || 0) + 1;
+    }
   }
+  ctx.buildingCounts = counts;
+  return kit;
+}
+
+// ---------------------------------------------------------------------------
+// A plain building for the scenery outside the play area (used by backdrop.js).
+//   box = { minX, maxX, minZ, maxZ },  opts = { brick, tint, windows }
+// ---------------------------------------------------------------------------
+export function simpleBuilding(ctx, box, floors, rng, opts = {}) {
+  return ctx.kit.simple(box, floors, rng, opts);
 }

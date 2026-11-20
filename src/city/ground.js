@@ -385,6 +385,14 @@ export function buildGround(ctx) {
         const x = e.a.x + e.dirX * t + e.inX * o, z = e.a.z + e.dirZ * t + e.inZ * o;
         addDecal(dc, rng.pick(['dirt', 'leak', 'oil2', 'dirt', 'crack1']), x, z, rng.range(0.8, 2.2), rng.range(0.8, 2.2), rng.range(0, 6.28), curb + 0.012, rng.range(0.3, 0.75));
       }
+      // cracked slabs, and slabs that were replaced with fresh, lighter (or tar-dark) concrete
+      const along = Math.atan2(e.dirX, e.dirZ);
+      for (let k = 0; k < e.len / 22; k++) {
+        const t = rng.range(3, e.len - 3), o = rng.range(0.8, Math.max(0.9, e.sidewalk - 0.8));
+        const x = e.a.x + e.dirX * t + e.inX * o, z = e.a.z + e.dirZ * t + e.inZ * o;
+        if (rng.chance(0.55)) addDecal(dc, rng.chance(0.5) ? 'crack1' : 'crack2', x, z, rng.range(1.2, 2.6), rng.range(1.2, 2.6), rng.range(0, 6.28), curb + 0.012, rng.range(0.45, 0.85));
+        else addDecal(dc, 'patch', x, z, 0.75 * rng.int(1, 2), 0.75 * rng.int(1, 3), along, curb + 0.0125, rng.range(0.5, 0.9), rng.chance(0.6) ? rng.range(14, 26) : 1);
+      }
     }
   }
 }

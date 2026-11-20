@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { MeshBuilder, mergeParts } from '../utils/geometry.js';
 import { RNG } from '../utils/math.js';
+import { RAIL } from './textures.js';
 
 // Colors below are written as normal screen colors (sRGB 0..1).
 // The renderer works in "linear" color, so we convert them here.
@@ -691,5 +692,275 @@ export function makeDumpster() {
     P(cyl(0.09, 0.09, 0.07, 8), [0.8, 0.09, 0.4], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }),
     P(cyl(0.09, 0.09, 0.07, 8), [-0.8, 0.09, -0.4], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }),
     P(cyl(0.09, 0.09, 0.07, 8), [0.8, 0.09, -0.4], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }),
+  ]);
+}
+
+
+// ===========================================================================
+// BUILDING PARTS (placed by buildingKit.js, drawn only near the player)
+// ===========================================================================
+
+// One 3D window: glass that sits inside the wall, the four sides of the
+// opening, a stone sill, a stone lintel and a raised frame around it.
+// The model is 1 x 1 in size; the shader stretches it to each opening and
+// hides the parts a window does not have.
+//   x, y = -0.5 .. 0.5 across the opening,  z = 0 is the wall face,
+//   z = -1 means "at the glass" (the shader turns that into the real depth)
+// Stored per corner:  aData = ( part, 0, offset x, offset y in meters )
+//   part: 0 glass, 1 wall-colored sides, 2 sill, 3 lintel, 4 raised frame
+export function makeWindowModule() {
+  const mb = new MeshBuilder();
+  const D = -1;
+  // One flat piece. pts = 4 corners [x, y, z, offX, offY, shade] listed around the piece.
+  const piece = (part, n, pts) => {
+    // find the real place of 3 corners (for an example window) to get the winding right
+    const real = pts.map((p) => [p[0] * 1.2 + p[3], p[1] * 1.6 + p[4], p[2] < 0 ? p[2] * 0.2 : p[2]]);
+    const a = real[0], b = real[1], c = real[2];
+    const cx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]);
+    const cy = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+    const cz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const order = cx * n[0] + cy * n[1] + cz * n[2] < 0 ? [0, 3, 2, 1] : [0, 1, 2, 3];
+    const idx = order.map((k) => {
+      const q = pts[k];
+      mb.color(q[5], q[5], q[5], 1);
+      mb.data(part, 0, q[3], q[4]);
+      return mb.vertex(q[0], q[1], q[2], n[0], n[1], n[2], q[0] + 0.5, q[1] + 0.5);
+    });
+    mb.quadIdx(idx[0], idx[1], idx[2], idx[3]);
+  };
+  // ---- glass ----
+  piece(0, [0, 0, 1], [[-0.5, -0.5, D, 0, 0, 1], [0.5, -0.5, D, 0, 0, 1], [0.5, 0.5, D, 0, 0, 1], [-0.5, 0.5, D, 0, 0, 1]]);
+  // ---- the four sides of the opening (darker toward the glass = soft shadow) ----
+  piece(1, [1, 0, 0], [[-0.5, -0.5, 0, 0, 0, 1], [-0.5, -0.5, D, 0, 0, 0.6], [-0.5, 0.5, D, 0, 0, 0.5], [-0.5, 0.5, 0, 0, 0, 0.85]]);
+  piece(1, [-1, 0, 0], [[0.5, -0.5, 0, 0, 0, 1], [0.5, -0.5, D, 0, 0, 0.6], [0.5, 0.5, D, 0, 0, 0.5], [0.5, 0.5, 0, 0, 0, 0.85]]);
+  piece(1, [0, -1, 0], [[-0.5, 0.5, 0, 0, 0, 0.62], [0.5, 0.5, 0, 0, 0, 0.62], [0.5, 0.5, D, 0, 0, 0.4], [-0.5, 0.5, D, 0, 0, 0.4]]);
+  piece(1, [0, 1, 0], [[-0.5, -0.5, 0, 0, 0, 1], [0.5, -0.5, 0, 0, 0, 1], [0.5, -0.5, D, 0, 0, 0.7], [-0.5, -0.5, D, 0, 0, 0.7]]);
+  // ---- stone sill: sticks out 9 cm, a little wider than the opening ----
+  const O = 0.09, T = 0.012, B = -0.085, W = 0.07;
+  piece(2, [0, 1, 0], [[-0.5, -0.5, 0, 0, T, 1], [0.5, -0.5, 0, 0, T, 1], [0.5, -0.5, D, 0, T, 0.7], [-0.5, -0.5, D, 0, T, 0.7]]);
+  piece(2, [0, 1, 0], [[-0.5, -0.5, O, -W, T, 1], [0.5, -0.5, O, W, T, 1], [0.5, -0.5, 0, W, T, 1], [-0.5, -0.5, 0, -W, T, 1]]);
+  piece(2, [0, 0, 1], [[-0.5, -0.5, O, -W, B, 0.92], [0.5, -0.5, O, W, B, 0.92], [0.5, -0.5, O, W, T, 1], [-0.5, -0.5, O, -W, T, 1]]);
+  piece(2, [0, -1, 0], [[-0.5, -0.5, 0, -W, B, 0.5], [0.5, -0.5, 0, W, B, 0.5], [0.5, -0.5, O, W, B, 0.6], [-0.5, -0.5, O, -W, B, 0.6]]);
+  piece(2, [-1, 0, 0], [[-0.5, -0.5, 0, -W, B, 0.8], [-0.5, -0.5, O, -W, B, 0.8], [-0.5, -0.5, O, -W, T, 0.9], [-0.5, -0.5, 0, -W, T, 0.9]]);
+  piece(2, [1, 0, 0], [[0.5, -0.5, 0, W, B, 0.8], [0.5, -0.5, O, W, B, 0.8], [0.5, -0.5, O, W, T, 0.9], [0.5, -0.5, 0, W, T, 0.9]]);
+  // ---- stone lintel above the opening (brick houses) ----
+  const LO = 0.035, LH = 0.24, LW = 0.1;
+  piece(3, [0, 0, 1], [[-0.5, 0.5, LO, -LW, 0, 0.95], [0.5, 0.5, LO, LW, 0, 0.95], [0.5, 0.5, LO, LW, LH, 1], [-0.5, 0.5, LO, -LW, LH, 1]]);
+  piece(3, [0, -1, 0], [[-0.5, 0.5, 0, -LW, 0, 0.5], [0.5, 0.5, 0, LW, 0, 0.5], [0.5, 0.5, LO, LW, 0, 0.55], [-0.5, 0.5, LO, -LW, 0, 0.55]]);
+  piece(3, [0, 1, 0], [[-0.5, 0.5, 0, -LW, LH, 1], [0.5, 0.5, 0, LW, LH, 1], [0.5, 0.5, LO, LW, LH, 1], [-0.5, 0.5, LO, -LW, LH, 1]]);
+  // ---- raised plaster frame around the opening ----
+  const SO = 0.03, SW = 0.085;
+  piece(4, [0, 0, 1], [[-0.5, -0.5, SO, -SW, -SW, 1], [-0.5, -0.5, SO, 0, -SW, 1], [-0.5, 0.5, SO, 0, SW, 1], [-0.5, 0.5, SO, -SW, SW, 1]]);
+  piece(4, [0, 0, 1], [[0.5, -0.5, SO, 0, -SW, 1], [0.5, -0.5, SO, SW, -SW, 1], [0.5, 0.5, SO, SW, SW, 1], [0.5, 0.5, SO, 0, SW, 1]]);
+  piece(4, [0, 0, 1], [[-0.5, 0.5, SO, 0, 0, 1], [0.5, 0.5, SO, 0, 0, 1], [0.5, 0.5, SO, 0, SW, 1], [-0.5, 0.5, SO, 0, SW, 1]]);
+  piece(4, [0, 0, 1], [[-0.5, -0.5, SO, 0, -SW, 1], [0.5, -0.5, SO, 0, -SW, 1], [0.5, -0.5, SO, 0, 0, 1], [-0.5, -0.5, SO, 0, 0, 1]]);
+  return mb.build(true);
+}
+
+// A plain box that sticks out of a wall: x = -0.5..0.5 along the wall,
+// y = 0..1 up, z = 0..1 out. Stretched per copy into ledges, fins, pipes,
+// steps ... The color comes from each copy.
+export function makeTrimBox() {
+  const g = box(1, 1, 1);
+  g.translate(0, 0.5, 0.5);
+  return mergeParts([P(g, [0, 0, 0], [1, 1, 1], 0.86, 0, { paint: 1 })]);
+}
+
+// Balcony, 3 m wide. The wall is at z = 0, the floor top is at y = 0.
+//   slab: concrete floor + two brackets,  rail: see-through railing picture
+export function makeBalcony() {
+  const slab = mergeParts([
+    P(box(3.0, 0.14, 1.15), [0, -0.07, 0.575], [1, 1, 1], 0.85, 0, { paint: 1 }),
+    P(box(0.12, 0.2, 0.9), [-1.2, -0.24, 0.45], [1, 1, 1], 0.85, 0, { paint: 1 }),
+    P(box(0.12, 0.2, 0.9), [1.2, -0.24, 0.45], [1, 1, 1], 0.85, 0, { paint: 1 }),
+  ]);
+  const mb = new MeshBuilder();
+  const R = RAIL.bars, H = 1.05;
+  mb.color(1, 1, 1, 1);
+  const panel = (p0, p1, n) => {
+    const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / R.tile;
+    mb.quad([p0[0], 0, p0[1]], [p1[0], 0, p1[1]], [p1[0], H, p1[1]], [p0[0], H, p0[1]], n, [0, R.v0], [len, R.v0], [len, R.v1], [0, R.v1]);
+  };
+  panel([-1.48, 1.12], [1.48, 1.12], [0, 0, 1]);
+  panel([-1.48, 0.02], [-1.48, 1.12], [-1, 0, 0]);
+  panel([1.48, 1.12], [1.48, 0.02], [1, 0, 0]);
+  return { slab, rail: mb.build(false) };
+}
+
+// Balcony with solid low walls instead of a railing (common on plaster blocks).
+export function makeBalconySolid() {
+  const c = [1, 1, 1], o = { paint: 1 };
+  return mergeParts([
+    P(box(3.0, 0.14, 1.15), [0, -0.07, 0.575], c, 0.85, 0, o),
+    P(box(3.0, 0.98, 0.1), [0, 0.49, 1.1], c, 0.88, 0, o),
+    P(box(0.1, 0.98, 1.05), [-1.45, 0.49, 0.525], c, 0.88, 0, o),
+    P(box(0.1, 0.98, 1.05), [1.45, 0.49, 0.525], c, 0.88, 0, o),
+    P(box(3.06, 0.05, 0.16), [0, 1.0, 1.1], [0.5, 0.5, 0.48], 0.8, 0),
+  ]);
+}
+
+// Stoop: stairs from the sidewalk up to a front door that is 0.9 m above
+// the ground. The wall is at z = 0, the stairs go down toward +z.
+export function makeStoop() {
+  const c = [1, 1, 1], o = { paint: 1 }, iron = [0.045, 0.045, 0.05];
+  const parts = [P(box(1.7, 0.9, 0.95), [0, 0.45, 0.475], c, 0.9, 0, o)];
+  for (let i = 1; i <= 4; i++) {
+    const h = 0.9 - i * 0.18;
+    parts.push(P(box(1.7, h, 0.28), [0, h / 2, 0.95 + (i - 0.5) * 0.28], c, 0.9, 0, o));
+  }
+  for (const s of [-1, 1]) {
+    // low side walls, with iron hand rails on top
+    parts.push(P(box(0.2, 1.25, 1.0), [s * 0.95, 0.625, 0.5], c, 0.9, 0, o));
+    parts.push(P(box(0.2, 0.55, 1.12), [s * 0.95, 0.275, 1.56], c, 0.9, 0, o));
+    parts.push(P(box(0.24, 0.05, 1.04), [s * 0.95, 1.275, 0.5], [0.5, 0.49, 0.46], 0.85, 0));
+    parts.push(P(box(0.04, 0.04, 0.9), [s * 0.95, 1.8, 0.52], iron, 0.6, 0.75));
+    parts.push(P(box(0.04, 0.04, 1.33), [s * 0.95, 1.44, 1.51], iron, 0.6, 0.75, { rot: [0.571, 0, 0] }));
+    parts.push(P(box(0.035, 0.52, 0.035), [s * 0.95, 1.54, 0.1], iron, 0.6, 0.75));
+    parts.push(P(box(0.035, 0.52, 0.035), [s * 0.95, 1.54, 0.95], iron, 0.6, 0.75));
+    parts.push(P(box(0.035, 0.54, 0.035), [s * 0.95, 0.81, 2.06], iron, 0.6, 0.75));
+  }
+  return mergeParts(parts);
+}
+
+// ---- more roof things ----
+export function makeRoofVent() {
+  return mergeParts([
+    P(cyl(0.19, 0.19, 0.5, 7), [0, 0.25, 0], GALV, 0.5, 0.8),
+    P(sph(0.3, 7, 4), [0, 0.6, 0], GALV, 0.45, 0.8, { scale: [1, 0.55, 1] }),
+    P(box(0.5, 0.04, 0.5), [0, 0.02, 0], [0.12, 0.12, 0.12], 0.8, 0.2),
+  ]);
+}
+// Satellite dish on a short pole. It looks up toward -z (south).
+export function makeDish() {
+  const dish = new THREE.SphereGeometry(0.62, 9, 3, 0, Math.PI * 2, 0, 0.72);
+  dish.translate(0, -0.62, 0); // the rim is now around the origin
+  return mergeParts([
+    P(cyl(0.03, 0.03, 0.9, 5), [0, 0.45, 0], GALV, 0.5, 0.8),
+    P(dish, [0, 1.12, 0.12], [0.72, 0.72, 0.7], 0.55, 0.15, { rot: [2.25, 0, 0] }),
+    P(box(0.03, 0.03, 0.5), [0, 1.05, -0.2], GALV, 0.5, 0.8, { rot: [-0.7, 0, 0] }),
+    P(box(0.08, 0.08, 0.12), [0, 1.22, -0.4], [0.1, 0.1, 0.1], 0.5, 0.3),
+  ]);
+}
+// Old roof aerial: a mast with a row of thin cross bars.
+export function makeAntenna() {
+  const parts = [P(openCyl(0.022, 0.03, 3.4, 5), [0, 1.7, 0], GALV, 0.5, 0.8), P(box(0.03, 0.03, 1.5), [0, 3.25, 0], GALV, 0.5, 0.8)];
+  for (let i = 0; i < 5; i++) parts.push(P(box(1.0 - i * 0.12, 0.02, 0.02), [0, 3.25, -0.65 + i * 0.32], GALV, 0.5, 0.8));
+  parts.push(P(box(0.7, 0.02, 0.02), [0, 2.6, 0], GALV, 0.5, 0.8));
+  return mergeParts(parts);
+}
+
+// ---- sidewalk furniture ----
+// Concrete planter box (1.3 m long). A shrub is placed on top of it.
+export function makePlanter() {
+  return mergeParts([
+    P(box(1.3, 0.5, 0.56), [0, 0.25, 0], [0.5, 0.49, 0.46], 0.92, 0),
+    P(box(1.36, 0.06, 0.62), [0, 0.5, 0], [0.56, 0.55, 0.52], 0.9, 0),
+    P(box(1.18, 0.03, 0.44), [0, 0.535, 0], [0.09, 0.07, 0.05], 0.95, 0),
+  ]);
+}
+// A small round bush made of leaf cards (uses the same leaf picture as the trees).
+export function makeShrub(seed = 5) {
+  const rng = new RNG(seed);
+  const mb = new MeshBuilder();
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + rng.range(-0.3, 0.3);
+    const rad = i < 5 ? rng.range(0.16, 0.3) : 0.05;
+    const cx = Math.cos(a) * rad * 1.5, cz = Math.sin(a) * rad, cy = 0.42 + rng.range(-0.08, 0.14);
+    const size = rng.range(0.75, 1.0);
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.range(-0.5, 0.5), -a + HALF_PI + rng.range(-0.6, 0.6), rng.range(0, 6.28), 'YXZ'));
+    const idx = [];
+    for (const [u, v] of [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]]) {
+      const p = new THREE.Vector3(u * size, v * size, 0).applyQuaternion(q);
+      p.x += cx; p.y += cy; p.z += cz;
+      const n = new THREE.Vector3(p.x, (p.y - 0.3) * 1.3 + 0.4, p.z).normalize();
+      const shade = 0.6 + 0.4 * Math.min(1, Math.max(0, p.y / 0.8));
+      mb.color(shade, shade, shade * 0.95, 1);
+      mb.data(0.35, 0, 0, 0);
+      idx.push(mb.vertex(p.x, Math.max(0.02, p.y), p.z, n.x, n.y, n.z, u + 0.5, v + 0.5));
+    }
+    mb.quadIdx(idx[0], idx[1], idx[2], idx[3]);
+  }
+  return mb.build(true);
+}
+// Weeds: a few thin leaves growing out of one point (uses the palm frond picture).
+export function makeWeed(seed = 6) {
+  const rng = new RNG(seed);
+  const mb = new MeshBuilder();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + rng.range(-0.4, 0.4);
+    const h = rng.range(0.45, 0.95), lean = rng.range(0.15, 0.5), w = rng.range(0.22, 0.34);
+    const dx = Math.cos(a), dz = Math.sin(a);
+    const sx = -dz * w * 0.5, sz = dx * w * 0.5;
+    const tx = dx * lean, tz = dz * lean;
+    const n = [dx * 0.5, 0.8, dz * 0.5];
+    mb.color(0.8, 0.84, 0.7, 1);
+    mb.data(0, 0, 0, 0); const i0 = mb.vertex(-sx, 0, -sz, n[0], n[1], n[2], 0, 0);
+    const i1 = mb.vertex(sx, 0, sz, n[0], n[1], n[2], 1, 0);
+    mb.color(1, 1, 0.9, 1);
+    mb.data(0.6, 0, 0, 0); const i2 = mb.vertex(tx + sx, h, tz + sz, n[0], n[1], n[2], 1, 1);
+    const i3 = mb.vertex(tx - sx, h, tz - sz, n[0], n[1], n[2], 0, 1);
+    mb.quadIdx(i0, i1, i2, i3);
+  }
+  return mb.build(true);
+}
+// Newspaper box (the color comes from each copy). The door faces +z.
+export function makeNewsBox() {
+  const o = { paint: 1 };
+  return mergeParts([
+    P(box(0.4, 0.3, 0.3), [0, 0.15, 0], [0.07, 0.07, 0.075], 0.6, 0.5),
+    P(box(0.48, 0.86, 0.42), [0, 0.73, 0], [1, 1, 1], 0.5, 0.35, o),
+    P(box(0.5, 0.04, 0.44), [0, 1.18, 0], [1, 1, 1], 0.5, 0.35, o),
+    P(box(0.36, 0.34, 0.015), [0, 0.86, 0.213], [0.05, 0.06, 0.07], 0.1, 0.6),
+    P(box(0.3, 0.07, 0.02), [0, 0.52, 0.213], [0.75, 0.74, 0.7], 0.6, 0),
+  ]);
+}
+// Parking meter with a small screen (near-future touch). The screen faces +z.
+export function makeParkingMeter() {
+  return mergeParts([
+    P(openCyl(0.03, 0.035, 1.05, 6), [0, 0.525, 0], GALV, 0.5, 0.85),
+    P(box(0.17, 0.3, 0.13), [0, 1.2, 0], [0.16, 0.17, 0.18], 0.45, 0.6),
+    P(sph(0.09, 6, 3), [0, 1.35, 0], [0.16, 0.17, 0.18], 0.45, 0.6, { scale: [1, 0.5, 0.72] }),
+    P(box(0.1, 0.08, 0.012), [0, 1.24, 0.066], [0.3, 0.8, 0.9], 0.2, 0, { glow: 1.2 }),
+  ]);
+}
+// Street sign: a pole with two green name blades and a parking sign.
+export function makeStreetSign() {
+  const green = [0.04, 0.26, 0.15], white = [0.85, 0.85, 0.82];
+  return mergeParts([
+    P(openCyl(0.03, 0.035, 3.05, 6), [0, 1.525, 0], GALV, 0.5, 0.85),
+    P(box(0.8, 0.18, 0.016), [0, 2.94, 0], green, 0.5, 0.2),
+    P(box(0.56, 0.05, 0.02), [0, 2.94, 0], white, 0.5, 0),
+    P(box(0.016, 0.18, 0.8), [0, 2.72, 0], green, 0.5, 0.2),
+    P(box(0.02, 0.05, 0.56), [0, 2.72, 0], white, 0.5, 0),
+    P(box(0.42, 0.56, 0.014), [0, 2.1, 0.04], white, 0.5, 0.1),
+    P(box(0.42, 0.13, 0.018), [0, 2.3, 0.04], [0.6, 0.08, 0.06], 0.5, 0.1),
+    P(box(0.26, 0.05, 0.018), [0, 2.08, 0.04], [0.1, 0.1, 0.1], 0.5, 0),
+    P(box(0.3, 0.05, 0.018), [0, 1.96, 0.04], [0.1, 0.1, 0.1], 0.5, 0),
+  ]);
+}
+// A heap of broken concrete and bricks (empty lots).
+export function makeRubble() {
+  const con = [0.45, 0.44, 0.41], brick = [0.36, 0.17, 0.12];
+  return mergeParts([
+    P(box(1.0, 0.34, 0.7), [0, 0.13, 0], con, 0.95, 0, { rot: [0.18, 0.5, 0.1] }),
+    P(box(0.6, 0.3, 0.45), [0.7, 0.1, 0.35], con, 0.95, 0, { rot: [-0.2, 1.1, 0.25] }),
+    P(box(0.5, 0.24, 0.55), [-0.6, 0.09, 0.3], [0.38, 0.37, 0.35], 0.95, 0, { rot: [0.3, -0.4, -0.15] }),
+    P(box(0.7, 0.2, 0.4), [0.2, 0.3, -0.1], con, 0.95, 0, { rot: [0.5, 2.0, 0.3] }),
+    P(box(0.22, 0.07, 0.1), [0.5, 0.05, -0.5], brick, 0.9, 0, { rot: [0, 0.7, 0] }),
+    P(box(0.22, 0.07, 0.1), [-0.3, 0.05, -0.55], brick, 0.9, 0, { rot: [0, -0.3, 0.2] }),
+    P(box(0.22, 0.07, 0.1), [-0.8, 0.06, -0.2], brick, 0.9, 0, { rot: [0.3, 1.3, 0] }),
+    P(box(1.5, 0.025, 0.025), [0.1, 0.36, 0.2], [0.2, 0.09, 0.05], 0.8, 0.6, { rot: [0.1, 0.4, 0.3] }),
+  ]);
+}
+// Fast charger / fuel pump for the station. The screen faces +z.
+export function makeCharger() {
+  return mergeParts([
+    P(box(0.9, 0.12, 0.6), [0, 0.06, 0], [0.4, 0.4, 0.38], 0.9, 0),
+    P(box(0.72, 1.85, 0.42), [0, 1.04, 0], [0.82, 0.83, 0.82], 0.35, 0.3),
+    P(box(0.74, 0.3, 0.44), [0, 1.85, 0], [1, 1, 1], 0.4, 0.3, { paint: 1 }),
+    P(box(0.44, 0.34, 0.012), [0, 1.4, 0.216], [0.25, 0.8, 0.9], 0.15, 0, { glow: 1.3 }),
+    P(box(0.5, 0.03, 0.012), [0, 1.12, 0.216], [0.2, 0.95, 0.6], 0.2, 0, { glow: 1.6 }),
+    P(cyl(0.035, 0.035, 0.16, 6), [0.4, 1.0, 0.05], [0.03, 0.03, 0.03], 0.6, 0.2, { rot: [0, 0, HALF_PI] }),
+    P(cyl(0.022, 0.022, 0.7, 5), [0.46, 0.66, 0.05], [0.03, 0.03, 0.03], 0.7, 0),
   ]);
 }

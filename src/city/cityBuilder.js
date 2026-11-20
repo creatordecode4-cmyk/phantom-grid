@@ -14,9 +14,14 @@ import { RNG } from '../utils/math.js';
 import { MeshBuilder } from '../utils/geometry.js';
 import { shared } from './materials.js';
 import { buildGround, blockEdges } from './ground.js';
-import { buildBuildings } from './buildings.js';
+import { buildBuildings, loadHeroModels } from './buildings.js';
 import { buildProps, makeHoloMaterial } from './props.js';
 import { buildBackdrop } from './backdrop.js';
+
+// Used to free the normal-memory copy of a big mesh after it was sent to the graphics card.
+function dropArray() {
+  this.array = null;
+}
 
 // Let the browser draw the loading bar between heavy steps.
 const pause = () => new Promise((r) => setTimeout(r, 0));
@@ -152,27 +157,44 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
       brick: new MeshBuilder(), plaster: new MeshBuilder(), tower: new MeshBuilder(),
       shop: new MeshBuilder(), sign: new MeshBuilder(), awning: new MeshBuilder(),
       propStatic: new MeshBuilder(), holo: new MeshBuilder(),
+      metal: new MeshBuilder(), graffiti: new MeshBuilder(), rail: new MeshBuilder(), puddle: new MeshBuilder(),
     },
+    sets: {},         // all instanced things (props.js and buildingKit.js add to it)
     colliders: { boxes: [], circles: [] },
     lamps: [],        // every street lamp: { x, y, z, type }
     shopLights: [],   // light from shop windows: { x, z, r, power }
     buildings: [],
+    parked: [],       // cars standing in parking lots: { x, z, rot }
+    lotLamps: [],     // lamps in parking lots: { x, z, rot }
+    lampPatch: materials.lampPatch,
   };
+
+  // how long each step takes (milliseconds), handy when tuning the load time
+  const timing = {};
+  let mark = performance.now();
+  const lap = (name) => { const now = performance.now(); timing[name] = Math.round(now - mark); mark = now; };
 
   onProgress(0.05, 'Laying out streets');
   buildGround(ctx);
+  lap('ground');
   await pause();
 
+  onProgress(0.2, 'Looking for hero buildings');
+  const heroes = await loadHeroModels();
   onProgress(0.25, 'Raising buildings');
-  buildBuildings(ctx);
+  lap('heroLookup');
+  buildBuildings(ctx, heroes);
+  lap('buildings');
   await pause();
 
   onProgress(0.5, 'Building skyline and highway');
   const backdrop = buildBackdrop(ctx);
+  lap('backdrop');
   await pause();
 
   onProgress(0.65, 'Placing street furniture');
   const props = buildProps(ctx);
+  lap('props');
   await pause();
 
   onProgress(0.85, 'Finishing the city');
@@ -183,7 +205,14 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
   const make = (name, mat, opts) => {
     const mb = ctx.mb[name];
     if (mb.count === 0) return null;
-    const mesh = new THREE.Mesh(mb.build(opts.data !== false), mat);
+    const geo = mb.build(opts.data !== false);
+    // the big meshes never change: free their copy in normal memory once the
+    // graphics card has them (saves a lot of memory on phones)
+    if (mb.count > 20000) {
+      for (const a of Object.values(geo.attributes)) a.onUpload(dropArray);
+      geo.index.onUpload(dropArray);
+    }
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.name = name;
     mesh.castShadow = !!opts.cast;
     mesh.receiveShadow = opts.receive !== false;
@@ -198,6 +227,7 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
   const m = ctx.mats;
   make('brick', m.brick, { cast: true, order: 0 });
   make('plaster', m.plaster, { cast: true, order: 0 });
+  make('metal', m.metal, { cast: true, order: 0 });
   make('shop', m.shop, { order: 1 });
   make('sign', m.sign, { order: 1 });
   make('awning', m.awning, { cast: true, order: 1 });
@@ -207,7 +237,10 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
   make('asphalt', m.asphalt, { order: 4, data: false });
   make('sand', m.sand, { order: 5, data: false });
   make('decal', m.decal, { order: 10, data: false });
+  make('puddle', m.puddle, { order: 10, data: false });
   make('marking', m.marking, { order: 11, data: false });
+  make('graffiti', m.graffiti, { order: 12, data: false });
+  make('rail', m.rail, { order: 12, data: false });
   const holoMb = ctx.mb.holo;
   if (holoMb.count > 0) {
     const holo = new THREE.Mesh(holoMb.build(false), makeHoloMaterial(ctx.tex.holo));
@@ -217,8 +250,10 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
     group.add(holo);
   }
 
+  lap('meshes');
   makeLampLightMap(ctx);
   const colliders = makeCollisionGrid(ctx.colliders.boxes, ctx.colliders.circles);
+  lap('lightMap');
   scene.add(group);
   onProgress(1, 'City ready');
 
@@ -231,6 +266,12 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
     lamps: ctx.lamps,
     buildings: ctx.buildings,
     groundHeight: layout.groundHeight,
+    counts: ctx.buildingCounts,
+    timing,
+    // LOW quality switches the 3D window detail off
+    setQuality(q) {
+      props.setDetail(q.buildingDetail !== false);
+    },
     // called every frame
     update(dt, time, x, z, propDistance) {
       props.update(dt, time, x, z, propDistance);

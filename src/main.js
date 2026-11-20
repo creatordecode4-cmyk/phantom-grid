@@ -128,6 +128,7 @@ async function boot() {
     lighting.setPostActive(usePost);
     postfx.setQuality(quality);
     weather.setQuality(quality);
+    city.setQuality(quality);
     resize();
     city.props.cull(player.position.x, player.position.z, quality.propDistance, true);
     hud.setQualityButtons(mode, quality.label);
