@@ -71,7 +71,7 @@ export const CONFIG = {
   streetLights: {
     realLights: 6,          // only the nearest lights are real point lights
     range: 34,              // meters
-    intensity: 520,         // candela (three.js physical light units)
+    intensity: 380,         // candela (three.js physical light units)
     sodiumColor: 0xffa24a,  // old orange street lights in The Grid
     ledColor: 0xffe2c0,     // warm white lights on Neon Mile
   },

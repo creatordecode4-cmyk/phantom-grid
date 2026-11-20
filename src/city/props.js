@@ -531,6 +531,8 @@ export function buildProps(ctx) {
     for (const ns of L.streetsNS) if (ns.playable) row(ns.center - half, nz, ns.center + half, nz);
     row(wx, L.neon.roadMinZ, wx, L.neon.roadMaxZ);          // Neon Mile, west end
     row(wx, L.neon.promenadeMinZ, wx, L.neon.promenadeMaxZ); // beach walk, west end
+    // the highway ramp is closed (it cannot be used yet)
+    row(L.highway.minX + 1.2, L.highway.rampBottomZ - 1.5, L.highway.maxX - 1.2, L.highway.rampBottomZ - 1.5);
   }
 
   // =============================================================================

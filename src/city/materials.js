@@ -517,13 +517,13 @@ const PG_FRAGMENT_COLOR = /* glsl */ `
 
 #ifdef PG_TOWER
 	{
-		// glass towers: whole office floors light up at night
+		// glass towers: some office floors stay lit at night, most are dark
 		vec2 cell = floor( vPgUv * vec2( 5.0, 5.0 ) );
 		float h = pgHash( cell );
-		float rowOn = step( pgHash( vec2( cell.y, 3.7 ) ), 0.55 );
-		float on = step( h, 0.2 + 0.5 * rowOn ) * step( pgHash( cell + 9.1 ), uPgWinLight * 1.3 );
-		vec3 tint = h > 0.12 ? vec3( 1.0, 0.86, 0.62 ) : vec3( 0.7, 0.86, 1.0 );
-		pgEmit += diffuseColor.rgb * tint * on * 2.6;
+		float busyFloor = step( pgHash( vec2( cell.y, 3.7 ) ), 0.3 );      // a few floors work late
+		float on = step( h, 0.06 + 0.5 * busyFloor ) * step( pgHash( cell + 9.1 ), uPgWinLight * 1.2 );
+		vec3 tint = pgHash( cell + 2.3 ) > 0.25 ? vec3( 1.0, 0.84, 0.6 ) : vec3( 0.75, 0.88, 1.0 );
+		pgEmit += tint * on * ( 0.35 + 0.5 * h );
 	}
 #endif
 
@@ -655,8 +655,8 @@ const PG_FRAGMENT_EMISSIVE = /* glsl */ `
 		// walls catch lamp light from the street in front of them, fading with height
 		vec2 q = vPgWorld.xz + vPgNormal.xz * 2.2;
 		vec3 lamp = pgLampColor( pgLampTexel( q ), q );
-		float up = exp( - max( vPgWorld.y - 1.5, 0.0 ) * 0.17 );
-		totalEmissiveRadiance += diffuseColor.rgb * lamp * up * 1.25;
+		float up = exp( - max( vPgWorld.y - 1.5, 0.0 ) * 0.23 );
+		totalEmissiveRadiance += diffuseColor.rgb * lamp * up * 0.8;
 	}
 #endif
 #if defined( PG_PROP ) || defined( PG_FOLIAGE )
@@ -844,7 +844,7 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   mats.prop = patch(std({}), ['PG_PROP']);
   mats.propDouble = patch(std({ side: THREE.DoubleSide }), ['PG_PROP']);
   // Leaves and palm fronds.
-  const leafOpts = { alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.75 };
+  const leafOpts = { alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.92, color: 0xd8d8d8 };
   mats.leaf = patch(std({ map: tex.leaf, ...leafOpts }), ['PG_FOLIAGE']);
   mats.frond = patch(std({ map: tex.frond, ...leafOpts }), ['PG_FOLIAGE']);
   // Ocean.
@@ -853,7 +853,7 @@ export async function createMaterials(renderer, onProgress = () => {}) {
     ['PG_OCEAN']
   );
   // Far hills.
-  mats.hills = std({ map: tex.sand, roughness: 1 });
+  mats.hills = std({ map: tex.plaster, normalMap: nr.plaster, normalScale: new THREE.Vector2(2.5, 2.5), roughness: 1 });
   // Thin wires between power poles.
   mats.wire = new THREE.LineBasicMaterial({ color: 0x101012 });
 

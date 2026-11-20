@@ -58,13 +58,13 @@ function buildHills(ctx) {
         const n3 = noise2(i / count * 9.7 + 0.3, t * 5.0 + seedOff); // small gullies
         // lower at both ends of the ridge so it fades out
         const ends = Math.max(0, Math.sin((i / count) * Math.PI)) ** 0.35;
-        const h = profile * (150 + 330 * n + 60 * n2 + 46 * (n3 - 0.5)) * (0.45 + 0.55 * ends);
+        const h = profile * (120 + 270 * n + 60 * n2 + 46 * (n3 - 0.5)) * (0.45 + 0.55 * ends);
         pos.push(x, t === 0 ? -4 : h - 2, z);
         // dry earth with darker patches of brush
         const brush = Math.max(0, n2 - 0.45) * 1.6 + Math.max(0, 0.5 - n3) * 0.7;
         const shade = 0.7 + 0.45 * n;
-        col.push((0.4 - 0.16 * brush) * shade, (0.335 - 0.1 * brush) * shade, (0.25 - 0.08 * brush) * shade, 1);
-        uv.push(x / 90, z / 90);
+        col.push((0.5 - 0.2 * brush) * shade, (0.44 - 0.14 * brush) * shade, (0.36 - 0.12 * brush) * shade, 1);
+        uv.push(x / 170, z / 170);
       }
     }
     const w = count + 1;

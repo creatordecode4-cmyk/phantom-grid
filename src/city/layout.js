@@ -129,7 +129,7 @@ export const LAYOUT = {
   // ----- Dry hills on the horizon -------------------------------------------------
   hills: {
     northZ: 1500,   // where the north hills start
-    eastX: -1050,   // where the east hills start
+    eastX: -1350,   // where the east hills start
   },
 
   // ----- Where the player starts ----------------------------------------------------

@@ -67,7 +67,7 @@ function skyColor(st, x, y, z) {
 }
 
 // Color of the night sky near the horizon (light from the city in the haze).
-const CITY_GLOW = [0.06, 0.035, 0.02];
+const CITY_GLOW = [0.034, 0.024, 0.02];
 
 // ---------------------------------------------------------------------------
 // Cloud / night layer: a big dome drawn over the sky.
@@ -147,10 +147,9 @@ function makeSkyOverlayMaterial(noiseTex) {
           col = uOvercastColor * 0.8;
           alpha = 0.97 * uOvercast;
         }
-        vec3 rgb = col * alpha;
-        // ---- night sky: dark blue above, warm city glow near the horizon ----
+        // "glow" is light that is simply added on top (night sky, stars, moon)
+        vec3 glow = mix( uGlowColor, uZenithColor, pow( up, 0.4 ) ) * uNight;
         float clear = ( 1.0 - alpha );
-        rgb += mix( uGlowColor, uZenithColor, pow( up, 0.4 ) ) * uNight;
         if ( uNight > 0.01 && d.y > 0.0 ) {
           // stars: random cells, a few of them hold a star
           vec2 sp = d.xz / ( d.y + 0.25 ) * 170.0;
@@ -159,15 +158,21 @@ function makeSkyOverlayMaterial(noiseTex) {
           float dist = length( fract( sp ) - 0.5 );
           float star = step( 0.988, h ) * ( 1.0 - smoothstep( 0.0, 0.14, dist ) );
           float twinkle = 0.7 + 0.3 * sin( uTime * 3.0 + h * 90.0 );
-          rgb += vec3( 0.75, 0.82, 1.0 ) * star * twinkle * fract( h * 77.0 ) * 0.5 * uNight * clear * smoothstep( 0.06, 0.4, d.y );
+          glow += vec3( 0.75, 0.82, 1.0 ) * star * twinkle * fract( h * 77.0 ) * 0.5 * uNight * clear * smoothstep( 0.06, 0.4, d.y );
           // moon
           float md = dot( d, uMoonDir );
           float disc = smoothstep( 0.99988, 0.99993, md );
-          rgb += ( vec3( 0.95, 0.96, 1.0 ) * disc * 1.6 + vec3( 0.3, 0.36, 0.5 ) * pow( max( md, 0.0 ), 900.0 ) * 0.25 ) * uNight * clear;
+          glow += ( vec3( 0.95, 0.96, 1.0 ) * disc * 1.6 + vec3( 0.3, 0.36, 0.5 ) * pow( max( md, 0.0 ), 900.0 ) * 0.25 ) * uNight * clear;
         }
-        gl_FragColor = vec4( rgb, alpha );
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
+        // tone mapping (only when drawing straight to the screen) is done on the
+        // real colors first; the see-through blending happens after it
+        #ifdef TONE_MAPPING
+          col = toneMapping( col );
+          glow = toneMapping( glow );
+        #endif
+        col = linearToOutputTexel( vec4( col, 1.0 ) ).rgb;
+        glow = linearToOutputTexel( vec4( glow, 1.0 ) ).rgb;
+        gl_FragColor = vec4( col * alpha + glow, alpha );
       }`,
   });
 }
@@ -513,7 +518,7 @@ export function createLighting(scene, renderer, city, materials) {
     lastSkyLum = 0.2 * (zen[0] + zen[1] + zen[2]) + 0.25 * (fogHDR[0] + fogHDR[1] + fogHDR[2]) / 3 + 0.004;
 
     // ---- exposure: the "camera" opens up when it gets dark ----
-    const exposure = lerp(1.25, lerp(0.6, 0.3, smoothstep(2, 34, el)), day) * (1 + 0.5 * rain * day);
+    const exposure = lerp(1.0, lerp(0.6, 0.3, smoothstep(2, 34, el)), day) * (1 + 0.5 * rain * day);
     renderer.toneMappingExposure = exposure;
     info.exposure = exposure;
     info.sunPower = sun.intensity;

@@ -245,7 +245,7 @@ async function boot() {
 
   function loop(now) {
     requestAnimationFrame(loop);
-    const dt = Math.min(0.05, Math.max(0.0001, (now - last) / 1000)); // never jump more than 1/20 s
+    const dt = Math.min(0.1, Math.max(0.0001, (now - last) / 1000)); // never jump more than 1/10 s
     last = now;
     step(dt);
     draw();
@@ -287,6 +287,7 @@ async function boot() {
     applyQuality, step, draw,
     get quality() { return active; },
     get fps() { return fps; },
+    get time() { return time; },
     ready: true,
   };
 

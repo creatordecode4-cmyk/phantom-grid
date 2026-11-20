@@ -128,7 +128,15 @@
     /* on phones: no keyboard hint. on desktops: no joystick. */
     @media (pointer: coarse) { #hint { display: none; } }
     @media (pointer: fine) and (hover: hover) { #joy-base { display: none; } #btn-run { display: none; } }
-    @media (min-width: 720px) { #minimap { width: 138px; height: 138px; } }
+    @media (min-width: 720px) and (min-height: 521px) { #minimap { width: 138px; height: 138px; } }
+    /* phone held sideways: little height, so the buttons go in a row next to the map
+       (this keeps them clear of the RUN button in the corner) */
+    @media (orientation: landscape) and (max-height: 520px) {
+      #hud-top-right { flex-direction: row-reverse; align-items: flex-start; }
+      #hud-buttons { flex-direction: row; }
+      .btn { min-width: 64px; }
+      #minimap { width: 104px; height: 104px; }
+    }
     body.nohud #ui { display: none; }
 
     /* ---------- loading screen ---------- */
