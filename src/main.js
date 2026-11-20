@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import { CONFIG, urlOption } from './config.js';
-import { clamp, DEG } from './utils/math.js';
+import { clamp, smoothstep, DEG } from './utils/math.js';
 import { buildLayout } from './city/layout.js';
 import { createMaterials, installGlobalShaderPatches, shared } from './city/materials.js';
 import { buildCity } from './city/cityBuilder.js';
@@ -156,7 +156,57 @@ async function boot() {
     weather.update(dt);
     lighting.update(dt, player.position, rig.forwardXZ(camDir));
     city.update(dt, time, player.position.x, player.position.z, quality.propDistance);
+    updateSunGlow(dt);
   }
+  // ---- sun glow: is the sun on the screen, and do buildings hide it? ----
+  const _sun = new THREE.Vector3(), _camFwd = new THREE.Vector3(), _ray = new THREE.Vector3();
+  let sunSeen = 0; // 0 = hidden .. 1 = fully visible (changes smoothly)
+  // does a line from the camera toward (dx, dy, dz) hit a building?
+  function skyBlocked(dx, dy, dz) {
+    const o = camera.position;
+    for (const b of city.colliders.boxes) {
+      if (b.h < o.y + 0.5) continue;
+      // where the line enters and leaves the box (seen from above)
+      let t0 = 0, t1 = 2000;
+      if (Math.abs(dx) < 1e-6) { if (o.x < b.minX || o.x > b.maxX) continue; }
+      else { const a = (b.minX - o.x) / dx, c = (b.maxX - o.x) / dx; t0 = Math.max(t0, Math.min(a, c)); t1 = Math.min(t1, Math.max(a, c)); }
+      if (Math.abs(dz) < 1e-6) { if (o.z < b.minZ || o.z > b.maxZ) continue; }
+      else { const a = (b.minZ - o.z) / dz, c = (b.maxZ - o.z) / dz; t0 = Math.max(t0, Math.min(a, c)); t1 = Math.min(t1, Math.max(a, c)); }
+      if (t0 > t1) continue;
+      if (o.y + dy * t0 < b.h) return true; // the line is still below the roof when it reaches the box
+    }
+    return false;
+  }
+  function updateSunGlow(dt) {
+    const info = lighting.info;
+    let target = 0, sx = 0.5, sy = 0.5;
+    if (usePost && info.sunDir && info.sunDir.y > -0.02 && info.sunLevel > 0.02) {
+      camera.getWorldDirection(_camFwd);
+      if (_camFwd.dot(info.sunDir) > 0.15) {
+        _sun.copy(camera.position).addScaledVector(info.sunDir, 1000).project(camera);
+        sx = _sun.x * 0.5 + 0.5; sy = _sun.y * 0.5 + 0.5;
+        // fades out when the sun leaves the screen
+        const edge = 1 - smoothstep(0.95, 1.35, Math.max(Math.abs(_sun.x), Math.abs(_sun.y)));
+        if (edge > 0) {
+          // five lines toward the sun disc: how many of them reach the sky?
+          let open = 0;
+          const d = info.sunDir;
+          for (const [ox, oy] of [[0, 0], [0.012, 0], [-0.012, 0], [0, 0.012], [0, -0.012]]) {
+            _ray.set(d.x - d.z * ox, d.y + oy, d.z + d.x * ox).normalize();
+            if (!skyBlocked(_ray.x, _ray.y, _ray.z)) open++;
+          }
+          target = (open / 5) * edge;
+        }
+      }
+    }
+    sunSeen += (target - sunSeen) * Math.min(1, dt * 7);
+    if (!postfx.setSun) return;
+    const c = info.sunColor || [1, 1, 1];
+    // strength: strong low sun, softer at noon; weaker in rain (sunPower already knows about rain)
+    const k = sunSeen * Math.min(1, (info.sunPower || 0) / 6) * 0.9 / Math.max(renderer.toneMappingExposure, 0.2) * 0.42;
+    postfx.setSun(sx, sy, c[0] * k, c[1] * k, c[2] * k);
+  }
+
   function draw() {
     renderer.info.reset();
     if (usePost) postfx.render(scene, camera, time);

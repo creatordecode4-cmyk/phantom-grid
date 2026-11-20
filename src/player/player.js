@@ -118,7 +118,8 @@ export async function createPlayer(scene, city, materials) {
           else if (m === n) p.z = b.minZ - r; else p.z = b.maxZ + r;
         }
       }
-      for (const c of cell.circles) {
+      // (fixed things first, then the moving cars close to the player)
+      for (const c of city.colliders.dynamic && city.colliders.dynamic.length ? cell.circles.concat(city.colliders.dynamic) : cell.circles) {
         const dx = p.x - c.x, dz = p.z - c.z;
         const min = r + c.r;
         const d2 = dx * dx + dz * dz;

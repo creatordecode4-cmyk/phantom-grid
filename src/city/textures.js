@@ -411,16 +411,18 @@ export const DECAL = {
   crack1: [0, 1], crack2: [1, 1], tar: [2, 1], skid: [3, 1],
   ao: [0, 2], leak: [1, 2], dirt: [2, 2], treePit: [3, 2],
   patch: [0, 3], streak: [1, 3], blob: [2, 3], blobRect: [3, 3],
+  arrow: [0, 4], arrowTurn: [1, 4], wheel: [2, 4], grate: [3, 4],
 };
+const DECAL_ROWS = 5;
 // Texture coordinates of a decal cell: { u0, v0, u1, v1 } (v goes up).
 export function decalUV(name, inset = 0.004) {
   const [c, r] = DECAL[name];
-  return { u0: c / 4 + inset, u1: (c + 1) / 4 - inset, v0: 1 - (r + 1) / 4 + inset, v1: 1 - r / 4 - inset };
+  return { u0: c / 4 + inset, u1: (c + 1) / 4 - inset, v0: 1 - (r + 1) / DECAL_ROWS + inset, v1: 1 - r / DECAL_ROWS - inset };
 }
 
 export function makeDecalTexture() {
-  const S = 1024, C = 256;
-  const [cv, ctx] = makeCanvas(S, S);
+  const S = 1024, C = 256, SH = C * DECAL_ROWS;
+  const [cv, ctx] = makeCanvas(S, SH);
   const rng = new RNG(404);
   const cell = (name) => { const [c, r] = DECAL[name]; return [c * C, r * C]; };
 
@@ -617,19 +619,74 @@ export function makeDecalTexture() {
     }
   }
 
+  // --- lane arrows (white road paint). They point "up" = along the lane. ---
+  {
+    const paint = '#e6e5df';
+    const arrowHead = (cx, tipY, w, h) => { ctx.beginPath(); ctx.moveTo(cx, tipY); ctx.lineTo(cx + w, tipY + h); ctx.lineTo(cx - w, tipY + h); ctx.fill(); };
+    let [x, y] = cell('arrow');
+    ctx.fillStyle = paint;
+    ctx.fillRect(x + C / 2 - 15, y + 96, 30, 146);
+    arrowHead(x + C / 2, y + 12, 50, 96);
+    // straight ahead + turn: the side arrow leaves to the LEFT of the picture
+    // (on the road this becomes the driver's right)
+    [x, y] = cell('arrowTurn');
+    ctx.fillRect(x + 150 - 13, y + 92, 26, 150);
+    arrowHead(x + 150, y + 12, 44, 86);
+    ctx.lineWidth = 24; ctx.strokeStyle = paint; ctx.lineCap = 'butt';
+    ctx.beginPath(); ctx.moveTo(x + 150, y + 214); ctx.quadraticCurveTo(x + 150, y + 150, x + 82, y + 150); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + 12, y + 150); ctx.lineTo(x + 84, y + 104); ctx.lineTo(x + 84, y + 196); ctx.fill();
+  }
+  // --- wheel paths: two soft dark bands where the tires run (stretched along a lane) ---
+  {
+    const [x, y] = cell('wheel');
+    for (const cx of [0.27, 0.73]) {
+      const g = ctx.createLinearGradient(x + (cx - 0.15) * C, 0, x + (cx + 0.15) * C, 0);
+      g.addColorStop(0, 'rgba(16,15,14,0)');
+      g.addColorStop(0.5, 'rgba(16,15,14,0.6)');
+      g.addColorStop(1, 'rgba(16,15,14,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x + (cx - 0.15) * C, y, 0.3 * C, C);
+    }
+  }
+  // --- tree grate: a square iron plate with slots around the trunk ---
+  {
+    const [x, y] = cell('grate');
+    const cx = x + C / 2, cy = y + C / 2;
+    ctx.fillStyle = '#3b3a38';
+    ctx.fillRect(x + 8, y + 8, C - 16, C - 16);
+    ctx.strokeStyle = '#24231f'; ctx.lineWidth = 5;
+    ctx.strokeRect(x + 10, y + 10, C - 20, C - 20);
+    // slots like the rays of a sun
+    ctx.strokeStyle = '#131210'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * 6.283, c = Math.cos(a), sn = Math.sin(a);
+      const r1 = 112 / Math.max(Math.abs(c), Math.abs(sn));
+      ctx.beginPath(); ctx.moveTo(cx + c * 52, cy + sn * 52); ctx.lineTo(cx + c * (r1 - 14), cy + sn * (r1 - 14)); ctx.stroke();
+    }
+    // the open middle with dark soil
+    ctx.fillStyle = '#2a2018';
+    ctx.beginPath(); ctx.arc(cx, cy, 40, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#4a4946'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(cx, cy, 42, 0, 7); ctx.stroke();
+  }
+
   // Break up the clean shapes with noise in the see-through channel.
-  const img = ctx.getImageData(0, 0, S, S);
+  const img = ctx.getImageData(0, 0, S, SH);
   const f = makeFbm(48, 3, 77);
-  for (let yy = 0; yy < S; yy++) {
+  for (let yy = 0; yy < SH; yy++) {
     const row = Math.floor(yy / C);
     for (let xx = 0; xx < S; xx++) {
       const col = Math.floor(xx / C);
+      // the tree grate stays clean; arrows and wheel paths get extra wear below
+      if (row === 4 && col === 3) continue;
       // keep the soft shadows and the manhole clean
       if (row === 3 && col >= 2) continue;
       if (row === 2 && (col === 0 || col === 3)) continue;
       if (row === 0 && col <= 1) continue;
       const i = (yy * S + xx) * 4;
       img.data[i + 3] *= 0.55 + 0.6 * f(xx / S, yy / S);
+      // worn road paint: chips and thin spots in the arrows
+      if (row === 4 && col <= 1) img.data[i + 3] *= smoothstep(0.3, 0.52, f(xx / 190, yy / 190) * 0.6 + f(xx / 37, yy / 37) * 0.5);
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -839,53 +896,134 @@ export function makeHoloTexture() {
 // ===========================================================================
 // 7. PLANTS
 // ===========================================================================
-// A clump of leaves (used on flat cards to build tree crowns).
-export function makeLeafTexture() {
-  const S = 256;
-  const [cv, ctx] = makeCanvas(S, S);
-  const rng = new RNG(71);
-  for (let i = 0; i < 520; i++) {
-    // leaves are thicker in the middle of the clump
-    const a = rng.range(0, 6.283), d = Math.pow(rng.next(), 0.75) * 112;
-    const x = S / 2 + Math.cos(a) * d, y = S / 2 + Math.sin(a) * d * 0.92;
-    const depth = i / 520; // later leaves are in front = lighter
-    const l = 13 + depth * 20 + rng.range(-4, 5);
-    ctx.fillStyle = `hsl(${rng.int(74, 104)},${rng.int(22, 40)}%,${l}%)`;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(rng.range(0, 6.283));
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rng.range(6, 11), rng.range(2.6, 4.6), 0, 0, 7);
-    ctx.fill();
-    ctx.restore();
+// One pointed leaf at (x, y), turned by "rot". len / wid in pixels.
+function drawLeaf(ctx, x, y, rot, len, wid, fill, rib) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(-len, 0);
+  ctx.quadraticCurveTo(-len * 0.2, -wid * 1.25, len, 0);
+  ctx.quadraticCurveTo(-len * 0.2, wid * 1.25, -len, 0);
+  ctx.fill();
+  if (rib) {
+    // light middle rib: makes single leaves readable
+    ctx.strokeStyle = rib;
+    ctx.lineWidth = Math.max(0.6, wid * 0.14);
+    ctx.beginPath(); ctx.moveTo(-len * 0.9, 0); ctx.lineTo(len * 0.85, 0); ctx.stroke();
   }
-  return canvasToAlphaTexture(cv, [52, 62, 34]);
+  ctx.restore();
 }
 
-// A palm frond: a stem with thin leaflets on both sides.
+// A full clump of leaves (used on flat cards to build tree crowns and bushes).
+// Natural greens: dark leaves at the back, sunlit yellow-green leaves in front.
+// The see-through parts are cut away by the material ("alpha test").
+export function makeLeafTexture() {
+  const S = 512;
+  const [cv, ctx] = makeCanvas(S, S);
+  const rng = new RNG(71);
+  const N = 900;
+  for (let i = 0; i < N; i++) {
+    const depth = i / N; // later leaves are in front = lighter
+    // leaves are thicker in the middle of the clump, with a ragged outline
+    const a = rng.range(0, 6.283);
+    const d = Math.pow(rng.next(), 0.62) * (226 + 22 * Math.sin(a * 5 + 1.3));
+    const x = S / 2 + Math.cos(a) * d, y = S / 2 + Math.sin(a) * d * 0.94;
+    const hue = rng.int(72, 112) - depth * 10;
+    const sat = rng.int(42, 62);
+    const lum = 21 + depth * 27 + rng.range(-5, 6);
+    const fill = rng.chance(0.03) ? `hsl(${rng.int(48, 62)},55%,${lum + 8}%)` : `hsl(${hue},${sat}%,${lum}%)`;
+    drawLeaf(ctx, x, y, rng.range(0, 6.283), rng.range(15, 25), rng.range(6, 10), fill, depth > 0.55 ? `hsla(${hue - 8},60%,${lum + 16}%,0.55)` : null);
+  }
+  return canvasToAlphaTexture(cv, [70, 96, 38]);
+}
+
+// A palm frond seen from above: a strong middle stem with many long, wide
+// leaflets on both sides. The leaflets point outward and toward the tip, they
+// overlap near the stem and open up into single tips at the edge.
+// v = 0 is the base of the frond, v = 1 its tip.
 export function makeFrondTexture() {
-  const W = 128, H = 512;
+  const W = 256, H = 512;
   const [cv, ctx] = makeCanvas(W, H);
   const rng = new RNG(72);
-  ctx.lineCap = 'round';
-  for (let i = 0; i < 74; i++) {
-    const t = i / 73;            // 0 at the base, 1 at the tip
-    const y = H - 10 - t * (H - 24);
-    const len = (0.25 + 0.75 * Math.sin(Math.PI * Math.min(1, t * 1.15 + 0.08))) * 56;
-    for (const side of [-1, 1]) {
-      const l = len * rng.range(0.82, 1.05);
-      ctx.strokeStyle = `hsl(${rng.int(72, 96)},${rng.int(26, 42)}%,${rng.int(20, 34)}%)`;
-      ctx.lineWidth = rng.range(2.2, 3.6);
-      ctx.beginPath();
-      ctx.moveTo(W / 2, y);
-      ctx.quadraticCurveTo(W / 2 + side * l * 0.6, y - 4, W / 2 + side * l, y + 14 + rng.range(-3, 6));
-      ctx.stroke();
+  const N = 64;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < N; i++) {
+      const t = (i + (pass ? 0.5 : 0)) / N;          // 0 at the base, 1 at the tip
+      const y = H - 14 - t * (H - 30);
+      // the frond is widest at one third of its length and gets narrow at the tip
+      const wide = Math.pow(Math.sin(Math.PI * Math.min(1, 0.1 + t * 0.92)), 0.6) * (1 - 0.35 * t);
+      for (const side of [-1, 1]) {
+        const len = wide * 122 * rng.range(0.86, 1.04);
+        const sweep = 0.5 + 0.55 * t + rng.range(-0.08, 0.08); // how much the leaflet points toward the tip
+        const tipX = W / 2 + side * len * Math.cos(sweep), tipY = y - len * Math.sin(sweep) * 0.85;
+        const hue = rng.int(76, 104), lum = (pass ? 33 : 25) + rng.int(-4, 9);
+        ctx.fillStyle = `hsl(${hue},${rng.int(44, 60)}%,${lum}%)`;
+        const wid = rng.range(8.5, 12.5) * (0.6 + 0.4 * wide);
+        // a long narrow triangle with a slightly curved back
+        ctx.beginPath();
+        ctx.moveTo(W / 2, y + wid * 0.7);
+        ctx.quadraticCurveTo((W / 2 + tipX) / 2, (y + tipY) / 2 + wid * 0.8, tipX, tipY);
+        ctx.quadraticCurveTo((W / 2 + tipX) / 2, (y + tipY) / 2 - wid * 0.5, W / 2, y - wid * 0.7);
+        ctx.fill();
+      }
     }
   }
-  ctx.strokeStyle = '#6a6a3a';
-  ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(W / 2, H); ctx.lineTo(W / 2, 8); ctx.stroke();
-  return canvasToAlphaTexture(cv, [58, 70, 36]);
+  // the stem: yellow-green, thick at the base
+  const g = ctx.createLinearGradient(0, H, 0, 0);
+  g.addColorStop(0, '#9a8f45'); g.addColorStop(1, '#7e9440');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(W / 2 - 7, H); ctx.lineTo(W / 2 + 7, H); ctx.lineTo(W / 2 + 1.5, 10); ctx.lineTo(W / 2 - 1.5, 10);
+  ctx.fill();
+  return canvasToAlphaTexture(cv, [78, 104, 44]);
+}
+
+// Tree bark: light grey-brown with upright furrows (repeats in both directions).
+export function makeBarkTexture() {
+  const S = 128;
+  const [cv, ctx] = makeCanvas(S, S);
+  const rng = new RNG(73);
+  ctx.fillStyle = '#8a7560';
+  ctx.fillRect(0, 0, S, S);
+  for (let i = 0; i < 150; i++) {
+    const x = rng.range(0, S), y = rng.range(0, S), h = rng.range(14, 54), w = rng.range(1.2, 3.4);
+    const dark = rng.chance(0.6);
+    ctx.fillStyle = dark ? `rgba(48,36,26,${rng.range(0.35, 0.7)})` : `rgba(190,170,145,${rng.range(0.15, 0.4)})`;
+    for (const oy of [-S, 0, S]) for (const ox of [-S, 0, S]) {
+      ctx.beginPath();
+      ctx.ellipse(x + ox, y + oy, w, h / 2, rng.range(-0.06, 0.06), 0, 7);
+      ctx.fill();
+    }
+  }
+  grain(ctx, S, S, 16, 74);
+  return canvasTexture(cv);
+}
+
+// Palm trunk: grey-brown with a ring mark where every old frond fell off.
+export function makePalmBarkTexture() {
+  const S = 128;
+  const [cv, ctx] = makeCanvas(S, S);
+  const rng = new RNG(75);
+  ctx.fillStyle = '#9b8a72';
+  ctx.fillRect(0, 0, S, S);
+  const rings = 8;
+  for (let r = 0; r < rings; r++) {
+    const y = ((r + 0.5) / rings) * S;
+    // dark groove with a light upper lip
+    ctx.fillStyle = 'rgba(52,42,32,0.75)';
+    ctx.fillRect(0, y - 1.6, S, 3.2);
+    ctx.fillStyle = 'rgba(205,190,165,0.35)';
+    ctx.fillRect(0, y - 4.2, S, 2.4);
+    // short upright fibres between two rings
+    for (let k = 0; k < 26; k++) {
+      ctx.fillStyle = `rgba(${rng.chance(0.5) ? '60,48,36' : '176,160,136'},${rng.range(0.15, 0.4)})`;
+      ctx.fillRect(rng.range(0, S), y + 2, rng.range(0.8, 1.8), rng.range(4, S / rings - 6));
+    }
+  }
+  grain(ctx, S, S, 14, 76);
+  return canvasTexture(cv);
 }
 
 // ===========================================================================
@@ -1243,7 +1381,7 @@ export function makeWallDetailTexture() {
 export function makeFoliageTexture() {
   const S = 256;
   const [cv, ctx] = makeCanvas(S, S);
-  ctx.fillStyle = '#0d150b';
+  ctx.fillStyle = '#1c2a12';
   ctx.fillRect(0, 0, S, S);
   const rng = new RNG(4242);
   // leaves from the back (dark) to the front (lighter); each is drawn 9 times,
@@ -1253,7 +1391,7 @@ export function makeFoliageTexture() {
     const depth = i / N;
     const x = rng.range(0, S), y = rng.range(0, S), a = rng.range(0, 6.283);
     const l = rng.range(5, 11), w = rng.range(2.2, 4.4);
-    const hue = rng.int(78, 118), sat = rng.int(26, 46), lum = 9 + depth * 24 + rng.range(-4, 5);
+    const hue = rng.int(72, 116), sat = rng.int(38, 58), lum = 17 + depth * 27 + rng.range(-4, 6);
     ctx.fillStyle = rng.chance(0.03) ? `hsl(${rng.int(40, 60)},${sat}%,${lum + 6}%)` : `hsl(${hue},${sat}%,${lum}%)`;
     for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) {
       if (x + ox < -14 || x + ox > S + 14 || y + oy < -14 || y + oy > S + 14) continue;

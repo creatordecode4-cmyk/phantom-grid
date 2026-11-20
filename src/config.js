@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 1.2',
+  version: 'Phase 1.3',
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {
@@ -62,7 +62,7 @@ export const CONFIG = {
 
   // ----- FOG / HAZE ----------------------------------------------------------
   fog: {
-    density: 0.0019,   // thicker = shorter view distance
+    density: 0.0023,   // thicker = shorter view distance (a slightly hazy far city)
     rainDensity: 0.0032,
     height: 70,        // the haze is thick near the ground and thin above this
   },
@@ -96,6 +96,7 @@ export const CONFIG = {
       anisotropy: 2,
       envMapSize: 64,
       propDistance: 0.55,   // multiplier for how far props are drawn
+      people: 60, traffic: 12, // walking people and driving cars around the player
       buildingDetail: false, // no fins, no plants on facades, no 3D windows (the glass shader paints lines instead)
       fogMultiplier: 1.7,   // thicker fog hides the short draw distance
       cameraFar: 2600,
@@ -118,6 +119,7 @@ export const CONFIG = {
       anisotropy: 4,
       envMapSize: 64,
       propDistance: 1.0,
+      people: 130, traffic: 24,
       buildingDetail: true, // fins, floor slabs, plants near the player (about 150 m)
       fogMultiplier: 1.0,
       cameraFar: 9000,
@@ -140,6 +142,7 @@ export const CONFIG = {
       anisotropy: 8,
       envMapSize: 128,
       propDistance: 1.35,
+      people: 170, traffic: 32,
       buildingDetail: true,
       fogMultiplier: 1.0,
       cameraFar: 9000,
@@ -153,8 +156,8 @@ export const CONFIG = {
   // normal: how strong the fake surface bumps are (made from the picture).
   textures: {
     path: 'assets/textures/',
-    asphalt:    { file: 'asphalt.png',       size: 2.6, normal: 1.1, roughness: 0.94 },
-    sidewalk:   { file: 'sidewalk.png',      size: 3.0, normal: 1.6, roughness: 0.88 },  // 4 slabs across -> 0.75 m slabs
+    asphalt:    { file: 'asphalt.png',       size: 10, fine: 4, normal: 0.7, roughness: 0.94 },  // one copy = 10 m: no tile pattern. fine = the grain repeats 4x more often
+    sidewalk:   { file: 'sidewalk.png',      size: 8.0, normal: 1.3, roughness: 0.88 },  // 4 slabs across -> a joint every 2 m
     brick:      { file: 'brick.png',         size: 1.5, normal: 2.4, roughness: 0.9 },   // 6 bricks across -> 1 brick = 25 cm
     plaster:    { file: 'plaster.png',       size: 3.4, normal: 1.2, roughness: 0.93 },
     sand:       { file: 'sand.png',          size: 4.8, normal: 1.8, roughness: 0.96 },

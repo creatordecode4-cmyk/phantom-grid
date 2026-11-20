@@ -100,12 +100,23 @@ function addSlab(ctx, poly, y, tintTop = 1, uOff = 0, vOff = 0) {
     if (len < 0.05) continue;
     const u0 = uOff + i * 0.37, u1 = u0 + len / tile;
     // top strip (counter-clockwise seen from above: a, ia, ib, b)
-    mb.color(1.16, 1.15, 1.13, 1);
+    mb.color(1.3, 1.29, 1.27, 1);
     mb.quad([a.x, y, a.z], [ia.x, y, ia.z], [ib.x, y, ib.z], [b.x, y, b.z], [0, 1, 0], [u0, 0.31], [u0, 0.37], [u1, 0.37], [u1, 0.31]);
+    // a dark seam between the curb stone and the slabs: the curb reads as its own stone
+    mb.color(0.5, 0.5, 0.5, 1);
+    const k = 0.035 / CW;
+    mb.quad([ia.x, y + 0.002, ia.z], [ia.x + (ia.x - a.x) * k, y + 0.002, ia.z + (ia.z - a.z) * k], [ib.x + (ib.x - b.x) * k, y + 0.002, ib.z + (ib.z - b.z) * k], [ib.x, y + 0.002, ib.z],
+      [0, 1, 0], [u0, 0.33], [u0, 0.34], [u1, 0.34], [u1, 0.33]);
     // vertical face, pointing away from the block
     const ox = (b.z - a.z) / len, oz = -(b.x - a.x) / len;
-    mb.color(0.95, 0.94, 0.92, 1);
+    mb.color(1.02, 1.01, 0.99, 1);
     mb.quad([b.x, 0, b.z], [a.x, 0, a.z], [a.x, y, a.z], [b.x, y, b.z], [ox, 0, oz], [u1, 0.31], [u0, 0.31], [u0, 0.36], [u1, 0.36]);
+    // gutter: a soft dark strip on the road along the curb (dirt collects there,
+    // and it makes the curb edge clear)
+    if (len > 1.5 && Math.abs(a.x) < 700 && Math.abs(b.x) < 700) {
+      const mx = (a.x + b.x) / 2 + ox * 0.42, mz = (a.z + b.z) / 2 + oz * 0.42;
+      addDecal(ctx.mb.decal, 'ao', mx, mz, len, 0.84, Math.atan2(ox, oz), 0.0125, 0.8);
+    }
   }
 }
 
@@ -205,18 +216,36 @@ export function buildGround(ctx) {
     // ---- dirt and damage on this piece ----
     const rot = ns ? 0 : Math.PI / 2; // decals are drawn "long along z", turn them for east-west streets
     // newer asphalt patches
-    if (rng.chance(0.55)) {
+    // (lane-wide strips where the road was dug up and closed again)
+    for (let k = 0; k < 2; k++) {
+      if (!rng.chance(0.6) || len < 24) continue;
       const t = rng.range(a + 8, b - 8), o = rng.pick([-5.2, -1.8, 1.8, 5.2]);
       const p = P(t, o);
-      addDecal(dc, 'patch', p[0], p[1], rng.range(2.4, 3.4), rng.range(4, 12), rot, 0.014, rng.range(0.45, 0.9));
+      addDecal(dc, 'patch', p[0], p[1], rng.range(2.4, 3.4), rng.range(4, 12), rot, 0.014, rng.range(0.5, 0.9));
     }
-    // oil streaks in the middle of the driving lanes
+    // darker, polished wheel paths in all four lanes (weaker where cars park)
+    for (const o of [-5.25, -1.75, 1.75, 5.25]) {
+      const p = P((a + b) / 2, o);
+      addDecal(dc, 'wheel', p[0], p[1], 3.3, len - 1, rot, 0.0135, (Math.abs(o) > 3 ? 0.45 : 0.85) * rng.range(0.8, 1.0));
+    }
+    // oil drips in the middle of the two inner lanes
     for (const o of [-1.75, 1.75]) {
       const p = P((a + b) / 2, o);
-      addDecal(dc, 'streak', p[0], p[1], len - 2, 1.5, rot + Math.PI / 2, 0.015, rng.range(0.35, 0.75));
+      addDecal(dc, 'streak', p[0], p[1], len - 2, 0.9, rot + Math.PI / 2, 0.015, rng.range(0.25, 0.55));
+    }
+    // lane arrows in front of the stop lines (inner lane: straight, outer lane: straight or turn)
+    if (len > 34) {
+      const arrows = (t, sideSign, dirRot) => {
+        for (const [o, name] of [[1.75, 'arrow'], [5.25, 'arrowTurn']]) {
+          const p = P(t, sideSign * o);
+          addDecal(dc, name, p[0], p[1], 1.5, 4.2, dirRot, 0.0145, fade * 0.9);
+        }
+      };
+      if (endB) arrows(b - 13, ns ? -1 : 1, ns ? 0 : Math.PI / 2);
+      if (endA) arrows(a + 13, ns ? 1 : -1, ns ? Math.PI : -Math.PI / 2);
     }
     // cracks, tar repairs, oil spots, skid marks
-    const count = Math.floor(len / 14);
+    const count = Math.floor(len / 7);
     for (let i = 0; i < count; i++) {
       const t = rng.range(a + 2, b - 2);
       const r = rng.next();
@@ -230,10 +259,11 @@ export function buildGround(ctx) {
       } else if (r < 0.74) {
         const p = P(t, rng.range(-4.5, 4.5));
         addDecal(dc, 'tar', p[0], p[1], rng.range(1, 2.4), rng.range(1, 2.8), rot, 0.016, rng.range(0.5, 0.9));
-      } else if (r < 0.82) {
-        const p = P(t, rng.pick([-1.75, 1.75]));
-        addDecal(dc, 'skid', p[0], p[1], rng.range(6, 12), 2.0, rot + Math.PI / 2, 0.016, rng.range(0.3, 0.7));
-      } else if (r < 0.9) {
+      } else if (r < 0.86) {
+        // tire marks along the lanes
+        const p = P(t, rng.pick([-1.75, 1.75, -5.2, 5.2]) + rng.range(-0.4, 0.4));
+        addDecal(dc, 'skid', p[0], p[1], rng.range(6, 14), 2.0, rot + Math.PI / 2, 0.016, rng.range(0.35, 0.8));
+      } else if (r < 0.93) {
         const p = P(t, rng.range(-6.2, 6.2));
         addDecal(dc, 'dirt', p[0], p[1], rng.range(1.5, 3.5), rng.range(1.5, 3.5), rng.range(0, 6.28), 0.016, rng.range(0.4, 0.8));
       }

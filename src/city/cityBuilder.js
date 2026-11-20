@@ -15,6 +15,7 @@ import { MeshBuilder } from '../utils/geometry.js';
 import { shared } from './materials.js';
 import { buildGround, blockEdges } from './ground.js';
 import { buildBuildings, loadHeroModels } from './buildings.js';
+import { createStreetLife } from './streetLife.js';
 import { buildProps, makeHoloMaterial } from './props.js';
 import { buildBackdrop } from './backdrop.js';
 
@@ -258,9 +259,12 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
     group.add(holo);
   }
 
+  // people and traffic (they need the car models from the props and the walls of the buildings)
+  const life = createStreetLife(ctx);
   lap('meshes');
   makeLampLightMap(ctx);
   const colliders = makeCollisionGrid(ctx.colliders.boxes, ctx.colliders.circles);
+  colliders.dynamic = life.dynamicCircles; // moving cars near the player
   lap('lightMap');
   scene.add(group);
   onProgress(1, 'City ready');
@@ -270,6 +274,7 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
     layout,
     meshes,
     props,
+    life,
     colliders,
     lamps: ctx.lamps,
     buildings: ctx.buildings,
@@ -280,11 +285,13 @@ export async function buildCity(scene, layout, materials, onProgress = () => {})
     setQuality(q) {
       const on = q.buildingDetail !== false;
       props.setDetail(on);
+      life.setQuality(q);
       if (meshes.hedge) meshes.hedge.visible = on; // LOW: no plants on the facades
     },
     // called every frame
     update(dt, time, x, z, propDistance) {
       props.update(dt, time, x, z, propDistance);
+      life.update(dt, time, x, z);
       backdrop.rail.update(dt);
     },
   };

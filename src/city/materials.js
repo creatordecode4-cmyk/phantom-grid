@@ -37,6 +37,8 @@ export const shared = {
   uPgShoreZ: { value: -470 },                    // where the sea meets the sand
   uPgWaterNormal: { value: null },
   uPgDetail: { value: null },                    // wall cracks / drips / pitting
+  uPgSunDir: { value: new THREE.Vector3(0, 1, 0) }, // direction TO the sun (or moon)
+  uPgSunCol: { value: new THREE.Color(0, 0, 0) },   // sun light color x strength (black at night)
 };
 
 // ---------------------------------------------------------------------------
@@ -175,6 +177,10 @@ varying vec3 vPgNormal;
 #ifdef PG_FOLIAGE
 	uniform float uPgTime;
 #endif
+#ifdef PG_PED
+	attribute vec3 aLimb;     // per vertex: joint height, swing amount, 1
+	attribute float aPhase;   // per person: where in the step cycle they are
+#endif
 #ifdef PG_WINMOD
 	attribute vec4 aInst;     // per window: width, height (meters), cell across, cell up
 	attribute vec4 aInstB;    // per window: wall color (r, g, b), style + switches
@@ -255,7 +261,18 @@ const PG_VERTEX_MAIN = /* glsl */ `
 `;
 
 // Leaves move a little in the wind (aData.x = how much this vertex may move).
+// People: arms and legs swing around their joints, the body bobs a little.
 const PG_VERTEX_WIND = /* glsl */ `
+#ifdef PG_PED
+	{
+		float pgA = sin( aPhase ) * aLimb.y;
+		float pgC = cos( pgA );
+		float pgS = sin( pgA );
+		vec3 pgQ = transformed - vec3( 0.0, aLimb.x, 0.0 );
+		transformed = vec3( pgQ.x, pgQ.y * pgC - pgQ.z * pgS, pgQ.y * pgS + pgQ.z * pgC ) + vec3( 0.0, aLimb.x, 0.0 );
+		transformed.y += abs( cos( aPhase ) ) * 0.022 * step( 0.0001, abs( sin( aPhase ) ) + abs( cos( aPhase ) - 1.0 ) );
+	}
+#endif
 #ifdef PG_FOLIAGE
 	#ifdef USE_INSTANCING
 		float pgPhase = instanceMatrix[ 3 ].x * 0.37 + instanceMatrix[ 3 ].z * 0.23;
@@ -282,6 +299,8 @@ uniform vec3 uPgLightColA;
 uniform vec3 uPgLightColB;
 uniform vec3 uPgPlayer;
 uniform float uPgShoreZ;
+uniform vec3 uPgSunDir;
+uniform vec3 uPgSunCol;
 varying vec3 vPgWorld;
 varying vec3 vPgNormal;
 #ifdef PG_USE_DATA
@@ -560,11 +579,31 @@ vec3 pgShopInterior( vec2 p, vec2 size, float seed, float lit ) {
 // and shifted copy so the pattern never lines up in rows.
 const PG_MAP_FRAGMENT = /* glsl */ `
 #ifdef USE_MAP
-	vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+	#ifdef PG_FINE
+		// ASPHALT. The picture is used twice:
+		//  * very large (one copy = 10 m) and a little blurred: only its big
+		//    stains show, and no tile pattern can be seen
+		//  * small (the grain): we take only the fine detail of it, by dividing
+		//    the sharp picture by a blurred copy of itself
+		#define PG_MAP_BIAS 1.3
+	#else
+		#define PG_MAP_BIAS 0.0
+	#endif
+	vec4 sampledDiffuseColor = texture2D( map, vMapUv, PG_MAP_BIAS );
 	#ifdef PG_ANTITILE
-		vec4 pgAlt = texture2D( map, vMapUv.yx * 0.83 + vec2( 0.37, 0.61 ) );
+		vec4 pgAlt = texture2D( map, vMapUv.yx * 0.83 + vec2( 0.37, 0.61 ), PG_MAP_BIAS );
 		float pgSel = texture2D( uPgNoise, vPgWorld.xz * 0.029 + 0.13 ).b;
 		sampledDiffuseColor = mix( sampledDiffuseColor, pgAlt, smoothstep( 0.4, 0.6, pgSel ) );
+	#endif
+	#ifdef PG_FINE
+		{
+			vec2 pgFuv = vMapUv * ${CONFIG.textures.asphalt.fine.toFixed(1)} + vec2( 0.23, 0.61 );
+			vec3 pgGrain = texture2D( map, pgFuv ).rgb / max( texture2D( map, pgFuv, 5.0 ).rgb, vec3( 0.03 ) );
+			vec2 pgFuv2 = vMapUv.yx * ${(CONFIG.textures.asphalt.fine * 0.71).toFixed(2)} + vec2( 0.57, 0.19 );
+			vec3 pgGrain2 = texture2D( map, pgFuv2 ).rgb / max( texture2D( map, pgFuv2, 5.0 ).rgb, vec3( 0.03 ) );
+			float pgSel2 = texture2D( uPgNoise, vPgWorld.xz * 0.041 + 0.57 ).g;
+			sampledDiffuseColor.rgb *= mix( vec3( 1.0 ), clamp( mix( pgGrain, pgGrain2, smoothstep( 0.4, 0.6, pgSel2 ) ), 0.4, 1.6 ), 0.8 );
+		}
 	#endif
 	diffuseColor *= sampledDiffuseColor;
 #endif
@@ -599,6 +638,22 @@ const PG_FRAGMENT_COLOR = /* glsl */ `
 			// big soft light/dark areas and a slight warm/cool shift
 			diffuseColor.rgb *= 0.8 + 0.4 * ( n1.r * 0.6 + n2.g * 0.4 );
 			diffuseColor.rgb *= mix( vec3( 1.03, 1.0, 0.96 ), vec3( 0.97, 1.0, 1.04 ), n1.b );
+			#ifdef PG_FINE
+				// asphalt: very large lighter / darker areas (old and newer road surface)
+				vec4 n0 = texture2D( uPgNoise, xz * 0.0031 + 0.77 );
+				diffuseColor.rgb *= 0.82 + 0.36 * smoothstep( 0.3, 0.7, n0.g * 0.6 + n1.a * 0.4 );
+			#endif
+			#ifdef PG_JOINTS
+				// SIDEWALK: an expansion joint every 2 m, and every slab a slightly different grey
+				if ( vPgNormal.y > 0.9 ) {
+					vec2 pgJ = xz / 2.0;
+					vec2 pgJd = min( fract( pgJ ), 1.0 - fract( pgJ ) ) * 2.0;   // meters to the nearest joint
+					vec2 pgJw = fwidth( xz );
+					float pgLine = max( 1.0 - smoothstep( 0.009, 0.009 + pgJw.x * 1.3, pgJd.x ), 1.0 - smoothstep( 0.009, 0.009 + pgJw.y * 1.3, pgJd.y ) );
+					pgLine *= clamp( 1.0 - max( pgJw.x, pgJw.y ) * 5.0, 0.0, 1.0 );
+					diffuseColor.rgb *= ( 0.94 + 0.12 * pgHash( floor( pgJ ) ) ) * ( 1.0 - 0.5 * pgLine );
+				}
+			#endif
 		#endif
 		float flatness = smoothstep( 0.75, 0.97, vPgNormal.y );
 		float wet = uPgWet;
@@ -818,15 +873,21 @@ const PG_FRAGMENT_COLOR = /* glsl */ `
 		vec3 frame = fract( seed * 7.31 ) < 0.62 ? vec3( 0.48, 0.5, 0.52 ) : vec3( 0.045, 0.05, 0.055 );
 		float fr = max( bar, plate );
 		// rain leaves faint streaks on the glass too
-		float streak = texture2D( uPgNoise, vec2( g.x * 0.11, vPgWorld.y * 0.012 ) ).a;
-		diffuseColor.rgb = mix( pane, frame, fr ) * ( 1.0 - 0.1 * smoothstep( 0.6, 0.95, streak ) );
-		pgGlass = glassy * ( 1.0 - fr );
+		float streak = smoothstep( 0.55, 0.95, texture2D( uPgNoise, vec2( g.x * 0.11, vPgWorld.y * 0.012 ) ).a );
+		// a thin film of dust: more at the bottom of every pane and in large soft areas
+		float dust = texture2D( uPgNoise, vec2( g.x * 0.037 + seed, vPgWorld.y * 0.021 ) ).r;
+		float film = clamp( 0.16 * streak + 0.1 * smoothstep( 0.45, 0.8, dust ) + 0.12 * ( 1.0 - smoothstep( 0.0, 0.3, f.y ) ) * fadeY, 0.0, 1.0 );
+		diffuseColor.rgb = mix( mix( pane, frame, fr ), vec3( 0.2, 0.19, 0.17 ), film * 0.55 );
+		pgGlass = glassy * ( 1.0 - fr ) * ( 1.0 - film * 0.8 );
+		// soft shadow where the building meets the street
+		diffuseColor.rgb *= mix( 0.6, 1.0, smoothstep( 0.0, 2.4, vPgWorld.y ) );
 		// rooms with the light on: most only at night, a few glow all day
-		float share = 0.1 + 0.35 * fract( seed * 3.7 ) + 0.5 * lobby;
+		// about one window in four has its light on (a little different per building)
+		float share = 0.25 * ( 0.75 + 0.5 * fract( seed * 3.7 ) ) + 0.5 * lobby;
 		float mine = step( h2, share );
 		float room = ( 0.5 + 0.5 * smoothstep( 0.15, 0.95, f.y ) ) * ( 1.0 - blind * 0.5 ) * ( 1.0 - fr ) * ( 0.45 + 0.6 * h1 );
 		vec3 warm = h1 > 0.82 ? vec3( 0.7, 0.82, 1.0 ) : vec3( 1.0, 0.78, 0.5 );
-		pgEmit += warm * room * mine * step( h3, uPgWinLight ) * ( 1.0 + 0.5 * lobby );
+		pgEmit += warm * room * mine * step( h3 * 0.8, uPgWinLight ) * ( 1.0 + 0.5 * lobby );
 		pgEmitA += warm * room * mine * step( h3, 0.07 + 0.3 * lobby ) * ( 0.22 + 0.3 * lobby ) * uPgDay;
 	}
 #endif
@@ -848,6 +909,8 @@ const PG_FRAGMENT_COLOR = /* glsl */ `
 		diffuseColor.rgb *= 0.9 + 0.2 * n1.r;
 		diffuseColor.rgb *= 1.0 - ( 1.0 - flatFace ) * 0.17 * smoothstep( 0.6, 0.95, n2.a ) * ( 0.4 + 0.6 * n1.b );
 		diffuseColor.rgb *= 1.0 - flatFace * 0.1 * n2.g;
+		// soft shadow where the building meets the street
+		diffuseColor.rgb *= mix( 0.66, 1.0, min( 1.0, smoothstep( 0.0, 2.0, vPgWorld.y - 0.1 ) + flatFace ) );
 		if ( kind > 0.5 && kind < 1.5 ) {
 			// perforated metal: rows of small round holes
 			vec2 p = wc / 0.12;
@@ -1084,10 +1147,25 @@ const PG_FRAGMENT_EMISSIVE = /* glsl */ `
 		totalEmissiveRadiance += diffuseColor.rgb * lamp * up * 0.8;
 	}
 #endif
+#ifdef PG_FOLIAGE
+	{
+		// LEAVES LET LIGHT THROUGH. Leaves that look away from the sun are not
+		// black: sunlight shines through them (yellow-green), strongest when
+		// we look toward the sun through the crown.
+		vec3 pgNw = normalize( vPgNormal );
+		vec3 pgVw = normalize( cameraPosition - vPgWorld );
+		float pgBack = pow( max( dot( - pgVw, uPgSunDir ), 0.0 ), 3.0 );
+		float pgAway = clamp( 0.55 - 0.45 * dot( pgNw, uPgSunDir ), 0.0, 1.0 );
+		totalEmissiveRadiance += diffuseColor.rgb * vec3( 1.08, 1.0, 0.5 ) * uPgSunCol * pgAway * ( 0.2 + 0.55 * pgBack ) * 0.3183;
+	}
+#endif
 #if defined( PG_PROP ) || defined( PG_FOLIAGE )
 	if ( uPgNight > 0.001 ) {
 		vec3 lamp = pgLampColor( pgLampTexel( vPgWorld.xz ), vPgWorld.xz );
 		float up = exp( - max( vPgWorld.y - 2.0, 0.0 ) * 0.2 );
+		#ifdef PG_FOLIAGE
+			up *= 0.28;
+		#endif
 		totalEmissiveRadiance += diffuseColor.rgb * lamp * up * 1.3;
 	}
 #endif
@@ -1236,6 +1314,8 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   tex.holo = TX.makeHoloTexture();
   tex.leaf = TX.makeLeafTexture();
   tex.frond = TX.makeFrondTexture();
+  tex.bark = TX.makeBarkTexture();
+  tex.palmBark = TX.makePalmBarkTexture();
   tex.glow = TX.makeGlowTexture();
   tex.awning = TX.makeAwningTexture();
   tex.waterNormal = TX.makeWaterNormalTexture();
@@ -1262,9 +1342,11 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   const mats = {};
 
   // Road asphalt (also used for flat roofs).
-  mats.asphalt = patch(std({ map: tex.asphalt, normalMap: nr.asphalt, color: 0xb9b9b9 }), ['PG_GROUND', 'PG_ANTITILE', 'PG_ROUGH_FROM_NORMAL']);
-  // Sidewalk slabs and curbs.
-  mats.sidewalk = patch(std({ map: tex.sidewalk, normalMap: nr.sidewalk }), ['PG_GROUND', 'PG_ROUGH_FROM_NORMAL']);
+  // The fine bumps repeat more often than the big color picture.
+  nr.asphalt.repeat.set(T.asphalt.fine, T.asphalt.fine);
+  mats.asphalt = patch(std({ map: tex.asphalt, normalMap: nr.asphalt, color: 0xa6a6a8 }), ['PG_GROUND', 'PG_ANTITILE', 'PG_FINE', 'PG_ROUGH_FROM_NORMAL']);
+  // Sidewalk slabs and curbs (the shader draws a joint every 2 m).
+  mats.sidewalk = patch(std({ map: tex.sidewalk, normalMap: nr.sidewalk, color: 0xe2e2e0 }), ['PG_GROUND', 'PG_JOINTS', 'PG_ROUGH_FROM_NORMAL']);
   // Beach sand.
   mats.sand = patch(std({ map: tex.sand, normalMap: nr.sand }), ['PG_GROUND', 'PG_ANTITILE', 'PG_BEACH', 'PG_ROUGH_FROM_NORMAL']);
   // Stains, cracks, manholes, soft shadows (see-through quads on the ground).
@@ -1324,7 +1406,7 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   // Glass curtain walls of the new buildings: dark tinted glass that mirrors
   // the sky. Floor plates, bars, blinds and lit rooms are drawn by the shader.
   mats.glass = patch(
-    new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.4, ior: 1.52, reflectivity: 0.55 }),
+    new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.06, metalness: 0.5, ior: 1.52, reflectivity: 0.7, envMapIntensity: 1.7 }),
     ['PG_GLASS']
   );
   // Frames, ribbons, slabs, roofs: one material that can look like smooth
@@ -1343,8 +1425,14 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   // All small objects: color, roughness and metal come from the vertices.
   mats.prop = patch(std({}), ['PG_PROP']);
   mats.propDouble = patch(std({ side: THREE.DoubleSide }), ['PG_PROP']);
+  // People on the sidewalks: the prop shader + swinging arms and legs.
+  mats.ped = patch(std({}), ['PG_PROP', 'PG_PED']);
   // Leaves and palm fronds.
-  const leafOpts = { alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.92, color: 0xd8d8d8 };
+  // Tree trunks: the same prop shader + a bark picture.
+  mats.bark = patch(std({ map: tex.bark }), ['PG_PROP']);
+  mats.palmBark = patch(std({ map: tex.palmBark }), ['PG_PROP']);
+  // alphaTest cuts the leaf shapes out of the flat cards
+  const leafOpts = { alphaTest: 0.38, side: THREE.DoubleSide, roughness: 0.8, color: 0xd2d2d2 };
   mats.leaf = patch(std({ map: tex.leaf, ...leafOpts }), ['PG_FOLIAGE']);
   mats.frond = patch(std({ map: tex.frond, ...leafOpts }), ['PG_FOLIAGE']);
   // Ocean.

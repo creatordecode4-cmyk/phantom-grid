@@ -123,6 +123,8 @@ export function createPostFX(renderer) {
     uVignette: { value: 0 },
     uGrain: { value: 0 },
     uRes: { value: new THREE.Vector2(1, 1) },
+    uSunPos: { value: new THREE.Vector2(0.5, 0.5) },   // where the sun is on the screen (0..1)
+    uSunGlow: { value: new THREE.Vector3(0, 0, 0) },   // color x strength of the sun glow (0 = off)
   };
   const final = pass(/* glsl */ `
     uniform sampler2D tScene;
@@ -132,11 +134,29 @@ export function createPostFX(renderer) {
     uniform float uVignette;
     uniform float uGrain;
     uniform vec2 uRes;
+    uniform vec2 uSunPos;
+    uniform vec3 uSunGlow;
     varying vec2 vUv;
     float hash( vec2 p ) { return fract( sin( dot( p, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 ); }
     void main() {
       vec3 col = texture2D( tScene, vUv ).rgb;
       col += texture2D( tBloom, vUv ).rgb * uBloom;
+      // ---- sun glow + a subtle lens flare (only while the sun can be seen) ----
+      if ( uSunGlow.r + uSunGlow.g + uSunGlow.b > 0.0001 ) {
+        vec2 asp = vec2( uRes.x / uRes.y, 1.0 );
+        vec2 d = ( vUv - uSunPos ) * asp;
+        float r = length( d );
+        // soft round glow + a wide, very faint veil of light
+        float glow = 0.75 * exp( - r * r * 26.0 ) + 0.2 * exp( - r * 3.2 );
+        // thin sideways streak, like light smeared by a camera lens
+        glow += 0.14 * exp( - abs( d.y ) * 55.0 ) * exp( - abs( d.x ) * 2.6 );
+        col += uSunGlow * glow;
+        // two faint "ghosts" on the line from the sun through the middle of the picture
+        vec2 g1 = ( vUv - mix( uSunPos, vec2( 0.5 ), 1.45 ) ) * asp;
+        vec2 g2 = ( vUv - mix( uSunPos, vec2( 0.5 ), 1.9 ) ) * asp;
+        col += uSunGlow * vec3( 0.5, 0.8, 1.0 ) * 0.035 * smoothstep( 0.07, 0.045, length( g1 ) );
+        col += uSunGlow * vec3( 1.0, 0.7, 0.5 ) * 0.03 * smoothstep( 0.035, 0.02, length( g2 ) );
+      }
       // darker corners, like a real lens (done before tone mapping = natural falloff)
       vec2 q = vUv - 0.5;
       col *= 1.0 - uVignette * smoothstep( 0.12, 0.75, dot( q, q ) * 2.0 );
@@ -225,5 +245,11 @@ export function createPostFX(renderer) {
     finalUniforms.uGrain.value = q.grain ? 0.03 : 0;
   }
 
-  return { supported, resize, render, setQuality };
+  // Where the sun is on the screen and how strong its glow is (called every frame).
+  function setSun(x, y, r, g, b) {
+    finalUniforms.uSunPos.value.set(x, y);
+    finalUniforms.uSunGlow.value.set(r, g, b);
+  }
+
+  return { supported, resize, render, setQuality, setSun };
 }

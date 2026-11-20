@@ -187,7 +187,8 @@ export function buildProps(ctx) {
   const mLed1 = M.makeLedLight(1);
   const mLed2 = M.makeLedLight(2);
   const mTraffic = M.makeTrafficLight();
-  const mTree = M.makeTree(11);
+  const mTree = M.makeTree(11, 0);  // wide round street tree
+  const mTree2 = M.makeTree(17, 1); // taller, narrower tree
   const mPalm = M.makePalm(12);
 
   const sets = ctx.sets; // shared with buildingKit.js, which has already added the building details
@@ -197,10 +198,12 @@ export function buildProps(ctx) {
   S('led2', mLed2.geometry, mats.prop, { maxDistance: 300 });
   S('traffic', mTraffic.geometry, mats.prop, { maxDistance: 200 });
   S('pole', M.makeSmartMast(), mats.prop, { maxDistance: 260 });
-  S('treeTrunk', mTree.trunk, mats.prop, { maxDistance: 200 });
-  S('treeCrown', mTree.crown, mats.leaf, { maxDistance: 330 });
-  S('palmTrunk', mPalm.trunk, mats.prop, { maxDistance: 400 });
-  S('palmCrown', mPalm.crown, mats.frond, { maxDistance: 400 });
+  S('treeTrunk', mTree.trunk, mats.bark, { maxDistance: 200 });
+  S('treeCrown', mTree.crown, mats.leaf, { maxDistance: 290, useColor: true });
+  S('treeTrunk2', mTree2.trunk, mats.bark, { maxDistance: 200 });
+  S('treeCrown2', mTree2.crown, mats.leaf, { maxDistance: 290, useColor: true });
+  S('palmTrunk', mPalm.trunk, mats.palmBark, { maxDistance: 300 });
+  S('palmCrown', mPalm.crown, mats.frond, { maxDistance: 340, useColor: true });
   S('hydrant', M.makeHydrant(), mats.prop, { maxDistance: 95, useColor: true });
   S('bin', M.makeTrashBin(), mats.prop, { maxDistance: 105 });
   S('bench', M.makeBench(), mats.prop, { maxDistance: 120 });
@@ -215,6 +218,7 @@ export function buildProps(ctx) {
   S('newsBox', M.makeNewsBox(), mats.prop, { maxDistance: 90, useColor: true });
   S('meter', M.makeParkingMeter(), mats.prop, { maxDistance: 80, castShadow: false });
   S('streetSign', M.makeStreetSign(), mats.prop, { maxDistance: 150 });
+  S('bikeRack', M.makeBikeRack(), mats.prop, { maxDistance: 85 });
 
   // lamps of the traffic lights: tiny glowing balls with their own color
   const bitMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -222,6 +226,29 @@ export function buildProps(ctx) {
   lampDisc.rotateY(Math.PI); // the lamps look toward -z, like the signal heads
   const bits = S('signalLamp', lampDisc, bitMat, { maxDistance: 240, useColor: true, castShadow: false, receiveShadow: false });
   const signalBits = []; // { index, group: 0 north-south / 1 east-west, kind }
+
+  // ---- trees: every tree gets its own green, size and a slight lean ----
+  // leaf tints from yellow-green over fresh green to deep green (multiplied with the leaf picture)
+  const LEAF_TINTS = [[1.2, 1.12, 0.62], [1.08, 1.1, 0.7], [0.98, 1.05, 0.72], [0.9, 1.0, 0.7], [0.8, 0.95, 0.68], [0.68, 0.86, 0.62], [0.6, 0.78, 0.6]];
+  const leafTint = () => {
+    const c = rng.pick(LEAF_TINTS), k = rng.range(0.92, 1.08);
+    return [c[0] * k, c[1] * k, c[2] * k];
+  };
+  // one street / roof tree. o: { trunk: false = crown only (high roofs) }
+  function addTree(x, y, z, size = 1, o = {}) {
+    const two = rng.chance(0.4);
+    const rot = rng.range(0, 6.28), tx = rng.range(-0.07, 0.07), tz = rng.range(-0.07, 0.07);
+    const s = size * rng.range(0.85, 1.2), sc = [s * rng.range(0.92, 1.1), s * rng.range(0.9, 1.15), s * rng.range(0.92, 1.1)];
+    if (o.trunk !== false) sets[two ? 'treeTrunk2' : 'treeTrunk'].add(x, y, z, rot, sc, null, tx, tz);
+    sets[two ? 'treeCrown2' : 'treeCrown'].add(x, o.trunk === false ? y - 2.6 * sc[1] : y, z, rot, sc, leafTint(), tx, tz);
+  }
+  function addPalm(x, y, z, size = 1) {
+    const rot = rng.range(0, 6.28), tx = rng.range(-0.06, 0.06), tz = rng.range(-0.06, 0.06);
+    const sc = [size, size * rng.range(0.85, 1.18), size];
+    const c = rng.pick(LEAF_TINTS.slice(1, 6)), k = rng.range(0.95, 1.1);
+    sets.palmTrunk.add(x, y, z, rot, sc, null, tx, tz);
+    sets.palmCrown.add(x, y, z, rot, sc, [c[0] * k, c[1] * k, c[2] * k], tx, tz);
+  }
 
   const inPlay = (x, z, m = 0) => x > B.minX - m && x < B.maxX + m && z > B.minZ - m && z < B.maxZ + m;
   const blob = (x, z, sx, sz, rot, y, a) => addDecal(dc, sx === sz ? 'blob' : 'blobRect', x, z, sx, sz, rot, y, a);
@@ -268,10 +295,10 @@ export function buildProps(ctx) {
     }
 
     // ---- bus stop on some long edges ----
-    if (grid && e.type === 'street' && e.axis && len > 70 && rng.chance(0.15)) {
+    if (!neon && e.type === 'street' && e.axis && len > 60 && rng.chance(0.3)) {
       const s = rng.range(0.32, 0.68) * len;
       if (free(s, 3.4)) {
-        const p = P(s, sw - 0.95);
+        const p = P(s, sw - 0.6); // close to the houses: people walk past in front of it
         sets.busStop.add(p[0], ground, p[1], toStreet);
         take(s, 3.4);
         noPark.push([s - 10, s + 10]);
@@ -312,29 +339,22 @@ export function buildProps(ctx) {
     }
 
     // ---- trees (The Grid) or palms (Neon Mile sidewalk) ----
-    if (neon ? rng.chance(0.7) : grid && rng.chance(0.55)) {
-      for (let s = rng.range(6, 10); s < len - 6; s += neon ? rng.range(18, 26) : rng.range(11, 17)) {
+    // (small street trees with iron grates in The Grid and The Crown, palms on Neon Mile)
+    if (neon ? rng.chance(0.7) : rng.chance(0.85)) {
+      for (let s = rng.range(6, 10); s < len - 6; s += neon ? rng.range(18, 26) : rng.range(10, 15)) {
         if (!free(s, 1.3)) continue;
         const p = P(s, neon ? 1.3 : 0.95);
-        const rot = rng.range(0, 6.28);
-        if (neon) {
-          const sc = rng.range(0.82, 1.1);
-          sets.palmTrunk.add(p[0], ground, p[1], rot, sc);
-          sets.palmCrown.add(p[0], ground, p[1], rot, sc);
-        } else {
-          const sc = rng.range(0.8, 1.25);
-          sets.treeTrunk.add(p[0], ground, p[1], rot, sc);
-          sets.treeCrown.add(p[0], ground, p[1], rot, sc);
-        }
-        addDecal(dc, 'treePit', p[0], p[1], 1.3, 1.3, toStreet, ground + 0.013, 1);
+        if (neon) addPalm(p[0], ground, p[1], rng.range(0.82, 1.1));
+        else addTree(p[0], ground, p[1], 0.82);
+        addDecal(dc, neon ? 'treePit' : 'grate', p[0], p[1], neon ? 1.3 : 1.5, neon ? 1.3 : 1.5, toStreet, ground + 0.013, 1);
         take(s, 1.3);
         circles.push({ x: p[0], z: p[1], r: 0.25 });
       }
     }
 
     // ---- trash bin near a corner ----
-    if (rng.chance(0.6)) {
-      const s = (rng.chance(0.5) ? 4.3 : len - 4.3) + rng.range(-0.4, 0.4);
+    for (const s of [rng.chance(0.85) ? (rng.chance(0.5) ? 4.3 : len - 4.3) + rng.range(-0.4, 0.4) : -1, len > 50 && rng.chance(0.5) ? len * rng.range(0.4, 0.6) : -1]) {
+      if (s < 0) continue;
       if (free(s, 0.45)) {
         const p = P(s, 0.55);
         sets.bin.add(p[0], ground, p[1], rng.range(0, 6.28));
@@ -345,7 +365,8 @@ export function buildProps(ctx) {
     }
 
     // ---- bench ----
-    if (rng.chance(neon ? 0.4 : 0.16)) {
+    for (let k = 0; k < 2; k++) {
+      if (len < 24 || !rng.chance(neon ? 0.7 : 0.45)) continue;
       const s = rng.range(8, len - 8);
       if (free(s, 1.2)) {
         const p = P(s, 0.75);
@@ -366,7 +387,7 @@ export function buildProps(ctx) {
     }
 
     // ---- planters with bushes ----
-    if (block.playable && rng.chance(neon ? 0.55 : 0.3)) {
+    if (block.playable && rng.chance(neon ? 0.8 : 0.6)) {
       for (let s = rng.range(10, 16); s < len - 9; s += rng.range(9, 20)) {
         if (!free(s, 1.0)) continue;
         const p = P(s, 0.7);
@@ -376,6 +397,29 @@ export function buildProps(ctx) {
         take(s, 1.0);
         circles.push({ x: p[0] - e.dirX * 0.35, z: p[1] - e.dirZ * 0.35, r: 0.42 }, { x: p[0] + e.dirX * 0.35, z: p[1] + e.dirZ * 0.35, r: 0.42 });
         blob(p[0], p[1], 1.2, 1.9, toStreet + Math.PI / 2, ground + 0.012, 0.6);
+      }
+    }
+
+    // ---- bike rack with two parked bikes ----
+    if (block.playable && len > 30 && rng.chance(0.4)) {
+      const s = rng.range(9, len - 9);
+      if (free(s, 2.0)) {
+        const p = P(s, 0.62);
+        sets.bikeRack.add(p[0], ground, p[1], Math.atan2(e.dirX, e.dirZ) + Math.PI / 2);
+        take(s, 2.0);
+        for (const o of [-1.2, -0.4, 0.4, 1.2]) circles.push({ x: p[0] + e.dirX * o, z: p[1] + e.dirZ * o, r: 0.42 });
+        blob(p[0], p[1], 1.0, 3.8, toStreet + Math.PI / 2, ground + 0.012, 0.55);
+      }
+    }
+
+    // ---- a second sign in the middle of the block (parking / charging rules) ----
+    if (block.playable && len > 40 && rng.chance(0.55)) {
+      const s = len * rng.range(0.35, 0.65);
+      if (free(s, 0.3)) {
+        const p = P(s, 0.5);
+        sets.streetSign.add(p[0], ground, p[1], toStreet + Math.PI / 2 + rng.range(-0.06, 0.06));
+        take(s, 0.35);
+        circles.push({ x: p[0], z: p[1], r: 0.14 });
       }
     }
 
@@ -421,7 +465,7 @@ export function buildProps(ctx) {
         // oil drips under parked cars
         if (rng.chance(0.4)) addDecal(dc, 'oil2', p[0] + fx * 0.9, p[1] + fz * 0.9, 1.0, 1.0, rng.range(0, 6.28), 0.017, 0.7);
       }
-      if (rng.chance(neon ? 0.3 : 0.2) && free(s + 5.9, 0.35)) {
+      if (rng.chance(neon ? 0.4 : 0.35) && free(s + 5.9, 0.35)) {
         const q = P(s + 5.9, 0.42);
         sets.ev.add(q[0], ground, q[1], toStreet);
         take(s + 5.9, 0.4);
@@ -526,9 +570,7 @@ export function buildProps(ctx) {
       let k = 0;
       for (let x = x0 + 3.5; x < x1 - 3; x += 13, k++) {
         const z = N.centerZ + rng.range(-0.5, 0.5);
-        const rot = rng.range(0, 6.28), sc = rng.range(0.9, 1.25);
-        sets.palmTrunk.add(x, curb, z, rot, sc);
-        sets.palmCrown.add(x, curb, z, rot, sc);
+        addPalm(x, curb, z, rng.range(0.9, 1.25));
         addDecal(dc, 'treePit', x, z, 1.5, 1.5, 0, curb + 0.013, 1);
         circles.push({ x, z, r: 0.3 });
         if (k % 2 === 0 && x + 6.5 < x1 - 2) addStreetLight(2, x + 6.5, curb, N.centerZ, 0);
@@ -537,9 +579,7 @@ export function buildProps(ctx) {
     // beach walk: palms, lights, benches that look at the sea, bins
     const pz = N.promenadeMinZ;
     for (let x = L.highway.maxX + 14; x < L.city.maxX + 60; x += 17) {
-      const rot = rng.range(0, 6.28), sc = rng.range(0.85, 1.15);
-      sets.palmTrunk.add(x, curb, pz + 1.3, rot, sc);
-      sets.palmCrown.add(x, curb, pz + 1.3, rot, sc);
+      addPalm(x, curb, pz + 1.3, rng.range(0.85, 1.15));
       addDecal(dc, 'treePit', x, pz + 1.3, 1.4, 1.4, 0, curb + 0.013, 1);
       circles.push({ x, z: pz + 1.3, r: 0.3 });
     }
@@ -596,10 +636,8 @@ export function buildProps(ctx) {
 
   // trees on roofs and terraces, in gardens and plazas (collected by the building kit)
   for (const t of ctx.roofTrees) {
-    const rot = rng.range(0, 6.28);
-    if (t.trunk) sets.treeTrunk.add(t.x, t.y, t.z, rot, t.s);
     // on high roofs only the crown is drawn: it stands lower, so no bare trunk floats there
-    sets.treeCrown.add(t.x, t.trunk ? t.y : t.y - 2.6 * t.s, t.z, rot, t.s);
+    addTree(t.x, t.y, t.z, t.s, { trunk: !!t.trunk });
     if (t.pit) addDecal(dc, 'treePit', t.x, t.z, 1.3, 1.3, 0, t.y + 0.013, 1);
   }
   // EV charging posts in front of buildings
@@ -635,13 +673,13 @@ export function buildProps(ctx) {
   // =============================================================================
   const drones = [];
   const playStreets = L.streetsNS.filter((s) => s.playable).concat(L.streetsEW.filter((s) => s.playable));
-  const DRONES = 16;
+  const DRONES = 30; // small delivery drones with a parcel
   for (let i = 0; i < DRONES; i++) {
     const st = rng.pick(playStreets);
     const t = st.axis === 'ns' ? rng.range(-300, 460) : rng.range(-430, 440);
     drones.push({
       axis: st.axis, c: st.center + rng.range(-3, 3), t,
-      y: rng.range(13, 30), range: rng.range(25, 70), speed: rng.range(0.05, 0.12), phase: rng.range(0, 6.28),
+      y: rng.range(8, 26), range: rng.range(25, 70), speed: rng.range(0.05, 0.12), phase: rng.range(0, 6.28),
     });
   }
   const droneMesh = new THREE.InstancedMesh(M.makeDrone(), mats.prop, DRONES);
@@ -659,7 +697,7 @@ export function buildProps(ctx) {
   // ---------------------------------------------------------------------------
   // Things that change over time
   // ---------------------------------------------------------------------------
-  const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
+  const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1.6, 1.6, 1.6);
   const LIT = { red: [2.4, 0.12, 0.06], yellow: [2.3, 1.3, 0.1], green: [0.15, 2.2, 0.9] };
   const DARK = [0.025, 0.025, 0.025];
   let lastPhase = -1;

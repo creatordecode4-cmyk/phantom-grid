@@ -9,6 +9,9 @@ Since version 1.2 all buildings are **futuristic** and are put together from a
 **kit of parts** (twisted tower bodies, glass curtain walls with fins, ribbon frames,
 garden terraces, helipads ...). Eleven **hero buildings** follow the reference pictures
 in `assets/reference/buildings/` - see "The buildings" below.
+Version 1.3 is a polish pass: natural trees and palms, real-looking asphalt, more
+reflecting glass, people on the sidewalks, driving cars and a warm sun with a soft glow -
+see "The polish pass" below.
 
 - No build step, no npm, no bundler. Plain HTML + JavaScript modules.
 - three.js (version 0.170) is loaded from a CDN with an import map.
@@ -39,9 +42,9 @@ One game day lasts 12 real minutes. The game starts at golden hour.
 
 | Level | What you get |
 |---|---|
-| **Low** | No shadows, no bloom, 0.75 pixel ratio, short draw distance, thicker haze, no fins and no plants on the facades |
-| **Medium** | Shadows, light bloom, film-like color grade, fins, floor plates, plants and small parts within about 150 m |
-| **High** | Sharper shadows, more detail further away, subtle vignette and film grain |
+| **Low** | No shadows, no bloom, no sun glow, 0.75 pixel ratio, short draw distance, thicker haze, no fins and no plants on the facades, 60 people and 12 driving cars |
+| **Medium** | Shadows, light bloom, sun glow, film-like color grade, fins, floor plates, plants and small parts within about 150 m, 130 people and 24 driving cars |
+| **High** | Sharper shadows, more detail further away, subtle vignette and film grain, 170 people and 32 driving cars |
 | **Auto** | Picks a level for your phone, and goes one level down if the game runs slowly |
 
 ### Address options (handy for testing)
@@ -82,7 +85,9 @@ src/
                            wave, arcade, retrofit, plaza) and the district rules
     buildings.js           cuts every block into lots, places heroes and fill buildings,
                            sky bridges, loads model files (.glb)
-    props.js               smart street lights, trees, cars, planters, EV posts ... (instanced)
+    props.js               smart street lights, trees, parked cars, planters, benches, bike racks,
+                           EV posts ... (instanced)
+    streetLife.js          things that move: people on the sidewalks, cars on the lanes
     models.js              the small 3D models, built in code
     backdrop.js            ocean, hills, far Crown towers, highway, maglev line
   world/
@@ -298,6 +303,21 @@ Every building has a collision box.
 To add a type: copy an entry in `TYPES` in `src/city/buildingTypes.js`, change
 the recipe, and give it a weight in `pickType()` at the bottom of that file.
 
+### The polish pass (version 1.3) and where to look at it
+
+| What | Where to stand (add to the game address) |
+|---|---|
+| **Trees**: natural greens from yellow-green to deep green, full leaf clusters, light bark, every tree with its own size and lean, sunlight shining through the leaves | the start point, or `?pos=-15.8,100&yaw=180&time=15` (the start street, The Grid) |
+| **Palms**: wide drooping fronds, trunk with ring marks | Neon Mile: `?pos=-60,-384&yaw=270&time=15` |
+| **Roads**: asphalt without a tile pattern, wheel paths, cracks, repairs, oil, tire marks, worn lines, lane arrows, stop lines, crosswalks | stand in the middle of the street: `?pos=-7,60&yaw=180&time=15`, the crossing is 30 m in front of you |
+| **Curbs and sidewalk joints** (one joint every 2 m, iron tree grates) | `?pos=-15.8,100&yaw=180` and look down |
+| **Glass**: stronger reflections, a different tint on every building, floor lines, dust and rain streaks | `?pos=-7,20&yaw=180&time=15` (look up at the towers) |
+| **Lit windows** (about one in four) | the same place at dusk or night: `?pos=-7,20&yaw=180&time=19.4` or `&time=night` |
+| **Street life**: people, benches, bins, bus shelters, bike racks, planters, signs, EV chargers | `?pos=-15.8,100&yaw=180` and walk south |
+| **Traffic**: cars drive on the right, stop at red lights and brake for you; delivery drones fly above | `?pos=-15.8,36&yaw=180` (the crossing of the start street), wait for one light cycle |
+| **Sun glow and long warm shadows** | Neon Mile at sunset, looking west: `?pos=-60,-384&yaw=250&time=18.3` |
+| **Haze in the distance, soft shadow at building bases** | `?pos=-7,-200&yaw=0&time=15` (look north along the street) |
+
 ### Things you can safely edit
 
 - `src/city/layout.js`: block sizes, street width, alleys, the diagonal avenue,
@@ -315,12 +335,14 @@ the recipe, and give it a weight in `pickType()` at the bottom of that file.
 
 - Almost all of the city is drawn with a handful of big merged meshes and
   instanced meshes. A whole frame uses well under 200 draw calls
-  (about 60 on Low, about 110 on Medium, at most about 150; tap `FPS` to see it).
+  (about 65 on Low, about 125 on Medium, at most about 170; tap `FPS` to see it).
 - All glass of all buildings is ONE mesh with one glass shader that paints floor
   lines, mullions and lit rooms. All panels (concrete, metal, wood, solar) are one more.
 - Fins, floor plates and plants are instanced copies of a few small models, drawn
   only near the player.
-- Props are only drawn near the player (bins 105 m, cars 150 m, trees 330 m ...).
+- Props are only drawn near the player (bins 105 m, cars 150 m, trees 290 m ...).
+- All people are ONE instanced mesh; arms and legs swing in the shader. Only the
+  people and cars near the player exist - far ones are moved to a new place nearby.
 - One sun casts shadows: a sharp shadow map follows the player, a second soft one
   covers the far city and is only redrawn when the sun has moved.
 - At night only the 6 street lamps nearest to the player are real lights. All the
@@ -331,7 +353,7 @@ the recipe, and give it a weight in `pickType()` at the bottom of that file.
 
 ## Known limits of Phase 1
 
-- No traffic, no pedestrians, no missions yet. Cars are parked; the highway, the maglev and the drone pads are scenery.
+- No missions yet. People and cars are simple: people walk around the blocks and never cross the street, cars only turn right. The highway and the maglev are scenery.
 - Tested with a software renderer only; real phone frame rates still have to be checked on a device.
 - The player has no animation (the model has no skeleton yet).
 - Buildings cannot be entered.

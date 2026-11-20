@@ -45,7 +45,8 @@ const BRICK_FLOOR = 3.5;         // floors of the old brick buildings
 // ---------------------------------------------------------------------------
 const lin = M.lin;
 // tints of the glass: blue-grey, sea green, neutral, dark graphite, bronze, sky
-export const GLASS_TINTS = [[0.15, 0.21, 0.27], [0.13, 0.21, 0.22], [0.19, 0.22, 0.25], [0.09, 0.11, 0.15], [0.24, 0.2, 0.14], [0.14, 0.23, 0.29]];
+// glass tints (every building picks one): blue, sea green, grey, dark grey, bronze, light blue, green-grey
+export const GLASS_TINTS = [[0.12, 0.2, 0.33], [0.1, 0.24, 0.21], [0.19, 0.21, 0.23], [0.09, 0.1, 0.12], [0.3, 0.21, 0.11], [0.15, 0.25, 0.34], [0.15, 0.22, 0.17]];
 export const C = {
   white: lin([0.8, 0.81, 0.81]), light: lin([0.7, 0.72, 0.74]), grey: lin([0.55, 0.57, 0.6]), graphite: lin([0.17, 0.18, 0.2]),
   wood: lin([0.56, 0.36, 0.2]), bronze: lin([0.5, 0.33, 0.18]), concrete: lin([0.62, 0.62, 0.6]), dark: lin([0.08, 0.085, 0.09]),

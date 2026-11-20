@@ -453,7 +453,8 @@ export function createLighting(scene, renderer, city, materials) {
     // ---- sunlight color: white at noon, orange when low ----
     const ext = skyExtinction(st, Math.max(sunDir.y, 0.02));
     const mx = Math.max(ext[0], ext[1], ext[2], 1e-4);
-    const sunCol = [Math.pow(ext[0] / mx, 0.62), Math.pow(ext[1] / mx, 0.62), Math.pow(ext[2] / mx, 0.62)];
+    // (a little warmer than pure white, like real afternoon sun against a blue sky)
+    const sunCol = [Math.pow(ext[0] / mx, 0.62), Math.pow(ext[1] / mx, 0.62) * 0.95, Math.pow(ext[2] / mx, 0.62) * 0.84];
     // (the sky shader is bright: its blue is about 1.0, so the sun has to be strong to match)
     const sunPower = 16.0 * sunLevel * (0.4 + 0.6 * smoothstep(0, 28, el)) * (1 - 0.86 * rain);
 
@@ -469,6 +470,10 @@ export function createLighting(scene, renderer, city, materials) {
       sun.color.setRGB(0.55, 0.68, 1.0);
       sun.intensity = 0.2 * night * (1 - 0.7 * rain);
     }
+    // the leaf shader (light through leaves) and the sun glow need to know the sun
+    shared.uPgSunDir.value.copy(lightDir);
+    shared.uPgSunCol.value.copy(sun.color).multiplyScalar(nightMode ? 0 : sun.intensity);
+    info.sunDir = sunDir; info.sunColor = sunCol;
     const wantShadows = quality.shadows && !nightMode;
     if (sun.castShadow !== wantShadows) { sun.castShadow = wantShadows; farDirty = true; }
     const wantFar = wantShadows && quality.farShadows;

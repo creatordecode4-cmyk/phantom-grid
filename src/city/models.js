@@ -333,6 +333,70 @@ export function makeLifeguardTower() {
   return mergeParts(parts);
 }
 
+// A simple walking person, 1.75 m tall, looking toward +z.
+// The clothes take the per-copy color. Arms and legs swing in the shader:
+// for that every vertex stores "aLimb" = ( height of the joint it turns
+// around, how far it swings (+ or -), 1 ).
+export function makePedestrian() {
+  const skin = [0.7, 0.53, 0.42], hair = [0.1, 0.08, 0.07], shoe = [0.06, 0.06, 0.07], trousers = [0.2, 0.21, 0.25];
+  const parts = [
+    // body (takes the clothes color), a little wider at the shoulders
+    P(cyl(0.2, 0.165, 0.6, 6), [0, 1.17, 0], [0.95, 0.95, 0.95], 0.85, 0, { paint: 1, scale: [1, 1, 0.62] }),
+    P(cyl(0.05, 0.055, 0.1, 5), [0, 1.5, 0], skin, 0.7, 0),                       // neck
+    P(sph(0.112, 7, 5), [0, 1.63, 0.005], skin, 0.7, 0, { scale: [0.94, 1.14, 1] }), // head
+    P(sph(0.118, 7, 4), [0, 1.665, -0.022], hair, 0.8, 0, { scale: [0.97, 0.95, 1.02] }), // hair
+  ];
+  for (const sx of [-1, 1]) {
+    parts.push(P(box(0.15, 0.82, 0.17), [sx * 0.092, 0.46, 0], trousers, 0.85, 0, { paint: 0.3 }));   // leg
+    parts.push(P(box(0.14, 0.07, 0.27), [sx * 0.092, 0.036, 0.045], shoe, 0.6, 0));                    // shoe
+    parts.push(P(box(0.1, 0.5, 0.115), [sx * 0.262, 1.2, 0], [0.9, 0.9, 0.9], 0.85, 0, { paint: 1 })); // sleeve
+    parts.push(P(box(0.085, 0.16, 0.095), [sx * 0.262, 0.875, 0], skin, 0.7, 0));                      // hand
+  }
+  const geometry = mergeParts(parts);
+  // mark the arms and legs for the walking shader
+  const pos = geometry.attributes.position, limb = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), side = x > 0 ? 1 : -1;
+    let pivot = 0, swing = 0;
+    if (Math.abs(x) > 0.2) { pivot = 1.42; swing = -0.42 * side; }            // arm: swings against the leg on its side
+    else if (y < 0.875 && Math.abs(x) > 0.01) { pivot = 0.88; swing = 0.5 * side; } // leg
+    limb[i * 3] = pivot; limb[i * 3 + 1] = swing; limb[i * 3 + 2] = 1;
+  }
+  geometry.setAttribute('aLimb', new THREE.BufferAttribute(limb, 3));
+  return { geometry };
+}
+
+// Bike rack: four steel hoops in a row (along x) with two parked bicycles.
+export function makeBikeRack() {
+  const steel = [0.6, 0.62, 0.64];
+  const parts = [];
+  for (let i = 0; i < 4; i++) {
+    const x = (i - 1.5) * 0.85;
+    parts.push(P(new THREE.TorusGeometry(0.34, 0.022, 4, 10, Math.PI), [x, 0.46, 0], steel, 0.35, 0.9));
+    for (const sx of [-0.34, 0.34]) parts.push(P(cyl(0.022, 0.022, 0.46, 5), [x + sx, 0.23, 0], steel, 0.35, 0.9));
+  }
+  // one simple bicycle standing along x
+  const bike = (cx, z, color, lean) => {
+    const tyre = [0.05, 0.05, 0.055], rot = [lean, 0, 0];
+    for (const wx of [-0.52, 0.52]) parts.push(P(new THREE.TorusGeometry(0.32, 0.018, 4, 12), [cx + wx, 0.34, z], tyre, 0.8, 0, { rot }));
+    const tube = (x0, y0, x1, y1, r = 0.017) => {
+      const len = Math.hypot(x1 - x0, y1 - y0);
+      parts.push(P(cyl(r, r, len, 4), [cx + (x0 + x1) / 2, (y0 + y1) / 2, z + lean * ((y0 + y1) / 2 - 0.34) * -1], color, 0.4, 0.5, { rot: [lean, 0, Math.atan2(x1 - x0, y1 - y0) * -1] }));
+    };
+    tube(-0.52, 0.34, -0.12, 0.36);   // chain stay
+    tube(-0.12, 0.36, 0.3, 0.8);      // down tube
+    tube(-0.2, 0.84, 0.3, 0.8);       // top tube
+    tube(-0.12, 0.36, -0.22, 0.9);    // seat tube
+    tube(-0.52, 0.34, -0.2, 0.84);    // seat stay
+    tube(0.52, 0.34, 0.28, 0.95);     // fork + head
+    parts.push(P(box(0.2, 0.04, 0.09), [cx - 0.23, 0.93, z - lean * 0.6], [0.05, 0.05, 0.05], 0.7, 0));   // saddle
+    parts.push(P(box(0.04, 0.03, 0.44), [cx + 0.27, 0.97, z - lean * 0.63], [0.08, 0.08, 0.08], 0.5, 0.4)); // handlebar
+  };
+  bike(-0.85, 0.11, [0.1, 0.3, 0.5], 0.1);
+  bike(0.9, -0.11, [0.55, 0.16, 0.1], -0.1);
+  return mergeParts(parts);
+}
+
 // Small delivery / camera drone (near-future touch).
 export function makeDrone() {
   const body = [0.12, 0.13, 0.14];
@@ -341,6 +405,7 @@ export function makeDrone() {
     P(sph(0.07, 6, 4), [0, -0.09, 0.12], [0.02, 0.02, 0.02], 0.2, 0.6),
     P(box(0.04, 0.04, 0.02), [0.1, 0, 0.22], [1, 0.1, 0.05], 0.3, 0, { glow: 1.9 }),   // red light
     P(box(0.04, 0.04, 0.02), [-0.1, 0, 0.22], [0.1, 1, 0.3], 0.3, 0, { glow: 1.9 }),   // green light
+    P(box(0.26, 0.2, 0.3), [0, -0.19, -0.02], [0.62, 0.48, 0.3], 0.85, 0),             // the parcel it carries
   ];
   for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
     parts.push(P(box(0.05, 0.03, 0.46), [x * 0.2, 0.02, z * 0.2], body, 0.4, 0.5, { rot: [0, (x * z > 0 ? 1 : -1) * 0.78, 0] }));
@@ -352,81 +417,106 @@ export function makeDrone() {
 // ---------------------------------------------------------------------------
 // TREES
 // ---------------------------------------------------------------------------
-// Street tree: trunk (solid) + crown (flat leaf cards with soft round shading).
-export function makeTree(seed = 1) {
+// Street tree: trunk with branches (solid) + crown (many leaf cards).
+// The crown is built from a few "puffs" (balls of leaf cards) so it has a
+// natural, lumpy outline instead of one round ball.
+//   shape 0 = wide round street tree, 1 = taller, narrower tree
+export function makeTree(seed = 1, shape = 0) {
   const rng = new RNG(seed);
-  const bark = [0.22, 0.18, 0.15];
+  const bark = [0.92, 0.88, 0.84]; // the bark picture brings the color
+  const tall = shape === 1;
+  const trunkH = tall ? 4.4 : 3.5;
   const trunkParts = [
-    P(openCyl(0.11, 0.19, 3.4, 6), [0, 1.7, 0], bark, 0.95, 0),
-    P(openCyl(0.06, 0.1, 2.2, 4), [0.45, 4.1, 0.15], bark, 0.95, 0, { rot: [0.1, 0, -0.5] }),
-    P(openCyl(0.06, 0.1, 2.2, 4), [-0.4, 4.1, -0.25], bark, 0.95, 0, { rot: [-0.2, 0, 0.45] }),
-    P(openCyl(0.05, 0.09, 2.0, 4), [0.05, 4.2, 0.4], bark, 0.95, 0, { rot: [0.5, 0, 0.05] }),
+    P(openCyl(0.12, 0.21, trunkH, 7), [0, trunkH / 2, 0], bark, 0.95, 0),
+    P(openCyl(0.2, 0.3, 0.35, 7), [0, 0.17, 0], bark, 0.95, 0), // root flare
   ];
+  // the puffs: [x, y, z, radius]
+  const puffs = tall
+    ? [[0, 5.6, 0, 1.45], [0.5, 6.9, 0.2, 1.25], [-0.45, 6.4, -0.4, 1.2], [0.1, 8.0, -0.1, 1.0], [-0.2, 5.0, 0.55, 1.05]]
+    : [[0, 5.4, 0, 1.7], [1.25, 5.0, 0.35, 1.3], [-1.15, 5.1, -0.5, 1.35], [0.2, 4.9, -1.3, 1.2], [-0.3, 5.0, 1.25, 1.25], [0.15, 6.5, 0.1, 1.3]];
+  // a branch from the top of the trunk into every side puff
+  for (let k = 1; k < puffs.length; k++) {
+    const [px, py, pz] = puffs[k];
+    const from = [0, trunkH - 0.25, 0], to = [px * 0.8, py - 0.3, pz * 0.8];
+    const dx = to[0] - from[0], dy = to[1] - from[1], dz = to[2] - from[2];
+    const len = Math.hypot(dx, dy, dz);
+    trunkParts.push(P(openCyl(0.045, 0.1, len, 5), [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2], bark, 0.95, 0,
+      { rot: [Math.atan2(dz, dy), 0, -Math.atan2(dx, dy)] }));
+  }
   const trunk = mergeParts(trunkParts);
 
-  // crown: cards placed around a squashed ball
   const mb = new MeshBuilder();
-  const center = [0, 5.5, 0];
-  const cards = 13;
-  for (let i = 0; i < cards; i++) {
-    const inner = i >= 10;
-    const a = (i / 10) * Math.PI * 2 + rng.range(-0.3, 0.3);
-    const e = rng.range(-0.35, 0.95);
-    const rad = inner ? rng.range(0.2, 0.6) : rng.range(1.25, 1.75);
-    const cx = Math.cos(a) * Math.cos(e) * rad, cy = Math.sin(e) * rad * 0.9, cz = Math.sin(a) * Math.cos(e) * rad;
-    const size = rng.range(2.5, 3.5);
-    // each card looks roughly outward, with a random tilt
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.range(-0.9, 0.9), -a + HALF_PI + rng.range(-0.7, 0.7), rng.range(0, 6.28), 'YXZ'));
-    const corners = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
-    const idx = [];
-    for (const [u, v] of corners) {
-      const p = new THREE.Vector3(u * size, v * size, 0).applyQuaternion(q);
-      p.x += center[0] + cx; p.y += center[1] + cy; p.z += center[2] + cz;
-      // normal points away from the middle of the crown = round, soft shading
-      const n = new THREE.Vector3(p.x - center[0], (p.y - center[1]) * 1.2 + 0.6, p.z - center[2]).normalize();
-      // lower and inner leaves are darker (less sky light reaches them)
-      const shade = 0.62 + 0.42 * Math.min(1, Math.max(0, (p.y - 3.8) / 3.4));
-      mb.color(shade, shade, shade * 0.96, 1);
-      mb.data(1, 0, 0, 0); // sways in the wind
-      idx.push(mb.vertex(p.x, p.y, p.z, n.x, n.y, n.z, u + 0.5, v + 0.5));
+  const center = [0, tall ? 6.3 : 5.3, 0];
+  const lowY = tall ? 4.0 : 3.7, highY = tall ? 9.2 : 7.9;
+  const corners = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
+  for (const [px, py, pz, pr] of puffs) {
+    const cards = 6;
+    for (let i = 0; i < cards; i++) {
+      const a = (i / cards) * Math.PI * 2 + rng.range(-0.5, 0.5);
+      const e = rng.range(-0.5, 1.1);
+      const rad = pr * rng.range(0.35, 0.72);
+      const cx = px + Math.cos(a) * Math.cos(e) * rad, cy = py + Math.sin(e) * rad * 0.8, cz = pz + Math.sin(a) * Math.cos(e) * rad;
+      const size = pr * rng.range(1.5, 1.95);
+      // each card looks roughly outward, with a random tilt
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.range(-1.0, 1.0), -a + HALF_PI + rng.range(-0.8, 0.8), rng.range(0, 6.28), 'YXZ'));
+      const idx = [];
+      for (const [u, v] of corners) {
+        const p = new THREE.Vector3(u * size, v * size, 0).applyQuaternion(q);
+        p.x += cx; p.y += cy; p.z += cz;
+        // normal points away from the middle of the crown = round, soft shading
+        const n = new THREE.Vector3(p.x - center[0], (p.y - center[1]) * 1.1 + 0.9, p.z - center[2]).normalize();
+        // lower and inner leaves are a little darker (less sky light reaches them)
+        const h = Math.min(1, Math.max(0, (p.y - lowY) / (highY - lowY)));
+        const shade = 0.78 + 0.34 * h;
+        mb.color(shade, shade, shade * 0.94, 1);
+        mb.data(0.6 + 0.6 * h, 0, 0, 0); // sways in the wind, the top more than the bottom
+        idx.push(mb.vertex(p.x, p.y, p.z, n.x, n.y, n.z, u + 0.5, v + 0.5));
+      }
+      mb.quadIdx(idx[0], idx[1], idx[2], idx[3]);
     }
-    mb.quadIdx(idx[0], idx[1], idx[2], idx[3]);
   }
   return { trunk, crown: mb.build(true) };
 }
 
-// Palm tree: tall thin trunk + a crown of curved fronds.
+// Palm tree: a tall ringed trunk + a full crown of wide, drooping fronds.
 export function makePalm(seed = 2) {
   const rng = new RNG(seed);
-  const bark = [0.4, 0.34, 0.28];
+  const bark = [0.95, 0.92, 0.88]; // the ring picture brings the color
   const H = 10.5;
   // the trunk leans a little: stack short pieces along a soft curve
   const trunkParts = [];
-  const seg = 5;
+  const seg = 7;
   const curve = (t) => [0.55 * t * t, H * t, 0.25 * Math.sin(t * 2.2)];
+  // thick foot, slim middle, a little thicker again under the crown
+  const radius = (t) => 0.2 + 0.12 * Math.exp(-t * 9) - 0.05 * t + 0.03 * smooth01((t - 0.86) / 0.14);
   for (let i = 0; i < seg; i++) {
     const t0 = i / seg, t1 = (i + 1) / seg;
     const a = curve(t0), b = curve(t1);
     const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
     const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
     const len = Math.hypot(dx, dy, dz);
-    const r0 = 0.24 - 0.1 * t0, r1 = 0.24 - 0.1 * t1;
-    trunkParts.push(P(openCyl(r1, r0, len * 1.03, 6), mid, bark, 0.95, 0, { rot: [Math.atan2(dz, dy), 0, -Math.atan2(dx, dy)] }));
+    trunkParts.push(P(openCyl(radius(t1), radius(t0), len * 1.03, 8), mid, bark, 0.95, 0, { rot: [Math.atan2(dz, dy), 0, -Math.atan2(dx, dy)] }));
   }
   const top = curve(1);
-  trunkParts.push(P(sph(0.32, 6, 4), [top[0], top[1] - 0.05, top[2]], [0.3, 0.27, 0.2], 0.95, 0));
+  // the "boot": brown fibre ball where the fronds grow out
+  trunkParts.push(P(sph(0.36, 7, 5), [top[0], top[1] + 0.05, top[2]], [0.62, 0.52, 0.4], 0.95, 0, { scale: [1, 1.25, 1] }));
   const trunk = mergeParts(trunkParts);
 
   const mb = new MeshBuilder();
-  const fronds = 13;
+  const fronds = 19;
   for (let k = 0; k < fronds; k++) {
-    const az = (k / fronds) * Math.PI * 2 + rng.range(-0.2, 0.2);
-    const len = rng.range(3.1, 4.0);
-    const rise = rng.range(0.1, 2.0);            // young fronds point up, old ones hang
-    const droop = rise + rng.range(1.4, 2.6);
+    // three rings: young fronds stand up, middle ones reach out, old ones hang down
+    const tier = k < 5 ? 0 : k < 13 ? 1 : 2;
+    const az = k * 2.39996 + rng.range(-0.15, 0.15);       // golden angle: evenly spread
+    const len = (tier === 0 ? rng.range(3.0, 3.6) : rng.range(3.8, 4.7));
+    const rise = tier === 0 ? rng.range(2.6, 3.6) : tier === 1 ? rng.range(0.9, 2.0) : rng.range(-0.4, 0.5);
+    const droop = tier === 0 ? rng.range(1.6, 2.4) : tier === 1 ? rng.range(2.6, 3.8) : rng.range(2.6, 3.6);
     const hx = Math.cos(az), hz = Math.sin(az);
-    const S = 4;
-    const pt = (t) => new THREE.Vector3(top[0] + hx * len * t, top[1] + rise * t - droop * t * t, top[2] + hz * len * t);
+    const S = 5;
+    // the rib: goes up and out, then bends down more and more toward the tip
+    const pt = (t) => new THREE.Vector3(
+      top[0] + hx * len * (t - 0.12 * t * t * t), top[1] + 0.25 + rise * t - droop * Math.pow(t, 2.3), top[2] + hz * len * (t - 0.12 * t * t * t));
+    const dry = tier === 2 && rng.chance(0.35); // some old fronds are yellow-brown
     for (const half of [-1, 1]) {
       let prev = null;
       for (let i = 0; i <= S; i++) {
@@ -436,13 +526,16 @@ export function makePalm(seed = 2) {
         const sideV = new THREE.Vector3(-hz, 0, hx);
         const up = new THREE.Vector3().crossVectors(sideV, tan).normalize();
         if (up.y < 0) up.negate();
-        const w = 0.52 * (1 - 0.55 * t) + 0.04;
-        // each half is folded up a little: the frond looks like a shallow "V"
-        const edge = p.clone().addScaledVector(sideV, half * w * 0.92).addScaledVector(up, w * 0.38);
-        const n = up.clone().addScaledVector(sideV, -half * 0.4).normalize();
-        const shade = 0.72 + 0.34 * (1 - t) + rise * 0.04;
-        mb.color(shade, shade, shade * 0.95, 1);
-        mb.data(t, 0, 0, 0);
+        // wide in the middle, narrow at both ends (the picture is cut the same way)
+        const w = 1.02 * Math.pow(Math.sin(Math.PI * Math.min(1, 0.12 + t * 0.9)), 0.6) * (1 - 0.3 * t) + 0.05;
+        // the leaflets hang down from the rib: the frond is an upside-down "V"
+        const sag = 0.28 + 0.3 * t;
+        const edge = p.clone().addScaledVector(sideV, half * w * Math.cos(sag)).addScaledVector(up, -w * Math.sin(sag));
+        const n = up.clone().addScaledVector(sideV, half * 0.45).normalize();
+        const shade = (tier === 0 ? 1.08 : tier === 1 ? 0.98 : 0.84) + 0.1 * (1 - t);
+        if (dry) mb.color(shade * 1.25, shade * 0.95, shade * 0.5, 1);
+        else mb.color(shade, shade, shade * 0.93, 1);
+        mb.data(t * t * 1.4, 0, 0, 0); // the tips sway in the wind
         const iRib = mb.vertex(p.x, p.y, p.z, n.x, n.y, n.z, 0.5, t);
         const iEdge = mb.vertex(edge.x, edge.y, edge.z, n.x, n.y, n.z, 0.5 + half * 0.5, t);
         if (prev) {
@@ -455,6 +548,7 @@ export function makePalm(seed = 2) {
   }
   return { trunk, crown: mb.build(true), height: H };
 }
+const smooth01 = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
 
 // ---------------------------------------------------------------------------
 // CARS
@@ -869,7 +963,7 @@ export function makeShrub(seed = 5) {
       const p = new THREE.Vector3(u * size, v * size, 0).applyQuaternion(q);
       p.x += cx; p.y += cy; p.z += cz;
       const n = new THREE.Vector3(p.x, (p.y - 0.3) * 1.3 + 0.4, p.z).normalize();
-      const shade = 0.6 + 0.4 * Math.min(1, Math.max(0, p.y / 0.8));
+      const shade = 0.8 + 0.3 * Math.min(1, Math.max(0, p.y / 0.8));
       mb.color(shade, shade, shade * 0.95, 1);
       mb.data(0.35, 0, 0, 0);
       idx.push(mb.vertex(p.x, Math.max(0.02, p.y), p.z, n.x, n.y, n.z, u + 0.5, v + 0.5));
