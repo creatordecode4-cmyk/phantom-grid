@@ -134,15 +134,24 @@ export function createControls(dom) {
     const lean = a === 90 ? e.beta : a === 270 || a === -90 ? -e.beta : e.gamma;
     tiltSteer = clamp(lean / 28, -1, 1);
   }
+  let onTiltChange = null;   // main.js: remember the choice in the settings
+  // switch tilt steering on or off (must be called from a tap: iPhones ask for permission)
+  function setTilt(on) {
+    const mark = (v) => { if (dom.drive && dom.drive.tilt) dom.drive.tilt.classList.toggle('on', v); };
+    if (!on) { if (tiltOn) window.removeEventListener('deviceorientation', onTilt); tiltOn = false; tiltSteer = 0; mark(false); return; }
+    if (tiltOn) return;
+    const turnOn = () => { tiltOn = true; window.addEventListener('deviceorientation', onTilt); mark(true); };
+    // iPhones ask the user for permission first
+    const D = window.DeviceOrientationEvent;
+    if (D && typeof D.requestPermission === 'function') D.requestPermission().then((r) => { if (r === 'granted') turnOn(); }).catch(() => {});
+    else if (D) turnOn();
+  }
   if (dom.drive && dom.drive.tilt) {
     dom.drive.tilt.addEventListener('pointerdown', (e) => {
       e.preventDefault(); e.stopPropagation();
-      const turnOn = () => { tiltOn = true; window.addEventListener('deviceorientation', onTilt); dom.drive.tilt.classList.add('on'); };
-      if (tiltOn) { tiltOn = false; tiltSteer = 0; window.removeEventListener('deviceorientation', onTilt); dom.drive.tilt.classList.remove('on'); return; }
-      // iPhones ask the user for permission first
-      const D = window.DeviceOrientationEvent;
-      if (D && typeof D.requestPermission === 'function') D.requestPermission().then((r) => { if (r === 'granted') turnOn(); }).catch(() => {});
-      else if (D) turnOn();
+      const want = !tiltOn;
+      setTilt(want);
+      if (onTiltChange) onTiltChange(want);
     });
   }
 
@@ -221,5 +230,5 @@ export function createControls(dom) {
     return input;
   }
 
-  return { input, update, keys, get tilt() { return tiltOn; } };
+  return { input, update, keys, setTilt, get tilt() { return tiltOn; }, set onTiltChange(fn) { onTiltChange = fn; } };
 }

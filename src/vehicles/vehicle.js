@@ -87,6 +87,24 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   const interiors = {};   // seats, dashboard ... one geometry per car type
   const drivers = {};
 
+  // A CHEAP CAR for computer drivers (story racers, cars that overtake): one mesh, wheels that do not turn,
+  // no doors and no inside. It costs 2 draw calls instead of about 18.
+  const cheapGeo = {};
+  function partsSimple(v) {
+    const key = v.kind + '|' + v.color.map((c) => c.toFixed(3)).join(',');
+    if (!cheapGeo[key]) {
+      const g = makeCar(v.kind, { wheels: true }).clone();
+      const c = g.attributes.color, d = g.attributes.aData;
+      // paint: the color is written into the points that carry paint (the third "data" number says how much)
+      for (let i = 0; i < c.count; i++) { const k = d ? d.getZ(i) : 0; c.setXYZ(i, c.getX(i) * (1 + (v.color[0] - 1) * k), c.getY(i) * (1 + (v.color[1] - 1) * k), c.getZ(i) * (1 + (v.color[2] - 1) * k)); }
+      cheapGeo[key] = g;
+    }
+    const body = new THREE.Mesh(cheapGeo[key], mats.carPaint);
+    body.castShadow = true;
+    v.tilt.add(body);
+    v.paintMeshes = [];
+  }
+
   // A CAR MADE IN CODE: the body is cut into body, glass and two real doors.
   function partsFromCode(v) {
     const { kind, info, color } = v;
@@ -133,7 +151,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // (with doors, glass and turning wheels) replaces it as soon as it is loaded.
   function partsFromModel(v) {
     const info = v.info;
-    const simple = new THREE.Mesh(carLib.geo[v.kind], mats.carPaint);
+    const simple = new THREE.Mesh(carLib.geo[v.kind], v.tint ? tintedSimple(v.tint) : mats.carPaint);
     simple.castShadow = true; simple.receiveShadow = true;
     v.tilt.add(simple);
     // the detailed model is only fetched when somebody needs it (v.needDetail())
@@ -148,7 +166,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         o.traverse((m) => { if (m.isMesh) meshes.push(m); });
         for (const m of meshes) {
           if (m.name.endsWith('glass')) { m.material = glassMat; m.renderOrder = 16; continue; }
-          m.material = paintFor(m.material);
+          m.material = paintFor(m.material, v.tint);
           m.castShadow = true; m.receiveShadow = true;
           if (!m.name.startsWith('wheel')) addLining(m); // wheels are solid, they need no inside
         }
@@ -199,10 +217,13 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     }).catch((e) => console.warn('[vehicles] could not show the detailed model of', v.kind, e)); };
   }
   // model files bring their own picture; we add a clear coat and the street lamp light at night
-  const paintCache = new Map();
-  const damageMats = new Map();
-  function paintFor(src) {
-    if (paintCache.has(src)) return paintCache.get(src);
+  // tint: [r, g, b] darkens / colors the whole car (story: the black Phantom)
+  const paintCache = new Map();   // picture of the model -> (tint -> the 4 damage levels)
+  function paintFor(src, tint = null) {
+    const id = tint ? tint.join(',') : '';
+    let byTint = paintCache.get(src);
+    if (!byTint) paintCache.set(src, (byTint = new Map()));
+    if (byTint.has(id)) return byTint.get(id)[0];
     // (the same picture is kept; three more copies get darker and duller for damaged cars)
     const make = (level) => {
       const m = new THREE.MeshPhysicalMaterial({
@@ -210,14 +231,27 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         clearcoat: 0.6 * (1 - level / 3), clearcoatRoughness: 0.12 + level * 0.15, envMapIntensity: 1.3 - level * 0.25,
       });
       m.color.setScalar(1 - level * 0.2);
+      if (tint) m.color.multiply(new THREE.Color(tint[0], tint[1], tint[2]));
       m.userData.paintSrc = src; m.userData.level = level;
       materials.lampPatch(m);
       return m;
     };
     const set = [make(0), make(1), make(2), make(3)];
-    paintCache.set(src, set[0]);
-    damageMats.set(src, set);
+    for (const m of set) m.userData.paintSet = set;
+    byTint.set(id, set);
     return set[0];
+  }
+  // the light version of a model car in another color
+  const simpleTints = new Map();
+  function tintedSimple(tint) {
+    const id = tint.join(',');
+    if (!simpleTints.has(id)) {
+      const m = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.55, clearcoat: 0.6, clearcoatRoughness: 0.14 });
+      m.color.setRGB(tint[0], tint[1], tint[2]);
+      materials.lampPatch(m);
+      simpleTints.set(id, m);
+    }
+    return simpleTints.get(id);
   }
   // seats, dashboard and (while somebody drives) a driver
   function addInside(v) {
@@ -285,13 +319,22 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       kind, info, type, role, isCar, group, tilt, wheels: [], doorL: null, doorR: null, driver: null, beam, beamMat, color,
       x, y, z, heading: rot, doorOpen: 0, radius, circles: reach > 0.3 ? [reach, 0, -reach] : [0],
       label: type.label, tag: !!opts.tag, keep: !!opts.keep, npc: !!opts.npc, ai: null,
+      // story hooks: tint (color), lights ('normal' | 'off' | 'bar'), limit (top speed in m/s, 0 = none),
+      // lockExit (the player may not get out), arena (a place with its own ground and walls)
+      tint: opts.tint || null, lights: opts.lights || 'normal', limit: 0, lockExit: false, arena: opts.arena || null,
+      noDetail: !!opts.noDetail,   // never load the detailed model (computer drivers)
+      away: false,                 // true: not in the world right now (the test garage during the story)
+      dead: false,                 // true: the engine does not run any more (a wreck in a story scene)
+      curbSide: false,             // true: the driver gets out on the right, the sidewalk side
       siren: false, hiBeam: false, blink: 0, blinkT: 0, startT: 0, level: 0, lastSmoke: 0, wheelPrev: null, hitX: x, hitZ: z, scrapeT: 0, turboArmed: false,
     };
     if (role === 'boat') initBoatState(v); else if (role === 'drone') initDroneState(v); else initCarState(v);
     live.push(v);
     if (role === 'boat') { const m = new THREE.Mesh(carLib.boat, mats.carPaint); m.castShadow = true; tilt.add(m); }
     else if (role === 'drone') { const m = new THREE.Mesh(droneGeo, carLib && carLib.drone ? mats.carPaint : mats.prop); m.castShadow = true; m.position.y = 0.16; tilt.add(m); }
-    else if (info.model && carLib && carLib.geo[kind]) partsFromModel(v); else partsFromCode(v);
+    else if (info.model && carLib && carLib.geo[kind]) partsFromModel(v);
+    else if (opts.simple) partsSimple(v);
+    else partsFromCode(v);
     return v;
   }
 
@@ -330,11 +373,11 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   function nearest(px, pz) {
     let best = null, bestD = 1e9;
     for (const v of live) {
-      if (v === active || v.npc) continue;
+      if (v === active || v.npc || v.away || (enterFilter && !enterFilter(v))) continue;
       const d = Math.hypot(v.x - px, v.z - pz) - (v.role === 'boat' ? 3.5 : 0);
       if (d < ENTER_RANGE && d < bestD) { bestD = d; best = { live: v, x: v.x, z: v.z }; }
     }
-    for (const rec of city.parkedCars) {
+    if (!enterFilter) for (const rec of city.parkedCars) {
       if (rec.taken) continue;
       const dx = rec.x - px, dz = rec.z - pz;
       if (Math.abs(dx) > ENTER_RANGE || Math.abs(dz) > ENTER_RANGE) continue;
@@ -356,7 +399,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     }
     // the real vehicles nearest to the player show their detailed model, the others the light one
     byDist.length = 0;
-    for (const v of live) if (v.needDetail) { v.lodD = v === active ? -1 : Math.hypot(v.x - px, v.z - pz); byDist.push(v); }
+    for (const v of live) if (v.needDetail && !v.noDetail && !v.away) { v.lodD = v === active ? -1 : Math.hypot(v.x - px, v.z - pz); byDist.push(v); }
     byDist.sort((a, b) => a.lodD - b.lodD);
     byDist.forEach((v, i) => {
       const want = v === active || (i < budget && v.lodD < 20);
@@ -381,11 +424,31 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     const lx = fz, lz = -fx; // the car's left
     const side = v.info.halfWidth + 0.75;
     const tries = [[lx * side, lz * side], [-lx * side, -lz * side], [-fx * (v.info.length / 2 + 0.9), -fz * (v.info.length / 2 + 0.9)], [fx * (v.info.length / 2 + 0.9), fz * (v.info.length / 2 + 0.9)]];
+    if (v.curbSide) tries.unshift(tries.splice(1, 1)[0]);   // (a courier van: out on the sidewalk side, not into the traffic)
     for (const [ox, oz] of tries) if (spotFree(v.x + ox, v.z + oz)) return { x: v.x + ox, z: v.z + oz };
     return { x: v.x + lx * side, z: v.z + lz * side };
   }
 
   // ------------------------------------------------------------ get in / out
+  // Put the player into a vehicle at once, without the door animation (story scenes start like this).
+  function enterNow(v, player) {
+    active = v; state = 'driving'; stateTime = 0; exitWanted = false; v.doorOpen = 0; v.startT = 0;
+    player.setHidden(true);
+    player.place(v.x, v.z, v.heading);
+    if (v.needDetail) v.needDetail();
+    sound.setTone(v.type.tone);
+  }
+  // ... and take the player out again at once (x, z: where to stand; left out = next to the door)
+  function leaveNow(player, x = null, z = null, heading = null) {
+    const v = active;
+    if (!v) return;
+    v.vx = v.vz = 0; v.forward = 0; v.siren = false; v.doorOpen = 0;
+    const s = x === null ? doorSpot(v) : { x, z };
+    active = null; state = 'none'; exitWanted = false;
+    player.place(s.x, s.z, heading === null ? v.heading : heading);
+    player.setHidden(false);
+    sound.quiet();
+  }
   function tryEnter(player) {
     if (state !== 'none') return false;
     const near = nearest(player.position.x, player.position.z);
@@ -401,6 +464,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   function requestExit() {
     if (state !== 'driving') return;
     const v = active;
+    if (v.lockExit) { if (typeof v.lockExit === 'string') message = v.lockExit; return; }
     if (v.role === 'boat' && v.z < SHORE - 9) { message = 'BRING THE BOAT BACK TO THE BEACH TO GET OUT'; return; }
     if (v.role === 'drone' && v.alt > 1.5) { message = 'LAND THE DRONE FIRST (DOWN BUTTON)'; return; }
     exitWanted = true;
@@ -410,13 +474,15 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // Push the vehicle out of walls, props and other cars. Returns what it hit:
   //   { impact (m/s into the obstacle), lever (how much the hit wants to spin the car) }
   const hitOut = { impact: 0, lever: 0 };
+  const NO_CELL = { boxes: [], circles: [] };
+  let cur = null;           // the vehicle whose physics step is running (the world functions below look at it)
   function collide(v) {
     let impact = 0, lever = 0;
     const fx = Math.sin(v.heading), fz = Math.cos(v.heading), R = v.radius;
     for (let pass = 0; pass < 2; pass++) {
       for (const off of v.circles) {
         const cx = v.x + fx * off, cz = v.z + fz * off;
-        const cell = city.colliders.near(cx, cz);
+        const cell = v.arena ? NO_CELL : city.colliders.near(cx, cz);
         let px = 0, pz = 0, owner = null;
         for (const b of cell.boxes) {
           if (b.h < 0.3) continue;
@@ -460,6 +526,17 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         }
       }
     }
+    if (v.arena) {
+      // an arena has its own side walls (the crash walls of the raised highway) and its own way out
+      const A = v.arena, r0 = v.radius;
+      if (v.x < A.minX + r0) { v.x = A.minX + r0; if (v.vx < 0) { impact = Math.max(impact, -v.vx * 0.7); v.vx *= -0.2; lever -= 0.25 * Math.sign(v.vz || 1); } }
+      if (v.x > A.maxX - r0) { v.x = A.maxX - r0; if (v.vx > 0) { impact = Math.max(impact, v.vx * 0.7); v.vx *= -0.2; lever += 0.25 * Math.sign(v.vz || 1); } }
+      if (v.z > A.maxZ - 2) { v.z = A.maxZ - 2; if (v.vz > 0) v.vz *= -0.2; }
+      if (v.z < A.minZ) v.arena = null;                 // out of the arena (the foot of the ramp): the normal city rules again
+      if (impact < 0.05) return null;
+      hitOut.impact = impact; hitOut.lever = lever;
+      return hitOut;
+    }
     // the edge of the map is a soft wall
     if (v.x < B.minX + 1) { v.x = B.minX + 1; if (v.vx < 0) { impact = Math.max(impact, -v.vx); v.vx *= -0.25; } }
     if (v.x > B.maxX - 1) { v.x = B.maxX - 1; if (v.vx > 0) { impact = Math.max(impact, v.vx); v.vx *= -0.25; } }
@@ -492,11 +569,12 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   };
   const world = {
     surface(x, z) {
+      if (cur && cur.arena) return weather && weather.amount > 0.3 ? SURF.wet : SURF.road;
       if (z < L.neon.promenadeMinZ) return SURF.sand;
       if (city.groundHeight(x, z) > 0.05) return SURF.walk;
       return weather && weather.amount > 0.3 ? SURF.wet : SURF.road;
     },
-    ground: (x, z) => city.groundHeight(x, z),
+    ground: (x, z) => (cur && cur.arena ? cur.arena.ground(x, z) : city.groundHeight(x, z)),
     collide, collideAir,
     get wet() { return weather ? clamp(weather.amount, 0, 1) : 0; },
     get assist() { return settings ? settings.assist : 'normal'; },
@@ -510,8 +588,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     const was = v.level;
     v.level = level;
     for (const m of v.paintMeshes || []) {
-      const src = m.material.userData.paintSrc;
-      if (src) m.material = damageMats.get(src)[level];                       // model cars: a darker, duller paint
+      const set = m.material.userData.paintSet;
+      if (set) m.material = set[level];                       // model cars: a darker, duller paint
       else if (m.geometry.attributes.color && !m.isInstancedMesh) {
         // cars made in code: darken the colors stored in this car's own body
         const c = m.geometry.attributes.color, k = (1 - level * 0.17) / (1 - was * 0.17);
@@ -526,6 +604,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
 
   // ------------------------------------------------------------ show it: place, tilt, lights
   function place(v, night, time) {
+    v.group.visible = !v.away;
+    if (v.away) return;
     v.group.position.set(v.x, v.y + (v.isCar ? v.heave : 0), v.z);
     v.group.rotation.y = v.heading;
     // engine start: a short shake
@@ -546,10 +626,17 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       return;
     }
     // ---- lamps: light dots at the ends of the car's box (see effects.js) ----
-    const on = driven || v.npc;
-    const lampOn = on ? night : 0;
+    const on = (driven || v.npc) && v.lights !== 'off';
+    const lampOn = on ? (v.lights === 'bar' ? 1 : night) : 0;
     const blinkOn = v.blink !== 0 && (time * 2.6) % 1 < 0.5;
-    if (on) {
+    if (on && v.lights === 'bar') {
+      // the Phantom: one thin, cold bar of light across the nose and a red one across the tail (day and night)
+      const fx = Math.sin(v.heading), fz = Math.cos(v.heading), lx = fz, lz = -fx, hw = v.info.halfWidth * 0.62, y = v.y + v.heave + v.info.noseY;
+      for (let i = -6; i <= 6; i++) {
+        effects.lamp(v.x + fx * (v.info.frontZ + 0.05) + lx * hw * (i / 6), y, v.z + fz * (v.info.frontZ + 0.05) + lz * hw * (i / 6), 0.8, 1.1, 1.5, 0.13);
+        if (i % 2 === 0) effects.lamp(v.x + fx * (v.info.backZ - 0.05) + lx * hw * (i / 6), y * 1.0 + 0.12, v.z + fz * (v.info.backZ - 0.05) + lz * hw * (i / 6), v.braking ? 2.4 : 1.0, 0.05, 0.04, 0.14);
+      }
+    } else if (on) {
       effects.carLamps(v.x, v.y + v.heave, v.z, v.heading, v.info.halfWidth, v.info.frontZ, v.info.backZ, v.info.noseY, {
         head: lampOn > 0.05 ? (v.hiBeam ? 2 : 1) : 0, tail: lampOn, brake: v.braking && !v.reverse, reverse: v.reverse && Math.abs(v.forward) > 0.2, blink: v.blink, blinkOn,
       });
@@ -600,7 +687,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     }
     // ---- sounds ----
     const rev = clamp((v.rpm - IDLE_RPM) / (RED_RPM - IDLE_RPM), 0, 1);
-    sound.setEngine(true, 0.1 + rev * 0.9, Math.max(fx.throttle, v.nitroOn ? 1 : 0));
+    sound.setEngine(!v.dead, 0.1 + rev * 0.9, fx.limited ? 0.3 : Math.max(fx.throttle, v.nitroOn ? 1 : 0));   // (at the limiter the engine sounds held back)
     const onRoad = fx.surface === 'road' || fx.surface === 'wet';
     sound.setScreech(onRoad ? fx.slip * (fx.surface === 'wet' ? 0.55 : 1) : 0);
     sound.setWind(speed / 55);
@@ -652,7 +739,9 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   const idle = { steer: 0, gas: 0, brake: 0, handbrake: true };
   const flasher = { on: false, x: 0, y: 0, z: 0, red: true };
   let acc = 0, camMode = 'chase', nitroWas = false, detailTimer = 0;
+  let enterFilter = null;     // story: which vehicles the player may get into
   let riggedDriver = false;   // true: the real player character sits in the car (main.js puts it there), the simple driver stays hidden
+  let forceDriver = null;     // film scenes: true = always show the driver's body, false = never (the camera is in their eyes), null = as usual
   // input: what the player does, player: the player object, night: 0..1 (lamps on), time: seconds
   function update(dt, input, player, night, time) {
     shake = Math.max(0, shake - dt * 2.6);
@@ -690,6 +779,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     while (acc >= STEP) {
       acc -= STEP;
       for (const v of live) {
+        if (v.away) continue;
+        cur = v;
         if (v.startT > 0) v.startT -= STEP;
         if (v === active && state === 'driving') {
           let inp = drive;
@@ -707,6 +798,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       }
     }
 
+    cur = null;
     const v = active;
     if (v && v.fx) { v.fx.impact = pkImpact; if (v.isCar) { v.fx.bump = pkBump; v.fx.shifted = pkShift; if (fxLast) v.fx.scrape = pkScrape; } }
     if (v && state === 'driving') {
@@ -718,6 +810,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       feedback(v, drive, dt, time, night);
       // the player object travels with the vehicle (so the world knows where we are)
       player.place(v.x, v.z, v.heading);
+      if (v.arena) player.position.y = v.y;        // (up on the raised highway)
     } else if (state !== 'driving') sound.quiet();
     for (const q of live) place(q, night, time);
 
@@ -731,7 +824,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       if (q === active) continue;
       const d = Math.hypot(q.x - px, q.z - pz);
       if (!q.keep && !q.npc && (d > 320 || (loose > 2 && d > 90))) { removeVehicle(q); loose--; continue; }
-      if (dyn && d < 45 && q.role !== 'boat' && !(q.role === 'drone' && q.alt > 2.5)) {
+      if (dyn && d < 45 && !q.away && q.role !== 'boat' && !(q.role === 'drone' && q.alt > 2.5)) {
         const fx = Math.sin(q.heading), fz = Math.cos(q.heading);
         for (const off of q.circles) dyn.push({ x: q.x + fx * off, z: q.z + fz * off, r: q.radius, veh: q });
       }
@@ -744,7 +837,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     if (!CAR_TYPES[kind]) return null;
     const role = CAR_TYPES[kind].role;
     if (role === 'boat' && !(carLib && carLib.boat)) return null;
-    const y = role === 'boat' ? seaWorld.waterLevel - 0.5 : city.groundHeight(x, z);
+    const y = role === 'boat' ? seaWorld.waterLevel - 0.5 : opts.arena ? opts.arena.ground(x, z) : city.groundHeight(x, z);
     const v = makeVehicle(kind, x, y, z, rot, color || [1, 1, 1], opts);
     place(v, 0, 0);
     return v;
@@ -790,6 +883,21 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // (a plain object with "get" functions: the values are read fresh every time)
   return {
     live, nearest, tryEnter, requestExit, update, prefetch, spawn, spawnInFront, buildGarage, repair, removeVehicle, world, events, flasher,
+    enterNow, leaveNow, showDamage, clearParked,
+    // story: only vehicles this function says yes to can be entered (null = all)
+    set enterFilter(fn) { enterFilter = fn; },
+    // where the passenger sits (null until the inside of the car exists)
+    passengerSeat(v) {
+      if (!v || !v.isCar || !v.driver) return null;
+      const s = seatOf(v.info);
+      return { node: v.tilt, x: -s.x, y: s.y + 0.02, z: s.z - 0.05, scale: clamp((v.info.roof - 0.1 - (s.y + 0.12)) / 0.93, 0.62, 1) };
+    },
+    // places inside a car, for story props: the seat, the middle of the dashboard, the steering wheel, the driver's eyes
+    cabin(v) {
+      const s = seatOf(v.info), k = Math.min(1, Math.max(0.55, (v.info.roof - 0.14 - s.y) / 0.95));
+      const dz = Math.min(s.z + 0.82, v.info.wheelZ[1] - 0.1 - 0.05);
+      return { seat: s, k, dash: [0, s.y + 0.1 + 0.47 * k + 0.012, dz - 0.05], wheel: [s.x, s.y + 0.1 + 0.42 * k, dz - 0.26], eye: [s.x, s.y + 0.16 + 0.68 * k, s.z - 0.1 - (1 - k) * 0.3] };
+    },
     get active() { return active; },
     get state() { return state; },
     get driving() { return state === 'driving' || state === 'exiting'; },
@@ -802,6 +910,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       if (!v) return null;
       return {
         kmh: Math.hypot(v.vx, v.vz) * KMH, role: v.role, label: v.label, damage: v.damage || 0,
+        limit: v.limit ? Math.round(v.limit * KMH) : 0, limited: !!(v.fx && v.fx.limited),
         gear: v.isCar ? (v.reverse ? 'R' : Math.abs(v.forward) < 0.3 && !v.fx.throttle ? 'N' : String(v.gear)) : '',
         rpm: v.isCar ? clamp((v.rpm - IDLE_RPM) / (RED_RPM - IDLE_RPM), 0, 1) : v.fx.throttle,
         nitro: v.type.nitro ? v.nitro : null, blink: v.blink, abs: v.isCar && v.fx.abs, siren: v.siren, height: v.role === 'drone' ? v.alt : null,
@@ -810,13 +919,15 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     // Where the driver sits right now (null = nobody is to be seen in the seat). Used to put the real player character into the car.
     get seat() {
       const v = active;
-      if (!v || !v.isCar || !v.driver || camMode === 'cockpit') return null;
+      if (!v || !v.isCar || !v.driver || forceDriver === false) return null;
+      if (camMode === 'cockpit' && forceDriver !== true) return null;
       if (!(state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3))) return null;
       const s = seatOf(v.info);
       // low cars: a smaller driver, so the head stays under the roof
       return { node: v.tilt, x: s.x, y: s.y + 0.02, z: s.z - 0.05, scale: clamp((v.info.roof - 0.1 - (s.y + 0.12)) / 0.93, 0.62, 1), wheel: interiors[v.kind].userData.wheel, steer: v.steer };
     },
     set riggedDriver(on) { riggedDriver = !!on; },
+    set forceDriver(v) { forceDriver = v; },
     // camera: chase | close | hood | cockpit
     get camMode() { return camMode; },
     set camMode(m) { camMode = m; sound.setInside(m === 'cockpit' && state === 'driving'); },

@@ -52,7 +52,7 @@ export function addDecal(mb, name, cx, cz, sx, sz, rot = 0, y = 0.02, alpha = 1,
 // A painted line from (x0,z0) to (x1,z1).
 //   row = one of MARK.dashed / solid / double / bars
 //   uLen = meters covered by one repeat of the texture along the line
-function addMark(mb, x0, z0, x1, z1, width, row, uLen, color, alpha, y = 0.012) {
+export function addMark(mb, x0, z0, x1, z1, width, row, uLen, color, alpha, y = 0.012) {
   const dx = x1 - x0, dz = z1 - z0;
   const len = Math.hypot(dx, dz);
   if (len < 0.2) return;

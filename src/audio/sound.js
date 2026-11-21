@@ -30,14 +30,16 @@ export function createSound() {
   let ctx = null, master = null, out = null, inside = null, noiseBuf = null;
   let engine = null, screech = null, horn = null, wind = null, road = null, siren = null, scrape = null, squeal = null;
   let muted = false, tone = TONES.smooth, isInside = false;
+  let volume = 1;           // 0..1, the volume slider in the settings
+  let held = false;         // true while the game is paused: all sound stands still
 
   function unlock() {
-    if (ctx) { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); return; }
+    if (ctx) { if (ctx.state === 'suspended' && !held) ctx.resume().catch(() => {}); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     try { ctx = new AC(); } catch (e) { ctx = null; return; }
     out = ctx.createGain();
-    out.gain.value = muted ? 0 : 0.8;
+    out.gain.value = muted ? 0 : 0.8 * volume;
     out.connect(ctx.destination);
     // "inside the car" filter: everything outside passes through it
     inside = ctx.createBiquadFilter(); inside.type = 'lowpass'; inside.frequency.value = 20000;
@@ -126,7 +128,34 @@ export function createSound() {
   return {
     unlock,
     get ready() { return !!ctx && ctx.state === 'running'; },
-    setMuted(m) { muted = m; if (out) glide(out.gain, m ? 0 : 0.8, 0.05); },
+    setMuted(m) { muted = m; if (out) glide(out.gain, m ? 0 : 0.8 * volume, 0.05); },
+    // the volume slider: 0 = silent .. 1 = full
+    setVolume(v) { volume = Math.max(0, Math.min(1, v)); if (out && !muted) glide(out.gain, 0.8 * volume, 0.05); },
+    get volume() { return volume; },
+    // the game is paused: every sound stops where it is, and goes on later
+    pause(on) {
+      held = !!on;
+      if (!ctx) return;
+      if (held && ctx.state === 'running') ctx.suspend().catch(() => {});
+      else if (!held && ctx.state === 'suspended') ctx.resume().catch(() => {});
+    },
+    // everything silent for a moment, then back (story: the second after the limiter is switched off)
+    duck(seconds = 1) {
+      if (!out || muted) return;
+      const t = ctx.currentTime;
+      out.gain.cancelScheduledValues(t);
+      out.gain.setTargetAtTime(0.0001, t, 0.02);
+      out.gain.setTargetAtTime(0.8 * volume, t + seconds, 0.1);
+    },
+    // for music.js: the audio system itself (null until the first tap has switched the sound on)
+    get audio() { return ctx ? { ctx, out, master, noiseBuf } : null; },
+    burst, blip,
+    // two short honks, one right after the other (story: the way Theo always honked)
+    honkTwice(vol = 0.7) { this.honk(vol); setTimeout(() => this.honk(vol), 300); },
+    // a rifle shot far away: a sharp crack, a low thump and an echo
+    shot() { burst(2600, 0.5, 0.5, 0.001, 0.09, 'highpass'); burst(180, 0.7, 0.6, 0.002, 0.3, 'lowpass'); setTimeout(() => burst(900, 0.6, 0.12, 0.01, 0.5), 260); setTimeout(() => burst(600, 0.6, 0.05, 0.02, 0.7), 620); },
+    // WREN speaks: two very soft high notes
+    wren() { blip('sine', 1320, 1320, 0.035, 0.22); setTimeout(() => blip('sine', 1760, 1760, 0.03, 0.3), 110); },
     get muted() { return muted; },
     // which engine: light | smooth | muscle | rumble | sharp | boat | drone
     setTone(name) {

@@ -4,7 +4,12 @@ An open-world 3D web game set in **Port Meridian**, a fictional American coastal
 A realistic city of the future: sculpted glass towers, hanging gardens, sky bridges,
 electric cars and a maglev line. No cartoon look, no neon-toy look.
 
-This is **Phase 2, "Life and Driving"**: a playable, realistic first area of the city that runs in a phone browser, with cars to drive, traffic, people, a map with GPS and a first mission.
+This is **Phase 4, "Prologue + Chapter 1 playable"**: the story starts. A title screen, a save game,
+film scenes, choices that are remembered, and the first two parts of the story - the Prologue
+"LAST LAP" and Chapter 1 "RAIN DELIVERY" - on top of the city, the cars and the characters of
+the phases before. See "The story (version 4.0)" below. **Free roam is still there** (title
+screen, FREE ROAM): the whole city, the test garage, every old button.
+Phase 2, "Life and Driving", made the playable, realistic first area of the city that runs in a phone browser, with cars to drive, traffic, people, a map with GPS and a first mission.
 Since version 1.2 all buildings are **futuristic** and are put together from a
 **kit of parts** (twisted tower bodies, glass curtain walls with fins, ribbon frames,
 garden terraces, helipads ...). Eleven **hero buildings** follow the reference pictures
@@ -56,6 +61,11 @@ Open the GitHub Pages address of this repository (see "Publish on GitHub Pages" 
 | Big map + waypoint | `MAP` button or tap the minimap, then tap a place | `M`, then click a place |
 | Sound on / off | `SOUND` button | same |
 | Dialog | Tap the box | Click the box |
+| Pause menu (Resume, Settings, Restart mission, Title screen) | `II` button | `P` or `Esc` |
+| Story: talk, take, deliver, read | the yellow round button that shows up | `E` |
+| Story: skip a film scene | hold `HOLD TO SKIP` | hold `Enter` |
+| Story: answer | tap one of the two answers | click it |
+| Story: the limiter | the big red `LIMITER OFF` button | `Enter` or `O` |
 
 One game day lasts 12 real minutes. The game starts at golden hour.
 
@@ -82,6 +92,8 @@ Add these to the end of the address, for example `.../index.html?quality=low&tim
 | `pos=x,z` | start position in meters, for example `pos=-60,-397` (Neon Mile) |
 | `yaw=180` | look direction as a compass angle (0 north, 90 east, 180 south, 270 west) |
 | `nohud=1` | hide all buttons (for screenshots) |
+| `story=0` | skip the title screen: straight into free roam (the options above then work as before) |
+| `story=prologue.1` / `story=chapter01.4` | skip the title screen: straight into that mission of the story (see the mission list below) |
 
 ---
 
@@ -122,16 +134,33 @@ src/
   characters/
     autoRig.js             finds the joints of a character model, builds the skeleton and the skin,
                            tests every joint (PASS / WARN table)
-    proceduralAnim.js      moves the skeleton: walk, run, idle, driving, foot placement, joint limits
+    proceduralAnim.js      moves the skeleton: walk, run, idle, driving, foot placement, joint limits,
+                           and the poses of the story (sitting, lying, arms crossed, aiming ...)
+    rigWorker.js           works out a skeleton in the background, so the game does not stop meanwhile
+  story/
+    engine.js              THE STORY ENGINE: reads a chapter file and makes it happen (steps, objectives,
+                           film scenes, choices, checkpoints, fail and retry). Its top explains every step
+    chapters/prologue.js   THE PROLOGUE AS DATA ("LAST LAP")
+    chapters/chapter01.js  CHAPTER 1 AS DATA ("RAIN DELIVERY") - chapter02.js goes next to it
+    strings.js             EVERY TEXT of the story and its menus (translate the game here)
+    save.js                the saved game: chapter, mission, checkpoint, choices, unlocked characters
+    actors.js              the people of the story: loading, poses, walking, sitting in cars, looking
+    drivers.js             the computer drivers: racers, Zero, the Meridian Guard, impatient cars
+    director.js            the camera of the film scenes
+    props.js               the small things: mixtape, photo, ticket, phone, sticker "80", parcel ...
   ai/
     traffic.js             the other cars: lanes, traffic lights, turns, braking, honking, pulling over
     police.js              the wanted level and the police cars that chase you
     pedestrians.js         the people: sidewalks, crosswalks, red lights
+    streetLife.js          free roam: small moments in the streets (people with their own business,
+                           lines you overhear when you walk past) - a list of data, easy to add to
   missions/
     missions.js            THE MISSIONS AS DATA - add your story here
     missionManager.js      runs the mission steps
   audio/
     sound.js               all sounds, made in code (engine, tires, horn, crash, footsteps)
+    music.js               the mixtape "DON'T SKIP" (six lo-fi tracks made in code, track 7 is empty),
+                           rain, traffic hum, waves, far sirens, the chase pad, the heartbeat
   world/
     lighting.js            sky, sun, day / night, shadows, haze, reflections, street lamps
     weather.js             rain and wet streets
@@ -144,6 +173,8 @@ src/
     minimap.js             the round map and the full-screen map (drawn from layout.js)
     gps.js                 finds a route along the roads
     hud.js                 text, buttons, menus, mission box, dialog, loading screen
+    storyUI.js             film bars, subtitles, choices, title screen, pause, settings, LIMITER OFF button,
+                           rear-view mirror, tape display, things to read
   utils/
     math.js                small math helpers, seeded random numbers, polygons
     geometry.js            MeshBuilder (many shapes -> one mesh), InstancedSet, DetailSet
@@ -610,6 +641,99 @@ What is not perfect:
 
 ---
 
+## The story (version 4.0): Prologue + Chapter 1
+
+**Port Meridian, 2090.** A drowning coastal city where it rains almost every night. A serious,
+grounded crime story: *is keeping someone alive always love, or is letting go sometimes love?*
+Everybody in it lies to protect somebody. Feelings are shown through things and actions - a
+mixtape, a photo that lies face down, a sticker that says 80, two short honks.
+
+The game opens on a **title screen**: `CONTINUE`, `NEW GAME`, `MISSIONS`, `FREE ROAM`, `SETTINGS`.
+The story saves itself at every checkpoint (the start of every mission, and the middle of the long
+ones). After a failed mission, `TRY AGAIN` starts at the last checkpoint.
+
+### All missions, and how to start each one
+
+Every mission can be started in two ways: title screen -> `MISSIONS` -> tap its name, or with the
+address option in the last column (add it to the end of the game's address).
+
+| # | Mission | What happens | Address option |
+|---|---|---|---|
+| P1 | **ON THE GRID** | Four years ago, Ironhill Highway, 02:40, rain. In the car with your brother Theo. He changes the track on his mixtape; you tell him to leave it. Roll up to the second row (steering). Theo honks twice. | `?story=prologue.0` |
+| P2 | **IRONHILL NIGHT RUN** | The race: stay with the pack, pass the trucks, catch the leader (nitro), brake and drift onto Neon Mile, flat out to the lights. "Do not slow down, Nate." The last turn. | `?story=prologue.1` |
+| P3 | **TRACK 7** | The wreck. The tape plays to the end of track 6; track 7 is only hiss. Theo's phone is still lit: you may read it (it is never asked for). | `?story=prologue.2` |
+| 1.0 | **HOME** | Four years later. Nate's flat over Mace's garage; WREN wakes him; an old saved message (choice). Downstairs: Mace, a sandwich (choice), Theo's car under a tarp. Get in the van: limiter 80. | `?story=chapter01.0` |
+| 1.1 | **THREE DELIVERIES** | Halden Row, Vance Street, then a late pick-up at the east depot and a run down Neon Mile against the clock while everybody passes you. | `?story=chapter01.1` |
+| 1.2 | **N. CALLOWAY** | A priority job with Nate's name on it. He switches the tape off: a silent drive, no objective on the screen, only the map. | `?story=chapter01.2` |
+| 1.3 | **THE PICK-UP** | Dr. Solberg: "You look like him." One shot from a roof. In her hand: a race ticket (take it or leave it: choice). | `?story=chapter01.3` |
+| 1.4 | **TWO HONKS** | A black Phantom turns into the backstreet without a sound, and honks twice. WREN: "Go. Now." The big `LIMITER OFF` button. | `?story=chapter01.4` |
+| 1.5 | **THE CHASE** | Out the far end, the beach road, north at the lights, under the rail line. Two Meridian Guard cars (two stars). The Phantom stays in your mirror and never takes you. | `?story=chapter01.5` |
+| 1.6 | **IT LET YOU GO** | Hide in an alley. It stops at the end of the street, then drives away. "Why?" (choice). The ticket, then the tape. End card. | `?story=chapter01.6` |
+
+Mission types the engine knows: go to, drive to, timer, enter, leave, wait, talk, collect, follow,
+chase, evade, wait for something, and the limiter moment. Every one of them has its objective in
+the HUD, a floating marker, a beam of light in the world and a GPS line on the map (quiet moments
+hide the objective on purpose).
+
+### Choices and flags (they are saved, later chapters can read them)
+
+| Flag | Set when |
+|---|---|
+| `voicemail_played` | Nate listened to the first four seconds of Theo's last message |
+| `mace_kind` | Nate answered Mace kindly ("Eat something.") |
+| `nate_name_known` | the priority job was addressed to "N. Calloway" |
+| `ticket_found` / `ticket_taken` | Nate saw the race ticket / took it with him (if he left it, the radio news finds it for him at the end) |
+| `limiter_off` | Nate switched the limiter off |
+| `wren_tracks_zero` | at the end Nate said "Keep it in my mirror." |
+| `phone_read` | the player read the message on Theo's phone (prologue) |
+
+### How to add Chapter 2 (only a data file)
+
+1. Copy `src/story/chapters/chapter01.js` to `src/story/chapters/chapter02.js`.
+2. In it set `id: 'chapter02'`, `number: 2`, and write your missions (`setup` = what is in the world,
+   `steps` = what happens). The top of `src/story/engine.js` lists every step, place and condition.
+3. Put the new texts into `src/story/strings.js`.
+
+That is all: the engine looks for `chapter02.js` by itself. When it exists, the end card of
+Chapter 1 shows `NEXT CHAPTER` instead of "CHAPTER 2 IS LOCKED", `CONTINUE` goes on with it and
+its missions show up in the `MISSIONS` list. (While it does not exist, the browser console shows
+one harmless "404" line for it.)
+
+**Translating:** all texts are in `src/story/strings.js`. Copy the `en` block, give it another
+language code, translate the right-hand sides and set `LANGUAGE`.
+
+### Pause, settings, sound
+
+- `II` (or `P` / `Esc`): **Resume, Settings, Restart mission, Title screen**. The game also pauses
+  by itself when the phone is put away or another app comes up, and its sound stops.
+- Settings: graphics level, button size (S / M / L), tilt steering, subtitle size, sound on / off,
+  volume. They are remembered on the phone.
+- All sound is made in code (`src/audio/music.js`): the mixtape "DON'T SKIP" (six lo-fi tracks;
+  track 7 is empty on purpose), rain (on the street, on a roof), traffic hum, far sirens, waves
+  near Neon Mile, a low pad for the chase, a heartbeat before the limiter moment, and silence at
+  the moments that need it.
+
+### What was built for it
+
+- **Mace's garage** on the start street (a real building: an open repair bay with Theo's car
+  under a tarp, and Nate's room above it), lamps and lane markings on Ironhill Highway.
+- **Story people** load only when their chapter starts; their skeleton is worked out in the
+  background. Poses made by code: asleep on the side, sitting on the edge of a bed, fallen,
+  arms crossed, hands on hips, holding, carrying, looking at a phone, aiming. Hands and feet are
+  placed ON things (thighs, hips, the bed, the ground) with the same arm and leg solver the
+  walking uses, so nothing floats. You can look at every pose in the `RIG TEST` screen.
+- **Computer drivers** (`src/story/drivers.js`): racers that keep a race close, the black Phantom
+  that follows your own line (late on the brakes, wide on the way out), Meridian Guard cars,
+  impatient cars that overtake a van that is stuck at 80.
+- **Street life in free roam** (`src/ai/streetLife.js`): two people arguing under an awning, a
+  Meridian Guard car that has stopped somebody, a woman on the phone in a doorway, two neighbours
+  talking about the sea wall, a delivery drone. None of it is about the player; walk past and you
+  overhear a line. Each moment is one entry in a list and only exists while you are near.
+- **Performance:** story assets load lazily, the chase limits traffic to 15 cars and uses the
+  one-mesh versions of the other cars.
+
+---
+
 ## Known limits
 
 - Traffic cars drive on rails: when hit they stop and honk, but they are not pushed away. Parked
@@ -630,5 +754,12 @@ What is not perfect:
   steering and the sound still have to be checked on a real phone.
 - The player's movement is made by code, not by an animator: it is clean but simpler than hand-made
   animation (no turning on the spot animation, no jumping, the same walk for everyone).
-- Buildings cannot be entered.
+- Buildings cannot be entered (Nate's flat is only seen in film scenes).
+- THE STORY: it was played from start to end by a test robot in a software renderer, not by a person on a
+  phone - timing of the scenes, the difficulty of the race and the chase, the size of the buttons and
+  all sound still need a real play-through. The prologue runs about 3 minutes (not 4): the city is one
+  kilometer wide. Faces do not move (no lip sync): people speak with a hand gesture and subtitles.
+  The story people are the scanned models with an automatic skeleton: clothes do not swing, and
+  strong head turns can stretch a face. Extras (the two under the awning, the customer, the Guard
+  officer) are dark copies of one body. The two story alleys are only 5 m wide: drive in slowly.
 - Shop names, signs and adverts are invented. No real brands are used.

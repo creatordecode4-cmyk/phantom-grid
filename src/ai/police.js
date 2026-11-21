@@ -24,6 +24,7 @@ export function createPolice({ vehicles, gps, layout }) {
   const chasers = [];
   const target = { x: 0, z: 0, speed: 0 };
   let heat = 0, bustT = 0, spawnT = 0, message = '', nextKind = 0;
+  let scripted = null;     // story: { stars } = the story runs its own chase, this file only shows the stars
 
   // the computer driver of one police car (called 60 times a second by vehicle.js)
   function drive(v, dt, world) {
@@ -73,6 +74,7 @@ export function createPolice({ vehicles, gps, layout }) {
 
   // who: { x, z, speed (m/s), inCar }.  knocked: people knocked over since the last call
   function update(dt, who, knocked) {
+    if (scripted) { vehicles.events.length = 0; heat = 0; return scripted.stars; }
     // ---- what the player did ----
     for (const e of vehicles.events) {
       if (e.type === 'hitCar') heat += e.police ? 1.6 : 0.55 + Math.min(0.6, e.strength * 0.04);
@@ -118,7 +120,9 @@ export function createPolice({ vehicles, gps, layout }) {
     get heat() { return heat; },
     set heat(h) { heat = Math.max(0, Math.min(5, h)); },
     get stars() { return Math.ceil(heat - 0.001); },
-    get chased() { return chasers.some((v) => !v.chase.leaving); },
+    get chased() { return scripted ? scripted.stars > 0 : chasers.some((v) => !v.chase.leaving); },
+    // story: show this many stars and do nothing else (null = normal police again)
+    setScripted(s) { scripted = s; if (s) { for (const v of chasers) { v.chase.leaving = true; v.siren = false; } heat = 0; } },
     // sirens that are on right now (the traffic pulls over for them)
     sirens(out) { out.length = 0; for (const v of vehicles.live) if (v.siren) out.push(v); return out; },
     takeMessage() { const m = message; message = ''; return m; },

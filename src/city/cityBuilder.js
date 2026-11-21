@@ -106,7 +106,7 @@ function makeLampLightMap(ctx) {
     if (lamp.noPool) continue;
     const px = X(lamp.x), py = Y(lamp.z), pr = R * sx;
     const grad = g.createRadialGradient(px, py, 0, px, py, pr);
-    const h = lamp.y; // lamp height
+    const h = lamp.h || lamp.y; // lamp height above the ground it lights
     for (const t of [0, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8, 1]) {
       const d = t * R;
       // light on the ground from a lamp at height h (inverse square + angle)

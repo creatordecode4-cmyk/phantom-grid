@@ -283,15 +283,16 @@ export function buildProps(ctx) {
   const blob = (x, z, sx, sz, rot, y, a) => addDecal(dc, sx === sz ? 'blob' : 'blobRect', x, z, sx, sz, rot, y, a);
 
   // one street light: pole at (x, z), arm pointing along "rot"
-  function addStreetLight(kind, x, y, z, rot) {
+  // more: { h: height of the lamp above the road it lights, noCollide: no pole on the ground (it stands on a bridge) }
+  function addStreetLight(kind, x, y, z, rot, more = null) {
     const set = kind === 0 ? sets.streetLight : kind === 1 ? sets.led1 : sets.led2;
     set.add(x, y, z, rot);
     const list = kind === 0 ? [mStreet.lampPos] : kind === 1 ? mLed1.lamps : mLed2.lamps;
     for (const lp of list) {
       const p = place(x, y, z, rot, lp[0], lp[1], lp[2]);
-      lamps.push({ x: p[0], y: p[1], z: p[2], type: kind === 0 ? 0 : 1, size: kind === 0 ? 1.5 : 1.7 });
+      lamps.push({ x: p[0], y: p[1], z: p[2], type: kind === 0 ? 0 : 1, size: kind === 0 ? 1.5 : 1.7, h: more && more.h ? more.h : 0 });
     }
-    circles.push({ x, z, r: 0.2 });
+    if (!(more && more.noCollide)) circles.push({ x, z, r: 0.2 });
   }
 
   // =============================================================================
@@ -312,6 +313,12 @@ export function buildProps(ctx) {
     const free = (s, r) => taken.every(([a, b]) => s + r < a || s - r > b);
     const take = (s, r) => taken.push([s - r, s + r]);
     const ground = curb;
+    // keep-clear zones (in front of the garage door ...): nothing is put on the sidewalk there
+    for (const zr of ctx.clearZones || []) {
+      let lo = Infinity, hi = -Infinity;
+      for (let q = 0; q <= len; q += 0.5) { const p = P(q, 1); if (p[0] > zr.minX && p[0] < zr.maxX && p[1] > zr.minZ && p[1] < zr.maxZ) { lo = Math.min(lo, q); hi = Math.max(hi, q); } }
+      if (hi >= lo) { taken.push([lo - 0.6, hi + 0.6]); noPark.push([lo - 1, hi + 1]); }
+    }
 
     // ---- street lights: about every 30 m ----
     const n = Math.max(1, Math.round(len / 30));
@@ -633,6 +640,7 @@ export function buildProps(ctx) {
     const long = al.axis === 'x' ? al.maxX - al.minX : al.maxZ - al.minZ;
     for (let t = rng.range(8, 16); t < long - 6; t += rng.range(14, 26)) {
       const sideA = rng.chance(0.5);
+      if (al.clear) continue;                       // (a story alley: cars have to get through)
       let x, z, rot;
       if (al.axis === 'x') { x = al.minX + t; z = sideA ? al.minZ + 0.2 : al.maxZ - 0.2; rot = sideA ? 0 : Math.PI; }
       else { z = al.minZ + t; x = sideA ? al.minX + 0.2 : al.maxX - 0.2; rot = sideA ? Math.PI / 2 : -Math.PI / 2; }
@@ -654,6 +662,16 @@ export function buildProps(ctx) {
     addParkedCar(pickKind(), c.x, curb + 0.03, c.z, c.rot, lin(rng.pick(CAR_COLORS)));
   }
   for (const l of ctx.lotLamps) addStreetLight(1, l.x, curb, l.z, l.rot);
+  // ---- Ironhill Highway: lights along the raised road and its ramp, on alternating sides ----
+  {
+    const H = L.highway;
+    let side = 1;
+    for (let z = H.rampBottomZ + 22; z < Math.min(H.northEndZ - 20, B.maxZ + 400); z += 34) {
+      const x = side > 0 ? H.maxX - 0.75 : H.minX + 0.75;
+      addStreetLight(1, x, H.heightAt(z), z, side > 0 ? -Math.PI / 2 : Math.PI / 2, { h: 8.9, noCollide: true });
+      side = -side;
+    }
+  }
 
   // boats on the water in front of the beach (from a model file, if there is one)
   if (ctx.carLib && ctx.carLib.boat) {

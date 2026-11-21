@@ -289,6 +289,139 @@
     #bar-fill { width: 0%; height: 100%; background: #fff; transition: width 0.25s; }
     #load-text { margin-top: 12px; font-size: 10px; letter-spacing: 0.24em; opacity: 0.55; min-height: 14px; }
     #load-error { margin-top: 18px; max-width: 420px; font-size: 12px; line-height: 1.6; letter-spacing: 0.04em; color: #ffb4a8; display: none; }
+
+    /* =====================================================================
+       STORY: film bars, subtitles, choices, cards, title and pause menus
+       ===================================================================== */
+    :root { --sub: 16px; --ctl: 1; }
+    /* the driving and walking buttons can be made bigger or smaller in the settings */
+    #drive-ui .btn, #btn-run, #btn-car, #btn-act { zoom: var(--ctl); }
+    /* black bars of a film scene */
+    .bar-cine { position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height 0.6s ease; pointer-events: none; }
+    #bar-top { top: 0; } #bar-bottom { bottom: 0; }
+    body.cine .bar-cine { height: 11vh; }
+    /* in a film scene and in story screens the game buttons go away */
+    body.cine #hud-top-right, body.cine #hud-top-left, body.cine #drive-ui, body.cine #joy-base, body.cine #btn-run, body.cine #btn-car,
+    body.cine #gps-arrow, body.cine #marker, body.cine #tags, body.cine #toast, body.cine #tape, body.cine #mirror, body.cine #hint { display: none !important; }
+    /* behind the title screen only the city is seen */
+    body.title #hud-top-right, body.title #hud-top-left, body.title #drive-ui, body.title #joy-base, body.title #btn-run, body.title #btn-car, body.title #btn-act,
+    body.title #gps-arrow, body.title #marker, body.title #tags, body.title #hint, body.title #subs, body.title #tip { display: none !important; }
+    /* story mode: the test buttons are not shown (they are in free roam) */
+    body.story #btn-time, body.story #btn-rain, body.story #btn-quality, body.story #btn-stats, body.story #btn-veh, body.story #btn-assist, body.story #btn-rig, body.story #btn-sound, body.story #hint { display: none; }
+    body.quiet #hud-mission, body.quiet #gps-arrow, body.quiet #marker { display: none !important; }
+    /* subtitles: readable in rain (dark plate, soft shadow) */
+    #subs { position: absolute; left: 50%; bottom: calc(13vh + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(680px, 90vw); text-align: center; pointer-events: none; }
+    body:not(.cine) #subs { bottom: calc(190px + env(safe-area-inset-bottom)); }
+    #subs[hidden] { display: none; }
+    #subs .plate { display: inline-block; padding: 7px 14px 8px; border-radius: 8px; background: rgba(4, 5, 7, 0.62); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+    #subs-who { font-size: calc(var(--sub) * 0.6); letter-spacing: 0.3em; color: #ffc94a; margin-bottom: 3px; }
+    #subs-who.wren { color: #8fd8ff; }
+    #subs-who:empty { display: none; }
+    #subs-text { font-size: var(--sub); line-height: 1.42; letter-spacing: 0.02em; font-weight: 400; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
+    #subs-text.thought { font-style: italic; opacity: 0.92; }
+    /* choices: two big buttons */
+    #choices { position: absolute; left: 50%; bottom: calc(60px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(560px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+    #choices[hidden] { display: none; }
+    #choices .prompt { text-align: center; font-size: 10px; letter-spacing: 0.3em; opacity: 0.75; text-shadow: 0 1px 3px #000; }
+    #choices button { font: inherit; font-size: 15px; letter-spacing: 0.03em; color: #fff; min-height: 54px; padding: 10px 16px; border-radius: 12px; text-align: left;
+      background: rgba(8, 10, 12, 0.84); border: 1px solid rgba(255, 255, 255, 0.28); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); touch-action: manipulation; }
+    #choices button:active { background: rgba(255, 255, 255, 0.24); }
+    #choices .bar { height: 2px; background: rgba(255, 255, 255, 0.18); border-radius: 1px; overflow: hidden; } #choices .bar i { display: block; height: 100%; width: 100%; background: #ffc94a; }
+    /* hold to skip */
+    #skip { position: absolute; right: calc(18px + env(safe-area-inset-right)); bottom: calc(2.2vh + env(safe-area-inset-bottom)); font: inherit; font-size: 10px; letter-spacing: 0.24em; color: #fff;
+      background: rgba(10, 12, 14, 0.5); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 22px; height: 44px; padding: 0 18px; overflow: hidden; touch-action: none; }
+    #skip[hidden] { display: none; }
+    #skip i { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: rgba(255, 255, 255, 0.3); }
+    #skip span { position: relative; }
+    /* black / white over the whole picture, and text cards on it */
+    #fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.8s linear; }
+    #card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; pointer-events: none; opacity: 0; transition: opacity 0.9s; }
+    #card.show { opacity: 1; }
+    #card-over { font-size: 11px; letter-spacing: 0.5em; opacity: 0.7; padding-left: 0.5em; }
+    #card-title { margin-top: 14px; font-weight: 200; font-size: clamp(24px, 6.4vw, 46px); letter-spacing: 0.34em; padding-left: 0.34em; }
+    #card-sub { margin-top: 16px; font-size: 12px; letter-spacing: 0.22em; opacity: 0.72; line-height: 1.9; white-space: pre-line; }
+    /* the big LIMITER OFF button */
+    #btn-limiter { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); width: min(260px, 64vw); height: 96px; border-radius: 18px; font: inherit; font-size: 20px; font-weight: 500; letter-spacing: 0.24em; color: #fff;
+      background: rgba(190, 28, 22, 0.82); border: 2px solid rgba(255, 255, 255, 0.85); box-shadow: 0 0 34px rgba(255, 60, 40, 0.55); animation: limpulse 0.9s ease-in-out infinite; touch-action: manipulation; }
+    #btn-limiter small { display: block; margin-top: 6px; font-size: 9px; letter-spacing: 0.3em; opacity: 0.85; font-weight: 300; }
+    #btn-limiter[hidden] { display: none; }
+    @keyframes limpulse { 50% { box-shadow: 0 0 60px rgba(255, 60, 40, 0.95); transform: translate(-50%, -50%) scale(1.035); } }
+    /* WREN: a small soft sign at the top, it breathes when she speaks */
+    #wren { position: absolute; left: 50%; top: calc(64px + env(safe-area-inset-top)); width: 22px; height: 22px; margin-left: -11px; border-radius: 50%; border: 1.5px solid rgba(143, 216, 255, 0.75); opacity: 0; transition: opacity 0.5s; pointer-events: none; }
+    #wren::after { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: rgba(143, 216, 255, 0.85); }
+    #wren.on { opacity: 0.9; animation: wrenpulse 1.1s ease-in-out infinite; }
+    body.cine #wren { top: calc(13vh + 10px); }
+    @keyframes wrenpulse { 50% { transform: scale(1.28); box-shadow: 0 0 14px rgba(143, 216, 255, 0.7); } }
+    /* rear-view mirror (chase) and the tape display */
+    #mirror { position: absolute; left: 50%; top: calc(10px + env(safe-area-inset-top)); width: 216px; height: 50px; margin-left: -108px; border-radius: 9px 9px 22px 22px; border: 2px solid #17191c; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); pointer-events: none; }
+    #mirror[hidden] { display: none; }
+    body.mirror #gps-arrow { top: calc(68px + env(safe-area-inset-top)); }
+    body.mirror #wren { top: calc(120px + env(safe-area-inset-top)); }
+    #tape { margin-top: 8px; display: inline-flex; align-items: center; gap: 8px; padding: 5px 9px; border-radius: 6px; background: rgba(8, 10, 12, 0.5); font-size: 9px; letter-spacing: 0.2em; }
+    #tape[hidden] { display: none; }
+    #tape .reels { display: inline-block; width: 22px; height: 10px; border: 1px solid rgba(255, 255, 255, 0.7); border-radius: 2px; position: relative; }
+    #tape .reels::before, #tape .reels::after { content: ''; position: absolute; top: 2px; width: 4px; height: 4px; border-radius: 50%; border: 1px solid #fff; }
+    #tape .reels::before { left: 3px; } #tape .reels::after { right: 3px; }
+    #tape-bar { width: 44px; height: 2px; background: rgba(255, 255, 255, 0.2); } #tape-bar i { display: block; height: 100%; width: 0%; background: #ffc94a; }
+    /* speed limiter sign next to the speed */
+    #limit-badge { align-self: center; width: 24px; height: 24px; line-height: 21px; border-radius: 50%; border: 2px solid #e0352b; background: rgba(255, 255, 255, 0.92); color: #111; font-size: 10px; font-weight: 600; text-align: center; letter-spacing: 0; }
+    #limit-badge[hidden] { display: none; }
+    #limit-badge.hit { animation: limhit 0.5s steps(2) infinite; }
+    @keyframes limhit { 50% { background: #e0352b; color: #fff; } }
+    /* TALK / TAKE button, hint for the tutorial */
+    #btn-act { position: absolute; right: calc(118px + env(safe-area-inset-right)); bottom: calc(134px + env(safe-area-inset-bottom)); width: 72px; height: 72px; background: rgba(255, 201, 74, 0.92); color: #0b0d10; border-color: transparent; font-weight: 500; }
+    #btn-act[hidden] { display: none; }
+    body.driving #btn-act { right: calc(250px + env(safe-area-inset-right)); bottom: calc(150px + env(safe-area-inset-bottom)); }
+    body.cine #btn-act { right: calc(26px + env(safe-area-inset-right)); bottom: calc(24vh + env(safe-area-inset-bottom)); }
+    #tip { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); padding: 9px 16px; border-radius: 10px; background: rgba(8, 10, 12, 0.72); border: 1px solid rgba(255, 201, 74, 0.6); font-size: 12px; letter-spacing: 0.16em; text-align: center; pointer-events: none; max-width: 84vw; line-height: 1.6; }
+    #tip[hidden] { display: none; }
+    /* things you can read: Theo's phone, the race ticket */
+    #reader { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); }
+    #reader[hidden] { display: none; }
+    #reader .phone { width: min(300px, 78vw); border-radius: 22px; padding: 18px 16px 14px; background: #0c1014; border: 2px solid #2a3038; box-shadow: 0 10px 50px rgba(0, 0, 0, 0.7); }
+    #reader .phone .from { font-size: 10px; letter-spacing: 0.3em; opacity: 0.6; }
+    #reader .phone .msg { margin-top: 10px; padding: 10px 12px; border-radius: 12px 12px 12px 3px; background: #1b2530; font-size: 14px; line-height: 1.5; }
+    #reader .phone .when { margin-top: 6px; font-size: 9px; letter-spacing: 0.2em; opacity: 0.45; }
+    #reader .ticket { width: min(330px, 84vw); padding: 16px 18px; background: #d9cfb8; color: #1a1612; border-radius: 4px; transform: rotate(-2.5deg); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7); font-family: "Courier New", Courier, monospace; font-weight: 600;
+      background-image: radial-gradient(circle at 80% 30%, rgba(120, 30, 20, 0.5) 0 9px, transparent 26px), linear-gradient(rgba(60, 40, 20, 0.12), rgba(60, 40, 20, 0.02)); }
+    #reader .ticket .t1 { font-size: 17px; letter-spacing: 0.16em; border-bottom: 2px dashed #1a1612; padding-bottom: 8px; }
+    #reader .ticket .t2 { margin-top: 10px; font-size: 13px; line-height: 1.9; letter-spacing: 0.06em; white-space: pre-line; }
+    #reader .ticket .t3 { margin-top: 8px; font-size: 9px; letter-spacing: 0.28em; opacity: 0.6; }
+    #reader .close { display: block; margin: 16px auto 0; }
+    /* ---------- title screen, pause menu, end and fail cards ---------- */
+    .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; overflow-y: auto; }
+    .screen[hidden] { display: none; }
+    #title { background: linear-gradient(rgba(5, 6, 8, 0.25), rgba(5, 6, 8, 0.78)); }
+    #title h1 { margin: 0; font-weight: 200; font-size: clamp(26px, 8vw, 60px); letter-spacing: 0.44em; padding-left: 0.44em; text-shadow: 0 2px 20px rgba(0, 0, 0, 0.8); }
+    #title .sub { margin-top: 10px; font-size: 10px; letter-spacing: 0.42em; opacity: 0.7; }
+    .menu-col { margin-top: 30px; display: flex; flex-direction: column; gap: 10px; width: min(300px, 78vw); }
+    .menu-col .btn { width: 100%; height: 52px; font-size: 12px; letter-spacing: 0.26em; }
+    .menu-col .btn.main { background: rgba(255, 255, 255, 0.9); color: #0b0d10; border-color: transparent; font-weight: 500; }
+    .menu-col .btn[disabled] { opacity: 0.35; }
+    .menu-col .note { font-size: 9px; letter-spacing: 0.2em; opacity: 0.55; line-height: 1.7; }
+    #pause, #settings, #select { background: rgba(5, 6, 8, 0.86); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+    .screen h2 { margin: 0; font-weight: 300; font-size: 16px; letter-spacing: 0.4em; padding-left: 0.4em; }
+    .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; font-size: 10px; letter-spacing: 0.2em; text-align: left; }
+    .set-row .opts { display: flex; gap: 5px; }
+    .set-row .opts .btn { width: auto; min-width: 52px; height: 40px; padding: 0 9px; font-size: 10px; letter-spacing: 0.1em; }
+    .set-row input[type=range] { width: 150px; height: 40px; accent-color: #ffc94a; }
+    #select .list { margin-top: 18px; width: min(420px, 90vw); display: flex; flex-direction: column; gap: 6px; }
+    #select .list .head { margin-top: 10px; font-size: 9px; letter-spacing: 0.34em; color: #ffc94a; text-align: left; }
+    #select .list .btn { width: 100%; height: 44px; text-align: left; padding: 0 14px; font-size: 11px; letter-spacing: 0.1em; }
+    #endcard, #failcard { background: rgba(0, 0, 0, 0.88); }
+    #endcard .over { font-size: 10px; letter-spacing: 0.5em; opacity: 0.6; }
+    #endcard h2 { margin-top: 12px; font-size: clamp(20px, 5.6vw, 36px); font-weight: 200; }
+    #endcard .lines { margin-top: 22px; font-size: 13px; line-height: 2; letter-spacing: 0.05em; opacity: 0.86; max-width: 480px; white-space: pre-line; }
+    #endcard .locked { margin-top: 24px; font-size: 10px; letter-spacing: 0.36em; color: #ffc94a; }
+    #failcard h2 { color: #ff8a7a; }
+    #failcard .why { margin-top: 14px; font-size: 12px; letter-spacing: 0.08em; opacity: 0.85; }
+    #btn-pause-story { font-size: 13px; letter-spacing: 0.1em; }
+    @media (orientation: landscape) and (max-height: 520px) {
+      #title h1 { font-size: clamp(22px, 6vw, 40px); } .menu-col { margin-top: 14px; gap: 7px; } .menu-col .btn { height: 44px; }
+      #subs { bottom: calc(12vh + env(safe-area-inset-bottom)); } body:not(.cine) #subs { bottom: calc(140px + env(safe-area-inset-bottom)); width: min(430px, 46vw); }
+      #choices { bottom: calc(14px + env(safe-area-inset-bottom)); } #choices button { min-height: 46px; padding: 7px 14px; }
+      #btn-limiter { height: 80px; }
+    }
   </style>
 </head>
 <body>
@@ -308,6 +441,7 @@
         <div id="mission-dist"></div>
       </div>
       <div id="hud-wanted" hidden></div>
+      <div id="tape" hidden><span class="reels"></span><span id="tape-name"></span><span id="tape-bar"><i></i></span></div>
     </div>
 
     <div id="gps-arrow" hidden>
@@ -319,6 +453,7 @@
     <div id="hud-top-right">
       <canvas id="minimap"></canvas>
       <div id="hud-buttons">
+        <button class="btn" id="btn-pause-story" aria-label="Pause">II</button>
         <button class="btn" id="btn-time" aria-label="Time of day">TIME</button>
         <button class="btn" id="btn-rain" aria-label="Rain on or off">RAIN</button>
         <button class="btn" id="btn-quality" aria-label="Graphics quality">QUALITY</button>
@@ -386,7 +521,7 @@
       <button class="btn round" id="drv-up" aria-label="Drone up">UP</button>
       <button class="btn round" id="drv-down" aria-label="Drone down">DOWN</button>
       <div id="hud-speed">
-        <div id="dash-row"><span id="ind-l">&#9664;</span><span id="gear">N</span><span id="speed-num">0</span><span class="unit">KM/H</span><span id="ind-r">&#9654;</span></div>
+        <div id="dash-row"><span id="ind-l">&#9664;</span><span id="gear">N</span><span id="speed-num">0</span><span class="unit">KM/H</span><span id="limit-badge" hidden>80</span><span id="ind-r">&#9654;</span></div>
         <div class="dash-bar" id="rpm-bar"><i></i></div>
         <div class="dash-bar" id="nitro-bar"><i></i></div>
         <div class="dash-bar" id="dmg-bar"><i></i></div>
@@ -409,6 +544,27 @@
       </div>
     </div>
     <div id="toast"></div>
+    <!-- ===================== STORY ===================== -->
+    <div id="wren"></div>
+    <canvas id="mirror" width="432" height="100" hidden></canvas>
+    <div id="tip" hidden></div>
+    <button class="btn round" id="btn-act" hidden></button>
+    <div id="subs" hidden><div class="plate"><div id="subs-who"></div><div id="subs-text"></div></div></div>
+    <div id="choices" hidden></div>
+    <button id="btn-limiter" hidden></button>
+    <div id="reader" hidden></div>
+    <div id="fade"></div>
+    <div class="bar-cine" id="bar-top"></div>
+    <div class="bar-cine" id="bar-bottom"></div>
+    <div id="card"><div id="card-over"></div><div id="card-title"></div><div id="card-sub"></div></div>
+    <button id="skip" hidden><i></i><span></span></button>
+    <div class="screen" id="failcard" hidden></div>
+    <div class="screen" id="endcard" hidden></div>
+    <div class="screen" id="title" hidden></div>
+    <div class="screen" id="pause" hidden></div>
+    <div class="screen" id="settings" hidden></div>
+    <div class="screen" id="select" hidden></div>
+
     <div id="hint">W A S D &nbsp;MOVE &nbsp;·&nbsp; MOUSE &nbsp;LOOK &nbsp;·&nbsp; SHIFT &nbsp;RUN &nbsp;·&nbsp; E &nbsp;CAR &nbsp;·&nbsp; M &nbsp;MAP &nbsp;·&nbsp; C &nbsp;CAMERA &nbsp;·&nbsp; N &nbsp;NITRO</div>
   </div>
 

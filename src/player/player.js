@@ -296,6 +296,36 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     mover.update(dt, {});
   }
 
+  // ---- story scenes: the character is put somewhere in a pose (lying in bed, sitting on its edge, standing at a
+  //      mark) and does not listen to the stick. y can be a floor inside a building. ----
+  let staged = false;
+  //   floorBelow: for the pose 'sitEdge' - how far the floor is under the seat (meters)
+  function stage(x, y, z, angle, pose = 'idle', floorBelow = 0.45) {
+    staged = true;
+    if (mover) mover.floorBelow = floorBelow;
+    pos.set(x, y, z); vel.set(0, 0); speed = 0;
+    heading = angle; root.rotation.y = heading;
+    blob.visible = false;
+    if (mover) { mover.setPose(pose, 0); mover.reset(); }
+  }
+  function unstage() {
+    if (!staged) return;
+    staged = false;
+    blob.visible = !hidden;
+    if (mover) { mover.setPose('idle', 0); mover.look = null; mover.talk = 0; mover.reset(); }
+  }
+  // a staged character still breathes, speaks and looks around
+  function tick(dt) { if (mover) mover.update(dt, { speed: 0, x: pos.x, z: pos.z, y: pos.y, heading, groundAt: null }); }
+  // what the arms do while walking ('idle', 'carry' ...), and small things the story sets
+  function setPose(pose, seconds = 0.3) { if (mover) mover.setPose(pose, seconds); }
+  // something carried in front of the body (a parcel): it moves with the character. null = put it away
+  let held = null;
+  function hold(object) {
+    if (held) body.remove(held);
+    held = object;
+    if (object) body.add(object);
+  }
+
   function teleport(x, z, compassDeg = null) {
     if (mover) mover.reset();
     pos.set(x, city.groundHeight(x, z), z);
@@ -313,6 +343,10 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     usingMannequin,
     rigged, animated: !!mixer || !!mover, autoRigged: !!rig, rig, anim: mover,
     setHidden, place, glideTo, sit,
+    stage, unstage, tick, setPose, hold,
+    get staged() { return staged; },
+    set talk(v) { if (mover) mover.talk = v; },
+    set look(v) { if (mover) mover.look = v; },
     get hidden() { return hidden; },
     get steps() { return steps; },   // goes up by one with every footstep
     get heading() { return heading; },

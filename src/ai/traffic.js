@@ -103,7 +103,7 @@ export function createTraffic(ctx, beamTexture) {
   beams.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   ctx.group.add(beams);
 
-  let carCount = 30;
+  let carCount = 30, baseCount = 30, cap = Infinity;
 
   // ---------------------------------------------------------------- planning
   // What will this car do at the next crossing in front of it?
@@ -336,6 +336,8 @@ export function createTraffic(ctx, beamTexture) {
   return {
     cars, meshes, dynamicCircles, events, update,
     get count() { return carCount; },
-    setQuality(q) { carCount = Math.min(MAX, q.traffic ?? 30); },
+    setQuality(q) { baseCount = Math.min(MAX, q.traffic ?? 30); carCount = Math.min(baseCount, cap); },
+    // story: never more than this many cars (Infinity = as the quality level says)
+    setCap(n) { cap = n; carCount = Math.min(baseCount, cap); },
   };
 }

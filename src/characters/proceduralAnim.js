@@ -14,6 +14,12 @@
 //     sinks a little when the legs are far apart.
 //   * IDLE: breathing, shifting the weight from foot to foot, slow looks around.
 //   * DRIVING: sitting, hands on the steering wheel (they turn with it).
+//   * STORY POSES: asleep on one side, fallen on the back, sitting on the edge
+//     of a bed or in a car seat, arms crossed, hands on the hips, holding,
+//     carrying, looking at a phone, aiming. Hands and feet are put ON things
+//     (the bed, the ground, the thighs, the hips) with the same arm and leg
+//     solver, and the body rests on the surface by its own measured shape - so
+//     nothing floats in the air.
 //   * TEST POSES for the rig test screen.
 //
 // JOINT LIMITS: every angle is clamped to what a human joint can do (LIMITS
@@ -136,23 +142,31 @@ export function createAnimator(THREE, rig, opts = {}) {
 
   // ---------------------------------------------------------------- legs (IK)
   // foot[q]: where the ankle should be, in character space, and how the foot is turned
-  const foot = SIDES.map(({ s }) => ({ ankle: new THREE.Vector3(s * footHomeX, ankleH, R.foot_L.head[2]), yaw: 0, pitch: 0, toe: 0, knee: 0 }));
+  //   lying: the body lies on its back (the knee points up, the toes point up)
+  //   pole + loose: the knee points along "pole", the foot simply follows the shin (a body curled up on its side)
+  const foot = SIDES.map(({ s }) => ({ ankle: new THREE.Vector3(s * footHomeX, ankleH, R.foot_L.head[2]), yaw: 0, pitch: 0, toe: 0, knee: 0, lying: false, loose: false, pole: new THREE.Vector3() }));
   const thighD = V(), shinD = V(), hingeL = V(), poleL = V(), footQ = Q();
+  let legIK = true;      // false: the legs are posed by hand (a character lying on the ground)
   function legResolver(q) {
     const { tag, s } = SIDES[q];
     return (hip) => {
+      if (!legIK) return;
       const F = foot[q];
-      // the knee points where the foot points (a little outward, like real legs)
-      poleL.set(Math.sin(F.yaw + s * 0.07), 0, Math.cos(F.yaw + s * 0.07));
+      // the knee points where the foot points (a little outward, like real legs). Lying on the back: it points up.
+      if (F.loose) poleL.copy(F.pole);
+      else if (F.lying) poleL.set(s * 0.22, 1, 0);
+      else poleL.set(Math.sin(F.yaw + s * 0.07), 0, Math.cos(F.yaw + s * 0.07));
       F.knee = twoBone(hip, F.ankle, thighLen, shinLen, poleL, LIMITS.knee[1], thighD, shinD);
       hingeL.crossVectors(thighD, poleL);
       if (hingeL.lengthSq() < 1e-6) hingeL.set(-1, 0, 0);
       setTarget('thigh_' + tag, thighD, hingeL);
       setTarget('shin_' + tag, shinD, hingeL);
+      if (F.loose) { setDelta('foot_' + tag, F.pitch, 0, 0); return; }
       // the foot: its rest direction, turned by yaw and pitch (pitch + = toes down). The ankle has limits too.
       const shinPitch = Math.atan2(shinD.z, -shinD.y);                       // how far the shin leans forward (+) or back (-)
-      const pitch = clamp(F.pitch, (LIMITS.ankle[0] * DEG) - shinPitch, (LIMITS.ankle[1] * DEG) - shinPitch);
+      const pitch = F.lying ? F.pitch : clamp(F.pitch, (LIMITS.ankle[0] * DEG) - shinPitch, (LIMITS.ankle[1] * DEG) - shinPitch);
       footQ.setFromAxisAngle(Y_AXIS, F.yaw).multiply(tq.setFromAxisAngle(X_AXIS, pitch));
+      if (F.lying) footQ.premultiply(bodyQ);                                 // (the foot lies down with the body)
       target['foot_' + tag].copy(footQ).multiply(R['foot_' + tag].world);
       hasTarget['foot_' + tag] = true;
       setDelta('toe_' + tag, -F.toe, 0, 0);
@@ -161,13 +175,13 @@ export function createAnimator(THREE, rig, opts = {}) {
   resolvers.thigh_L = legResolver(0); resolvers.thigh_R = legResolver(1);
 
   // ---------------------------------------------------------------- hands on something (IK), used when driving
-  const hand = [{ on: false, p: V(), dir: V() }, { on: false, p: V(), dir: V() }];
+  const hand = [{ on: false, p: V(), dir: V(), pole: V(), hasPole: false }, { on: false, p: V(), dir: V(), pole: V(), hasPole: false }];
   const upD = V(), foD = V(), hingeA = V(), poleA = V();
   function armResolver(q) {
     const { tag, s } = SIDES[q];
     return (shoulder) => {
       if (!hand[q].on) return;
-      poleA.set(s * 0.55, -0.8, -0.25);                                   // elbows point down and a little out
+      if (hand[q].hasPole) poleA.copy(hand[q].pole); else poleA.set(s * 0.55, -0.8, -0.25);   // elbows point down and a little out
       twoBone(shoulder, hand[q].p, upperLen, foreLen + 0.03 * k, poleA, LIMITS.elbow[1], upD, foD);
       hingeA.crossVectors(upD, foD);
       if (hingeA.lengthSq() < 1e-6) hingeA.set(-1, 0, 0);
@@ -230,7 +244,8 @@ export function createAnimator(THREE, rig, opts = {}) {
       }
     }
     for (const n of names) { hasTarget[n] = false; hasDelta[n] = false; }
-    hand[0].on = hand[1].on = false;
+    hand[0].on = hand[1].on = false; hand[0].hasPole = hand[1].hasPole = false;
+    foot[0].lying = foot[1].lying = false; foot[0].loose = foot[1].loose = false;
   }
   function startBlend(seconds = 0.2) {
     for (const n of names) snapshot[n].copy(B[n].quaternion);
@@ -246,7 +261,8 @@ export function createAnimator(THREE, rig, opts = {}) {
   let vx = 0, vz = 0;       // virtual position, for walking on the spot (test screen)
   const toWorld = (lx, lz, out) => { const c = Math.cos(st.heading), sn = Math.sin(st.heading); out.x = st.x + lx * c + lz * sn; out.z = st.z - lx * sn + lz * c; return out; };
   const toLocal = (wx, wz, out) => { const c = Math.cos(st.heading), sn = Math.sin(st.heading), dx = wx - st.x, dz = wz - st.z; out.x = dx * c - dz * sn; out.z = dx * sn + dz * c; return out; };
-  const groundAt = (wx, wz) => (st.ground ? st.ground(wx, wz) : 0);
+  // (no ground function: the character stands on a flat floor at its own height - a room, a roof, the highway)
+  const groundAt = (wx, wz) => (st.ground ? st.ground(wx, wz) : st.y);
   const w2 = { x: 0, z: 0 }, l2 = { x: 0, z: 0 };
 
   function locomotion(dt, speed, turn) {
@@ -394,8 +410,10 @@ export function createAnimator(THREE, rig, opts = {}) {
     // ---- head: stays level and looks where the body goes; when idle it looks around slowly ----
     look.next -= dt;
     if (look.next <= 0) { look.next = 2.5 + Math.random() * 4; look.tYaw = (Math.random() - 0.5) * 50 * DEG * idle; look.tPitch = (Math.random() - 0.4) * 12 * DEG * idle; }
-    if (m > 0.3) { look.tYaw = 0; look.tPitch = 0; }
-    look.yaw += (look.tYaw - look.yaw) * (1 - Math.exp(-1.6 * dt)); look.pitch += (look.tPitch - look.pitch) * (1 - Math.exp(-1.6 * dt));
+    if (m > 0.3 && !lookAt) { look.tYaw = 0; look.tPitch = 0; }
+    if (lookAt) { look.tYaw = clamp(lookAt.yaw, -1.3, 1.3); look.tPitch = clamp(lookAt.pitch || 0, -0.5, 0.5); look.next = 1; }     // the story says where to look
+    const quick = lookAt ? 5 : 1.6;
+    look.yaw += (look.tYaw - look.yaw) * (1 - Math.exp(-quick * dt)); look.pitch += (look.tPitch - look.pitch) * (1 - Math.exp(-quick * dt));
     const chestYaw = hipYaw + counter, headYaw = -chestYaw + look.yaw, headPitch = -leanF * 0.55 + look.pitch + breathe * 0.2 * DEG;
     setDelta('neck', lim('neck', headPitch * 0.4 / DEG) * DEG, lim('neck', headYaw * 0.45 / DEG) * DEG, hipRoll * 0.15);
     setDelta('head', lim('head', headPitch * 0.6 / DEG) * DEG, lim('head', headYaw * 0.55 / DEG) * DEG, hipRoll * 0.15);
@@ -451,6 +469,153 @@ export function createAnimator(THREE, rig, opts = {}) {
     }
   }
 
+  // ---------------------------------------------------------------- poses for story characters
+  // pose: what the arms (or the whole body) do. talk: 0..1 = speaking (a hand moves with the words).
+  // lookAt: { yaw, pitch } in radians relative to the body, or null = look around freely.
+  let pose = 'idle', talk = 0, talkNow = 0, lookAt = null, floorBelow = 0.45;
+  // put a hand at a place (character space); the elbow points along (px, py, pz). The arm is then solved like
+  // a real one, so a hand that should rest ON something really is there - it does not hang in the air.
+  function handAt(q, x, y, z, px, py, pz) { const A = hand[q]; A.on = true; A.hasPole = true; A.p.set(x, y, z); A.pole.set(px, py, pz); }
+  // standing poses: they only change the arms (and a little of the spine and head)
+  function standingPose(dt) {
+    const t = st.time;
+    talkNow += (talk - talkNow) * (1 - Math.exp(-6 * dt));
+    const beat = Math.sin(t * 5.2) * 0.5 + Math.sin(t * 3.1 + 1) * 0.5;               // small hand movements while speaking
+    if (pose === 'crossed') { for (let q = 0; q < 2; q++) { armAngles(q, 26 + q * 6, 2, -66, 102 - q * 8, 8); fingers(q, 30); } }
+    else if (pose === 'hips') {
+      // hands on the hips, the elbows out and a little back
+      for (let q = 0; q < 2; q++) { const { s } = SIDES[q]; handAt(q, s * (hipW + 0.075 * k), hipsPos.y + 0.075 * k, hipsPos.z - 0.035 * k, s, -0.05, -0.7); setDelta('hand_' + SIDES[q].tag, 0, 0, -s * 25 * DEG); fingers(q, 40); }
+    }
+    else if (pose === 'hold' || pose === 'carry') { for (let q = 0; q < 2; q++) { armAngles(q, pose === 'carry' ? 34 : 24, 3, -36, pose === 'carry' ? 84 : 70 + talkNow * beat * 4, 6); fingers(q, 62); } }
+    else if (pose === 'flag') { armAngles(0, 6, 9, 8, 12); armAngles(1, 166, 12, 0, 8); fingers(1, 60); }
+    else if (pose === 'phone') {
+      // one hand holds something small in front of the chest, the head is bent over it
+      armAngles(0, 4, 9, 8, 12);
+      handAt(1, -0.07 * k, hipsPos.y + 0.34 * k, hipsPos.z + 0.29 * k, -0.6, -0.8, -0.25);
+      fingers(1, 55); setDelta('neck', 14 * DEG, 0, 0); setDelta('head', 16 * DEG, -6 * DEG, 0);
+    }
+    else if (pose === 'aim') {
+      // both hands forward on a rifle, the body turned a little, the head down on the sight
+      armAngles(1, 76, 6, -10, 36, 0); armAngles(0, 68, -6, 18, 60, 0);
+      for (let q = 0; q < 2; q++) fingers(q, 62);
+      setDelta('spine1', 4 * DEG, -14 * DEG, 0); setDelta('chest', 4 * DEG, -10 * DEG, 0); setDelta('neck', 8 * DEG, 16 * DEG, -6 * DEG); setDelta('head', 4 * DEG, 8 * DEG, -8 * DEG);
+    } else if (talkNow > 0.02) {
+      // speaking: one hand comes up a little and moves with the words
+      armAngles(1, 12 + 20 * talkNow + beat * 5 * talkNow, 10, -8 * talkNow, 12 + 60 * talkNow + beat * 9 * talkNow, 12 * talkNow);
+    }
+  }
+  // sitting: 'sit' = in a car seat (leaning back), 'sitEdge' = on the edge of a bed (leaning forward, head down)
+  function sittingPose(dt) {
+    const edge = pose === 'sitEdge', t = st.time;
+    bodyQ.setFromEuler(euler.set((edge ? 16 : -10) * DEG, 0, 0, 'YXZ'));
+    const seatY = 0.1 * k;
+    hipsPos.set(0, seatY + (hipsRest.y - R.thigh_L.head[1]), 0);
+    setDelta('spine', (edge ? 10 : 6) * DEG); setDelta('spine1', (edge ? 8 : 5) * DEG); setDelta('chest', 3 * DEG + Math.sin(t * 1.4) * 0.6 * DEG);
+    if (lookAt) { look.yaw += (clamp(lookAt.yaw, -1.4, 1.4) - look.yaw) * (1 - Math.exp(-4 * dt)); look.pitch += (clamp(lookAt.pitch || 0, -0.5, 0.5) - look.pitch) * (1 - Math.exp(-4 * dt)); }
+    else { look.yaw *= Math.exp(-2 * dt); look.pitch += ((edge ? 0.2 : 0) - look.pitch) * (1 - Math.exp(-2 * dt)); }
+    setDelta('neck', (edge ? 10 : -2) * DEG + look.pitch * 0.4, look.yaw * 0.45, 0); setDelta('head', (edge ? 8 : -2) * DEG + look.pitch * 0.6, look.yaw * 0.55, 0);
+    for (let q = 0; q < 2; q++) {
+      const { s } = SIDES[q], F = foot[q];
+      if (edge) F.ankle.set(s * hipW * 1.25, seatY - floorBelow + ankleH, thighLen * 0.92);        // feet flat on the floor in front of the bed
+      else F.ankle.set(s * hipW * 1.1, seatY - 0.16 * k + ankleH * 0.3, thighLen * 0.9 + shinLen * 0.5);
+      F.yaw = s * 0.1; F.pitch = edge ? 0 : -0.2; F.toe = 0;
+      // the hands REST on the legs: on the edge of a bed the forearms lie on the thighs and the hands hang
+      // between the knees; in a car seat each hand lies on its own thigh
+      if (edge) handAt(q, s * 0.075 * k, seatY + 0.05 * k, thighLen * 0.8, s, 0.15, -0.5);
+      else handAt(q, s * hipW * 1.12, seatY + 0.105 * k, thighLen * 0.5, s * 0.7, -0.6, -0.4);
+      fingers(q, 35);
+    }
+  }
+  // LYING DOWN: 'lie' = asleep, curled up on one side. 'fallen' = on the back, where somebody fell.
+  // The body lies ON the surface it was put on (a bed, the street): hip, shoulder, knees, heels and hands touch
+  // it, nothing floats. How far the body sticks out from its bones is measured once from the model itself, so
+  // it fits every character (also one with a backpack: then the upper back lies higher than the hips).
+  let lieM = null;
+  function lieMeasure() {
+    if (lieM) return lieM;
+    const g = rig.mesh.geometry.attributes.position;
+    const hy = hipsRest.y, cy = R.chest ? R.chest.head[1] : hy + 0.3 * k, ny = R.head.head[1], sx = Math.abs(R.upperArm_L.head[0]);
+    let low = 1e9, high = 1e9, headBack = 1e9, headSide = 0, hipSide = 0;
+    const jump = Math.max(1, Math.floor(g.count / 9000));
+    for (let i = 0; i < g.count; i += jump) {
+      const x = Math.abs(g.getX(i)), y = g.getY(i), z = g.getZ(i);
+      if (x < 0.18 * k && y > hy - 0.16 * k && y < hy + 0.05 * k && z < low) low = z;            // the seat
+      if (x < 0.2 * k && y > cy - 0.1 * k && y < cy + 0.2 * k && z < high) high = z;             // the upper back (or a backpack)
+      if (y > ny + 0.03 * k) { if (x < 0.1 * k && z < headBack) headBack = z; if (x > headSide) headSide = x; }
+      if (y > hy - 0.12 * k && y < hy + 0.04 * k && x > hipSide && x < hipW + 0.14 * k) hipSide = x;
+    }
+    if (low > 1e8) low = hipsRest.z - 0.11 * k;
+    if (high > 1e8) high = low;
+    if (headBack > 1e8) headBack = R.head.head[2] - 0.1 * k;
+    const span = Math.max(0.2 * k, cy + 0.05 * k - hy);                    // from the seat to the shoulder blades
+    lieM = {
+      seat: hipsRest.z - low,                                             // on the back: the hips are this far above the surface
+      tilt: Math.asin(clamp((low - high) / span, 0, 0.5)),                // ... and the chest end lies this much higher (radians)
+      headBack: R.head.head[2] - headBack,
+      hipSide: hipSide || hipW + 0.09 * k,                                // on the side: half the width of the hips,
+      shoulderSide: sx + 0.05 * k,                                        // of the shoulders,
+      headSide: headSide || 0.09 * k,                                     // and of the head
+      span, heelUp: -heelZ, handUp: 0.035 * k,
+    };
+    return lieM;
+  }
+  const qa = Q(), qb = Q();
+  // ASLEEP: on the right side, curled up a little. The face looks to the character's right.
+  function sleepPose() {
+    const M = lieMeasure(), t = st.time;
+    // the shoulders are wider than the hips: the head end lies a little higher
+    const tilt = Math.asin(clamp((M.shoulderSide - M.hipSide) / M.span, -0.3, 0.3));
+    bodyQ.setFromAxisAngle(X_AXIS, tilt).multiply(qa.setFromAxisAngle(Z_AXIS, Math.PI / 2)).multiply(qb.setFromAxisAngle(X_AXIS, -Math.PI / 2));
+    hipsPos.set(0, M.hipSide + 0.004, 0);
+    const breathe = Math.sin(t * 1.1) * 1.2 * DEG;
+    // a rounded back, the head sunk toward the pillow, the chin toward the chest
+    setDelta('spine', 9 * DEG); setDelta('spine1', 8 * DEG); setDelta('chest', 6 * DEG + breathe);
+    setDelta('neck', 10 * DEG, 0, -11 * DEG); setDelta('head', 8 * DEG, 0, -10 * DEG);
+    const hipZ = hipsRest.y - R.thigh_L.head[1];
+    legIK = true;
+    for (let q = 0; q < 2; q++) {
+      const F = foot[q], under = q === 1;                                 // the right leg lies under the left one
+      F.loose = true; F.pitch = 0.25; F.toe = 0;
+      // knees forward (toward the face side, -x). The upper leg rests in front of the lower one, its knee on the bed.
+      if (under) { F.ankle.set(0.06 * k, 0.05 * k, hipZ + legLen * 0.74); F.pole.set(-1, 0.05, 0.25); }
+      else { F.ankle.set(-0.2 * k, 0.055 * k, hipZ + legLen * 0.6); F.pole.set(-1, -0.35, 0.3); }
+    }
+    for (let q = 0; q < 2; q++) {
+      const A = hand[q], under = q === 1;
+      A.on = true; A.hasPole = true;
+      // the lower arm lies forward on the bed, the hand near the face. The upper arm rests in front of the chest.
+      if (under) { A.p.set(-0.3 * k, M.handUp, -(M.span + 0.2 * k)); A.pole.set(-0.7, 0.25, 0.65); }
+      else { A.p.set(-0.3 * k, M.handUp + 0.01, -(M.span * 0.45)); A.pole.set(-0.3, 0.6, 0.75); }
+      fingers(q, 32, 14);
+    }
+  }
+  // FALLEN: on the back. One knee up and to the side, one arm thrown out with the hand open.
+  function fallenPose() {
+    const M = lieMeasure();
+    bodyQ.setFromAxisAngle(X_AXIS, -Math.PI / 2 + M.tilt);
+    hipsPos.set(0, M.seat * Math.cos(M.tilt) + 0.004, 0);
+    setDelta('spine1', 0, 0, 4 * DEG); setDelta('chest', 0, 0, 3 * DEG);
+    // the head falls back until it touches the ground (as far as a neck allows), turned away
+    const headY = hipsPos.y + Math.sin(M.tilt) * (R.head.head[1] - hipsRest.y) + Math.cos(M.tilt) * (R.head.head[2] - hipsRest.z) - M.headBack;
+    const drop = clamp(headY / (0.22 * k), 0, 0.55);
+    setDelta('neck', -drop * 0.55, 20 * DEG, 0); setDelta('head', -drop * 0.45, 26 * DEG, 0);
+    legIK = true;
+    const hipZ = hipsRest.y - R.thigh_L.head[1];
+    for (let q = 0; q < 2; q++) {
+      const { s } = SIDES[q], F = foot[q];
+      F.lying = true;
+      F.ankle.set(s * hipW * (q ? 1.15 : 1.9), M.heelUp + 0.006, hipZ + legLen * (q ? 0.992 : 0.88));
+      F.yaw = s * (q ? 0.3 : 0.7); F.pitch = 0.4; F.toe = 0;                // the feet fall outward, the toes relax
+    }
+    for (let q = 0; q < 2; q++) {
+      const { s } = SIDES[q], A = hand[q];
+      A.on = true; A.hasPole = true;
+      if (q === 0) { A.p.set(s * (hipW + 0.5 * k), M.handUp, -0.34 * k); A.pole.set(s * 0.3, -0.2, 1); }     // thrown out, the open hand on the ground
+      else { A.p.set(s * (hipW + 0.2 * k), M.handUp, 0.01 * k); A.pole.set(s, -0.25, 0); }                  // beside the body
+      fingers(q, 16, 10);
+    }
+  }
+
   // ---------------------------------------------------------------- test poses (rig test screen)
   function testPose(name) {
     bodyQ.identity(); hipsPos.copy(hipsRest);
@@ -488,9 +653,13 @@ export function createAnimator(THREE, rig, opts = {}) {
     if (s.inPlace) { vx += Math.sin(st.heading) * speed * dt; vz += Math.cos(st.heading) * speed * dt; st.x = vx; st.z = vz; st.y = 0; st.ground = null; }
     else { st.x = s.x || 0; st.z = s.z || 0; st.y = s.y || 0; }
     st.speed = speed;
+    legIK = true;
     if (mode === 'drive') drivingPose(dt);
     else if (mode === 'armsForward' || mode === 'deepBend') testPose(mode);
-    else { locomotion(dt, speed, 0); bodyAndArms(dt, speed); }
+    else if (pose === 'sit' || pose === 'sitEdge') sittingPose(dt);
+    else if (pose === 'lie') sleepPose();
+    else if (pose === 'fallen') fallenPose();
+    else { locomotion(dt, speed, 0); bodyAndArms(dt, speed); if (pose !== 'idle' || talk > 0 || talkNow > 0.02) standingPose(dt); }
     apply();
   }
   function setMode(next, seconds = 0.2) {
@@ -503,8 +672,22 @@ export function createAnimator(THREE, rig, opts = {}) {
   // put the feet under the body at once (after the character was moved far in one go)
   function reset() { for (const S of step) { S.first = true; S.planted = true; S.t = 1; } st.drop = 0; }
 
+  // story: change the pose (blends over "seconds")
+  function setPose(next, seconds = 0.35) {
+    if (next === pose) return;
+    startBlend(seconds);
+    const wasDown = pose === 'sit' || pose === 'sitEdge' || pose === 'fallen' || pose === 'lie';
+    pose = next;
+    if (wasDown) for (const S of step) { S.first = true; S.planted = true; S.t = 1; S.gait = false; }
+  }
+
   return {
-    update, setMode, reset, LIMITS,
+    update, setMode, reset, LIMITS, setPose,
+    get pose() { return pose; },
+    set talk(v) { talk = v; },
+    set look(v) { lookAt = v; },
+    // 'sitEdge': how far the floor is below the character's root (meters)
+    set floorBelow(v) { floorBelow = v; },
     get mode() { return mode; },
     set drive(d) { drive = d; },
     // for tests: is a foot on the ground, and where (world)

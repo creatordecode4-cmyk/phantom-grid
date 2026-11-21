@@ -1,0 +1,243 @@
+// ---------------------------------------------------------------------------
+// strings.js - EVERY TEXT of the story and its menus, in one place.
+//
+// To translate the game: copy the "en" block, give it another language code
+// (for example "hi"), translate the right-hand sides and set LANGUAGE below.
+// A text that is missing in a language falls back to English.
+// Chapter files only use the keys (the left-hand sides).
+// ---------------------------------------------------------------------------
+
+export let LANGUAGE = 'en';
+export function setLanguage(code) { LANGUAGE = code; }
+
+export const STRINGS = {
+  en: {
+    // ---- menus ----
+    'ui.game': 'PHANTOM GRID',
+    'ui.tagline': 'PORT MERIDIAN  ·  2090',
+    'ui.continue': 'CONTINUE',
+    'ui.new_game': 'NEW GAME',
+    'ui.free_roam': 'FREE ROAM',
+    'ui.missions': 'MISSIONS',
+    'ui.settings': 'SETTINGS',
+    'ui.new_warn': 'A NEW GAME ERASES THE SAVED STORY',
+    'ui.new_confirm': 'TAP AGAIN TO START OVER',
+    'ui.paused': 'PAUSED',
+    'ui.resume': 'RESUME',
+    'ui.restart': 'RESTART MISSION',
+    'ui.title': 'TITLE SCREEN',
+    'ui.back': 'BACK',
+    'ui.quality': 'GRAPHICS',
+    'ui.control_size': 'BUTTON SIZE',
+    'ui.tilt': 'TILT STEERING',
+    'ui.sub_size': 'SUBTITLES',
+    'ui.volume': 'VOLUME',
+    'ui.sound': 'SOUND',
+    'ui.on': 'ON', 'ui.off': 'OFF', 'ui.small': 'S', 'ui.medium': 'M', 'ui.large': 'L',
+    'ui.auto': 'AUTO', 'ui.low': 'LOW', 'ui.med': 'MED', 'ui.high': 'HIGH',
+    'ui.skip': 'HOLD TO SKIP',
+    'ui.tap': 'TAP TO CONTINUE',
+    'ui.failed': 'MISSION FAILED',
+    'ui.retry': 'TRY AGAIN',
+    'ui.loading_story': 'LOADING',
+    'ui.limiter_off': 'LIMITER OFF',
+    'ui.limiter_hint': 'PRESS',
+    'ui.close': 'CLOSE',
+    'ui.talk': 'TALK', 'ui.take': 'TAKE', 'ui.read': 'READ', 'ui.look': 'LOOK', 'ui.drop': 'DELIVER', 'ui.play': 'PLAY',
+    'ui.select_title': 'MISSIONS',
+    'ui.select_note': 'FOR TESTING: START AT ANY POINT OF THE STORY',
+    'ui.saved': 'SAVED',
+    'ui.get_in': 'GET BACK IN THE VAN',
+    'ui.time_left': 'TIME',
+    'ui.tape': "DON'T SKIP",
+    'ui.chapter': 'CHAPTER',
+    'ui.complete': 'COMPLETE',
+    'ui.next_chapter': 'NEXT CHAPTER',
+    'ui.locked': 'THE NEXT CHAPTER IS LOCKED',
+    'ui.exit_tip': 'STOP AND PRESS EXIT TO GET OUT',
+    'ui.pause': 'PAUSE',
+
+    // ---- names ----
+    'name.nate': 'NATE', 'name.theo': 'THEO', 'name.dante': 'DANTE', 'name.mace': 'MACE', 'name.wren': 'WREN',
+    'name.solberg': 'DR. SOLBERG', 'name.woman': 'WOMAN', 'name.customer': 'CUSTOMER', 'name.guard': 'MERIDIAN GUARD', 'name.radio': 'RADIO',
+    'name.voicemail': 'SAVED MESSAGE', 'name.stranger1': 'MAN', 'name.stranger2': 'WOMAN',
+
+    // ---- overheard in the streets (free roam: src/ai/streetLife.js) ----
+    'life.stop.1': 'Engine off. Hands where I can see them.',
+    'life.stop.2': 'Nobody is in a hurry tonight. Least of all you.',
+    'life.phone.1': 'No. I said Tuesday. ...I know what I said.',
+    'life.phone.2': 'Tell her I am fine. Tell her that.',
+    'life.wall.1': 'They raised the sea wall again.',
+    'life.wall.2': 'They raise it every year.',
+    'life.wall.3': 'So does the sea.',
+
+    // =====================================================================
+    // PROLOGUE - LAST LAP
+    // =====================================================================
+    'p.title': 'LAST LAP',
+    'p.card.over': 'FOUR YEARS AGO',
+    'p.card.sub': 'IRONHILL HIGHWAY  ·  02:40',
+    'p.m1': 'ON THE GRID',
+    'p.m2': 'IRONHILL NIGHT RUN',
+    'p.m3': 'TRACK 7',
+    // in the car, before the race
+    'p.leave_it': 'Leave it.',
+    'p.bad_song': 'It is a bad song.',
+    'p.your_tape': 'It is your tape.',
+    'p.yeah': '...Yeah.',
+    'p.quiet': 'You have been quiet all night.',
+    'p.tired': 'Just tired.',
+    'p.dante.grid': 'Calloway! Second row. Do not make me wait.',
+    'p.obj.grid': 'Roll up to your place on the second row',
+    'p.tip.steer': 'STEER WITH  ◀ ▶  (OR TILT)   ·   HOLD GAS',
+    'p.every_time': 'Every time.',
+    'p.know_its_us': 'That is how they know it is us.',
+    'p.dante.rules': 'Ironhill to the Mile. First one to the lights.',
+    'p.dante.guard': 'The Guard is asleep. Probably.',
+    'p.obj.pack': 'Stay with the pack',
+    'p.tip.gas': 'KEEP THE GAS DOWN',
+    'p.tip.traffic': 'STEER AROUND THE SLOW TRUCKS',
+    'p.looking': 'What do you keep looking at?',
+    'p.headlights': 'Nothing. Headlights.',
+    'p.obj.leader': 'Catch the leader',
+    'p.tip.nitro': 'HOLD NITRO ON THE STRAIGHT',
+    'p.falling_back': 'They are getting away.',
+    'p.obj.ramp': 'Drift the turn onto Neon Mile',
+    'p.late_brakes': 'Late on the brakes. Use the whole road on the way out.',
+    'p.tip.drift': 'A SHARP RIGHT AT THE BOTTOM: BRAKE  ·  HANDBRAKE + STEER TO DRIFT',
+    'p.obj.mile': 'Flat out along Neon Mile',
+    'p.dont_slow': 'Do not slow down, Nate.',
+    'p.obj.last': 'The last turn',
+    // on Theo's phone
+    'p.phone.from': 'S.',
+    'p.phone.text': 'They know about tonight. If you go, do not stop for anything. I am sorry. Burn this.',
+    'p.phone.when': '02:31  ·  NOT ANSWERED',
+    'p.card2.title': 'PHANTOM GRID',
+
+    // =====================================================================
+    // CHAPTER 1 - RAIN DELIVERY
+    // =====================================================================
+    'c1.title': 'RAIN DELIVERY',
+    'c1.card.over': 'FOUR YEARS LATER',
+    'c1.card.sub': 'CHAPTER 1',
+    // ---- opening: the flat ----
+    'c1.m0': 'HOME',
+    'c1.wren.wake': 'Nate. It is nine forty. You asked me to wake you.',
+    'c1.wren.jobs': 'Three deliveries tonight. Rain until morning.',
+    'c1.always_rain': 'It is always rain until morning.',
+    'c1.wren.message': 'One saved message. Four years and one month old. Play it?',
+    'c1.ch.play': 'Play it.',
+    'c1.ch.not_today': 'Not today.',
+    'c1.voicemail': 'Nate, it is me. Do not be mad, okay? I need to tell you someth--',
+    'c1.stop': 'Stop.',
+    'c1.wren.stopped': 'Stopped at four seconds. The same as last time.',
+    'c1.wren.saved': 'Saved. Again.',
+    // ---- the garage ----
+    'c1.obj.mace': 'Talk to Mace',
+    'c1.mace.van': 'Van is charged. Front left was soft. I fixed it.',
+    'c1.thanks': 'Thanks.',
+    'c1.mace.eat': 'You eat?',
+    'c1.later': 'Later.',
+    'c1.mace.eat2': 'Eat something.',
+    'c1.ch.kind': 'Thanks, Mace. I will.',
+    'c1.ch.ignore': '(Say nothing.)',
+    'c1.mace.kind': 'Do not thank me. It is from yesterday.',
+    'c1.mace.ignored': 'Mm.',
+    'c1.mace.tarp': 'I could move it. Out back.',
+    'c1.leave_it': 'Leave it.',
+    'c1.mace.careful': 'Drive careful.',
+    'c1.only_eighty': 'It only does eighty.',
+    'c1.mace.not_said': 'That is not what I said.',
+    'c1.obj.van': 'Get in the van',
+    'c1.wren.limiter': 'Limiter is on. Eighty.',
+    // ---- three deliveries ----
+    'c1.m1': 'THREE DELIVERIES',
+    'c1.obj.d1': 'Delivery 1 of 3: drive to Halden Row',
+    'c1.wren.route': 'Route is on your map. Follow the yellow line.',
+    'c1.tip.gps': 'THE YELLOW LINE ON THE MAP IS YOUR ROUTE',
+    'c1.obj.door': 'Carry the parcel to the door',
+    'c1.obj.back': 'Back to the van',
+    'c1.wren.one': 'Signed for. Two to go.',
+    'c1.argue.1': 'You said Friday.',
+    'c1.argue.2': 'I said maybe Friday.',
+    'c1.argue.3': 'It is always maybe with you.',
+    'c1.obj.d2': 'Delivery 2 of 3: drive to Vance Street',
+    'c1.cust.late': 'You are the slow one. The eighty guy.',
+    'c1.on_time': 'I am on time.',
+    'c1.cust.other': 'The other couriers are early.',
+    'c1.wren.two': 'One to go. A late pick-up at the east depot on Neon Mile.',
+    'c1.obj.depot': 'Delivery 3 of 3: collect the parcel at the east depot',
+    'c1.obj.take': 'Take the parcel from the locker',
+    'c1.wren.closing': 'The shop closes soon. It is a straight run down the Mile.',
+    'c1.obj.d3': 'Deliver across Neon Mile before the shop closes',
+    'c1.wren.turn_off': 'You could turn it off.',
+    'c1.i_could': 'I could.',
+    'c1.fail.late': 'The shop closed before you got there.',
+    'c1.wren.done': 'Signed for. That was the last one.',
+    // ---- the priority job ----
+    'c1.m2': 'N. CALLOWAY',
+    'c1.wren.priority': 'A new job just came in. Priority. Sender unlisted.',
+    'c1.wren.name': 'It is addressed to you. By name. "N. Calloway."',
+    'c1.nobody': 'Nobody books me by name.',
+    'c1.wren.somebody': 'Somebody did.',
+    'c1.wren.where': 'Pick-up is a backstreet behind Neon Mile. I will keep the map up.',
+    'c1.obj.pickup': 'Drive to the backstreet behind Neon Mile',
+    'c1.obj.alley': 'Drive into the backstreet',
+    // ---- Dr. Solberg ----
+    'c1.m3': 'THE PICK-UP',
+    'c1.obj.client': 'Meet the client',
+    'c1.solberg.look': 'You look like him.',
+    'c1.like_who': 'Like who?',
+    'c1.ticket.t1': 'IRONHILL NIGHT RUN',
+    'c1.ticket.t2': 'DRIVER   T. CALLOWAY\nHOST     D. RIOS',
+    'c1.ticket.t3': 'ADMIT ONE  ·  NO REFUNDS',
+    'c1.ch.take': 'Take the ticket.',
+    'c1.ch.leave': 'Leave it.',
+    'c1.wren.leave_now': 'Nate. She is gone. We have to leave.',
+    'c1.obj.backvan': 'Get back in the van',
+    // ---- the escape ----
+    'c1.m4': 'TWO HONKS',
+    'c1.wren.go': 'Go. Now.',
+    'c1.obj.limiter': 'Turn the limiter off',
+    'c1.obj.go': 'Drive. Out the far end',
+    // ---- the chase ----
+    'c1.m5': 'THE CHASE',
+    'c1.obj.coast': 'South, to the coast road',
+    'c1.wren.guard': 'Meridian Guard. Two units.',
+    'c1.obj.beach': 'East along the beach road',
+    'c1.wren.behind': 'It is right behind us.',
+    'c1.wren.holding': '...It is holding back.',
+    'c1.obj.north': 'North, at the lights',
+    'c1.wren.lines': 'It brakes late. Runs wide on the way out. That is not a patrol pattern.',
+    'c1.obj.west': 'Cut west behind the Mile',
+    'c1.wren.one_down': 'One Guard car is out.',
+    'c1.obj.rail': 'Go north under the rail line',
+    'c1.obj.lose': 'Lose the Guard',
+    'c1.wren.lost': 'The Guard has lost us.',
+    'c1.obj.hide': 'Get off the street',
+    'c1.fail.busted': 'The Meridian Guard stopped you.',
+    'c1.fail.wrecked': 'The van is wrecked.',
+    // ---- the end ----
+    'c1.m6': 'IT LET YOU GO',
+    'c1.wren.let_go': 'It let you go.',
+    'c1.why': 'Why?',
+    'c1.ch.stop_tracking': 'Stop tracking it.',
+    'c1.ch.mirror': 'Keep it in my mirror.',
+    'c1.wren.understood': 'Understood.',
+    'c1.wren.watch': 'I will watch.',
+    'c1.radio.news': '...a woman was found shot behind Neon Mile tonight. Police recovered a race ticket at the scene...',
+    'c1.end.1': 'Three deliveries. One parcel with your name on it.',
+    'c1.end.2': 'A woman who knew your face. A ticket from the night it ended.',
+    'c1.end.3': 'Something black followed you home, and let you go.',
+    'c1.end.locked': 'CHAPTER 2 IS LOCKED',
+  },
+};
+
+// the text for a key (in the chosen language, else English, else the key itself so a typo is easy to see)
+export function t(key) {
+  if (key === null || key === undefined) return '';
+  const lang = STRINGS[LANGUAGE] || STRINGS.en;
+  if (key in lang) return lang[key];
+  if (key in STRINGS.en) return STRINGS.en[key];
+  return String(key);
+}

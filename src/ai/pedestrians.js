@@ -133,6 +133,8 @@ export function createPedestrians(ctx) {
   let baseCount = 60;    // from the quality level
   let knocked = 0;       // how many people were knocked over by the player's car (main.js reads this)
   let wanted = 60;       // fewer at night and in rain
+  let cap = Infinity;    // story: at most this many (0 = empty streets)
+  let capNow = false;    // true: people over the cap vanish at once (the screen is black), false: only once they are far away
 
   // where is a point on a loop? writes x, z, the walking direction and the piece number
   const _at = { x: 0, z: 0, dx: 0, dz: 1, index: 0 };
@@ -171,7 +173,7 @@ export function createPedestrians(ctx) {
   function update(dt, time, px, pz, avoid = [], night = 0, rain = 0) {
     const first = !update.started;
     update.started = true;
-    wanted = Math.round(baseCount * (1 - 0.5 * night) * (1 - 0.4 * rain));
+    wanted = Math.min(cap, Math.round(baseCount * (1 - 0.5 * night) * (1 - 0.4 * rain)));
     const tt = time % 40;
     const m = mesh.instanceMatrix.array, ph = phaseAttr.array;
     let moved = 0;
@@ -180,7 +182,7 @@ export function createPedestrians(ctx) {
       const o = i * 16;
       const d = p.alive ? Math.hypot(p.x - px, p.z - pz) : 0;
       // too far away, or too many people for this time of day (those leave when nobody looks)
-      if (p.alive && (d > FAR || (i >= wanted && d > 45))) p.alive = false;
+      if (p.alive && (d > FAR || (i >= wanted && (d > 45 || capNow)))) p.alive = false;
       if (!p.alive && i < wanted && (first || moved < 6)) { moved++; placePerson(p, px, pz, first ? 6 : 48, FAR - 8); }
       if (!p.alive) { for (let k = 0; k < 16; k++) m[o + k] = 0; continue; } // hidden: size zero
 
@@ -276,6 +278,8 @@ export function createPedestrians(ctx) {
     people, mesh, loops, update,
     get wanted() { return wanted; },
     takeKnocked() { const k = knocked; knocked = 0; return k; },
+    // story: at most n people (Infinity = as many as the quality level allows)
+    setCap(n, now = false) { cap = n; capNow = now; },
     setQuality(q) {
       baseCount = Math.min(MAX, q.people ?? 60);
       for (let i = baseCount; i < MAX; i++) people[i].alive = false;

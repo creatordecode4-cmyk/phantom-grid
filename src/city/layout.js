@@ -60,14 +60,14 @@ export const LAYOUT = {
   alleyWidth: 5,
   alleys: [
     { col: 1, row: 1, axis: 'z' },
-    { col: 6, row: 1, axis: 'x' },
+    { col: 6, row: 1, axis: 'x', clear: true },   // story: the backstreet of the pickup (kept free of dumpsters)
     { col: 3, row: 2, axis: 'x' },
     { col: 8, row: 2, axis: 'z' },
     { col: 0, row: 3, axis: 'x' },
     { col: 5, row: 4, axis: 'z' },
     { col: 2, row: 5, axis: 'x' },
     { col: 7, row: 5, axis: 'z' },
-    { col: 4, row: 6, axis: 'x' },
+    { col: 4, row: 6, axis: 'x', clear: true },   // story: the alley where chapter 1 ends
     { col: 1, row: 7, axis: 'z' },
     { col: 6, row: 7, axis: 'x' },
   ],
@@ -148,6 +148,7 @@ export const LAYOUT = {
   heroSites: [
     { id: 'b05', col: 4, row: 4, at: 'nw', front: 'W' },   // villa cluster: right beside the start point
     { id: 'b03', col: 4, row: 4, at: 'sw', front: 'W' },   // garden midrise: first corner south of the start
+    { id: 'g01', col: 4, row: 4, at: 'w', front: 'W', shift: -8 },  // Mace's garage (story): between the two, at the start street
     { id: 'b08', col: 5, row: 5, at: 'se', front: 'E' },   // retrofit brick tower: first corner north of the start
     { id: 'b04', col: 4, row: 0, at: 'sw', front: 'S' },   // office hub: where the start street meets Neon Mile
     { id: 'b07', col: 5, row: 0, at: 'se', front: 'S' },   // drone + EV hub: the other side of that junction
@@ -359,14 +360,14 @@ export function buildLayout(L = LAYOUT) {
         const h = L.alleyWidth / 2;
         addBlock({ ...rect, maxZ: mid - h }, c, r, { ...edges, n: alleyEdge }, { half: 's' });
         addBlock({ ...rect, minZ: mid + h }, c, r, { ...edges, s: alleyEdge }, { half: 'n' });
-        alleyRects.push({ minX: rect.minX, maxX: rect.maxX, minZ: mid - h, maxZ: mid + h, axis: 'x' });
+        alleyRects.push({ minX: rect.minX, maxX: rect.maxX, minZ: mid - h, maxZ: mid + h, axis: 'x', clear: !!alley.clear });
       } else {
         // Alley runs north-south: an east half and a west half.
         const mid = (rect.minX + rect.maxX) / 2;
         const h = L.alleyWidth / 2;
         addBlock({ ...rect, maxX: mid - h }, c, r, { ...edges, w: alleyEdge }, { half: 'e' });
         addBlock({ ...rect, minX: mid + h }, c, r, { ...edges, e: alleyEdge }, { half: 'w' });
-        alleyRects.push({ minX: mid - h, maxX: mid + h, minZ: rect.minZ, maxZ: rect.maxZ, axis: 'z' });
+        alleyRects.push({ minX: mid - h, maxX: mid + h, minZ: rect.minZ, maxZ: rect.maxZ, axis: 'z', clear: !!alley.clear });
       }
     }
   }

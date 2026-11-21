@@ -988,7 +988,8 @@ export async function autoRig(THREE, model, opts = {}) {
 
   progress(0.2, 'Finding joints and skin');
   await wait();
-  const A = analyzeCharacter(raw, index, { height: opts.height || 1.8 });
+  // opts.analyze: do the heavy part somewhere else (a background worker), so the game does not stop meanwhile
+  const A = opts.analyze ? await opts.analyze(raw, index, opts.height || 1.8) : analyzeCharacter(raw, index, { height: opts.height || 1.8 });
 
   progress(0.8, 'Building the skeleton');
   await wait();
@@ -1013,6 +1014,21 @@ export async function autoRig(THREE, model, opts = {}) {
   // (a generous sphere: the pose changes, the sphere is not recomputed)
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, A.height / 2, 0), A.height * 0.95);
 
+  const material = Array.isArray(src.material) ? src.material[0] : src.material;
+  const rig = assemble(THREE, A, geo, material);
+  progress(1, 'Character ready');
+  if (opts.log !== false && A.report) {
+    console.groupCollapsed(`[autoRig] ${opts.name || 'character'}: ${A.report.table.filter((r) => r.status === 'PASS').length} PASS, ${A.report.table.filter((r) => r.status === 'WARN').length} WARN (${A.report.ms} ms) - open for the full report`);
+    for (const line of A.report.log) console.log(line);
+    for (const line of A.report.notes) console.warn(line);
+    console.groupEnd();
+    console.table(A.report.table.map((r) => ({ joint: r.joint, result: r.status, 'volume change': r.text, limits: r.limit })));
+  }
+  return rig;
+}
+
+// Bones + skinned mesh from a finished analysis. geo: the geometry with skin weights.
+function assemble(THREE, A, geo, material) {
   // ---- bones ----
   const list = [], byName = {}, rest = {}, worldQ = [];
   const m = new THREE.Matrix4();
@@ -1036,7 +1052,6 @@ export async function autoRig(THREE, model, opts = {}) {
     // the rest pose is remembered: the animation always starts from it
     rest[b.name] = { position: bone.position.clone(), quaternion: bone.quaternion.clone(), world: worldQ[i].clone(), length: b.length, head: b.head.slice(), tail: b.tail.slice(), parent: b.parent, helper: b.helper || null, of: b.of || null, radius: b.radius || 0, gain: A.gains[b.name] || 0 };
   });
-  const material = Array.isArray(src.material) ? src.material[0] : src.material;
   const mesh = new THREE.SkinnedMesh(geo, material);
   mesh.name = 'character';
   mesh.castShadow = true; mesh.receiveShadow = true;
@@ -1048,13 +1063,11 @@ export async function autoRig(THREE, model, opts = {}) {
   const skeleton = new THREE.Skeleton(list);
   root.updateMatrixWorld(true);
   mesh.bind(skeleton);
-  progress(1, 'Character ready');
-  if (opts.log !== false) {
-    console.groupCollapsed(`[autoRig] ${opts.name || 'character'}: ${A.report.table.filter((r) => r.status === 'PASS').length} PASS, ${A.report.table.filter((r) => r.status === 'WARN').length} WARN (${A.report.ms} ms) - open for the full report`);
-    for (const line of A.report.log) console.log(line);
-    for (const line of A.report.notes) console.warn(line);
-    console.groupEnd();
-    console.table(A.report.table.map((r) => ({ joint: r.joint, result: r.status, 'volume change': r.text, limits: r.limit })));
-  }
   return { root, mesh, bones: byName, list, skeleton, rest, def: A, report: A.report, joints: A.joints, info: A.info, height: A.height };
+}
+
+// A second character with the same body (it shares the mesh data, so it costs little memory).
+// material: another look for the copy (left out = the same).
+export function cloneRig(THREE, rig, material = null) {
+  return assemble(THREE, rig.def, rig.mesh.geometry, material || rig.mesh.material);
 }

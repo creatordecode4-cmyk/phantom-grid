@@ -7,7 +7,14 @@
 //   3. create lighting, weather, the player, the camera and the controls
 //   4. pick a quality level that fits this device
 //   5. loop forever: read input -> move player or vehicle -> traffic, people,
-//      police -> missions, map and GPS -> update world -> draw
+//      police -> story or missions, map and GPS -> update world -> draw
+//
+// THE THREE WAYS TO PLAY
+//   title   the title screen (CONTINUE, NEW GAME, MISSIONS, FREE ROAM, SETTINGS)
+//   story   the Prologue and the chapters (src/story)
+//   free    free roam: the whole city, the test garage, the old test buttons
+// Address options for testing:  ?story=0 (straight into free roam),
+//   ?story=prologue.1 or ?story=chapter01.4 (straight into a mission)
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
@@ -32,6 +39,17 @@ import { loadVehicles } from './vehicles/vehicleLoader.js';
 import { createEffects } from './vehicles/effects.js';
 import { createPolice } from './ai/police.js';
 import { createMissions } from './missions/missionManager.js';
+import { createStoryUI } from './ui/storyUI.js';
+import { createMusic } from './audio/music.js';
+import { createSave } from './story/save.js';
+import { createActors } from './story/actors.js';
+import { createDrivers } from './story/drivers.js';
+import { createDirector } from './story/director.js';
+import { createProps } from './story/props.js';
+import { createStory } from './story/engine.js';
+import { createStreetLife } from './ai/streetLife.js';
+import { t } from './story/strings.js';
+import { GARAGE } from './city/heroBuildings.js';
 
 const hud = createHUD();
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -131,6 +149,36 @@ async function boot() {
   const CAM_MODES = ['chase', 'close', 'hood', 'cockpit'];
   let baseFov = CONFIG.camera.fov, fovNow = CONFIG.camera.fov, pixelH = 720, stars = 0;
   const missions = createMissions({ scene, city, vehicles, hud, sound });
+
+  // ------------------------------------------------- Phase 4: the story
+  const ui = createStoryUI();                           // film bars, subtitles, choices, menus
+  const music = createMusic(sound);                     // the mixtape, rain, the chase pad
+  const save = createSave();
+  const actors = createActors({ scene, city, materials, player, vehicles });
+  const drivers = createDrivers({ vehicles, gps, city, player, sound });
+  const storyProps = createProps();
+  // free roam: small moments in the streets (people with their own business, overheard lines)
+  const streetLife = createStreetLife({ actors, props: storyProps, vehicles, ui, scene, player, city });
+  let story = null;
+  const director = createDirector(camera, (place) => story.pt(place));
+  let gameMode = 'boot';        // title | story | free
+  let paused = false, frozen = false, idleFrames = 0, fovSent = 0;
+  story = createStory({
+    scene, camera, city, layout, vehicles, player, actors, drivers, director, props: storyProps, ui, music, sound, save, police, lighting, weather, hud, rig, carLib,
+    onExit: () => showTitle(),
+  });
+  // the name on Mace's garage (it belongs to the city, so it is there in every mode)
+  if (GARAGE.ready) {
+    const sign = storyProps.make('garageSign', { width: GARAGE.sign.width, height: GARAGE.sign.height });
+    sign.position.fromArray(GARAGE.sign.pos);
+    sign.rotation.y = GARAGE.rot;
+    scene.add(sign);
+  }
+  // sound settings from the last visit
+  sound.setVolume(ui.settings.volume);
+  sound.setMuted(ui.settings.muted);
+  hud.setSoundButton(!ui.settings.muted);
+  let goalState = missions.state;   // what the HUD shows: the story's objective or the free roam mission
   let waypoint = null;          // a place the player tapped on the big map
   let route = null;             // list of points along the roads (for the minimap)
   let routeTimer = 0, nearTimer = 0, lastSteps = 0, wasDriving = false;
@@ -188,19 +236,33 @@ async function boot() {
 
   // ------------------------------------------------------------------ one frame
   let time = 0;
+  const LOCK_ALL = { move: true, drive: true, look: true, action: true };
+  // where the title screen's camera stands and looks (across the street from Mace's garage)
+  // (a little to the side, so the lit garage door is not hidden behind the menu)
+  const TITLE = GARAGE.ready ? { x: GARAGE.door[0] + 18.6, z: GARAGE.door[2] - 6.5, lookX: GARAGE.door[0] } : { x: 1.6, z: 77, lookX: -17 };
   const camDir = new THREE.Vector3();
   function step(dt) {
     time += dt;
     shared.uPgTime.value = time;
     const input = controls.update();
-    // ---- E key / CAR button: get in, or stop and get out ----
-    if (input.action) carAction();
+    const S = story.active ? story : null;
+    // ---- the story (or the title screen) can take the controls away for a moment ----
+    const lock = gameMode === 'title' ? LOCK_ALL : S ? S.locks : null;
+    if (lock) {
+      if (lock.move) { input.moveX = 0; input.moveY = 0; input.run = false; }
+      if (lock.drive) { const d = input.drive; d.steer = 0; d.gas = 0; d.brake = 0; d.handbrake = true; d.nitro = false; d.horn = false; d.up = false; d.down = false; }
+      if (lock.look) { input.lookX = 0; input.lookY = 0; input.map = false; input.camera = false; }
+      if (lock.action) input.lights = false;
+    }
+    // ---- E key: the story's TALK / TAKE button when it is shown, else get in or out of a car ----
+    if (input.action) { if (ui.actShown) ui.act(); else if (!(lock && lock.action)) carAction(); }
     if (input.map) hud.actions.map();
     if (input.camera) hud.actions.camera();
     if (input.lights) hud.actions.lights();
     rig.rotate(input.lookX, input.lookY);
     const onFoot = vehicles.state === 'none';
-    if (onFoot) player.update(dt, input, rig.yaw);
+    // (in a story scene the character can be posed somewhere: then it does not listen to the stick)
+    if (onFoot) { if (player.staged) player.tick(dt); else player.update(dt, input, rig.yaw); }
     const px = player.position.x, pz = player.position.z;
     const night = shared.uPgNight.value, rain = weather.amount;
 
@@ -239,17 +301,26 @@ async function boot() {
       hud.setLightButton(!!(v && v.hiBeam));
       if (driving) rig.startChase(); else { rig.endChase(); sound.setInside(false); }
     }
+    // ---- the story: its people, its steps, its film camera ----
+    actors.update(dt, time, driving);
+    story.update(dt, time);
+    streetLife.update(dt, time, gameMode === 'free');
+    const film = !!S && S.cameraActive;
     const view = vehicles.camMode;
-    if (driving && vehicles.active) rig.updateChase(dt, vehicles.active, vehicles.shake, view);
+    if (film) S.applyCamera(dt);
+    else if (driving && vehicles.active) rig.updateChase(dt, vehicles.active, vehicles.shake, view);
     else rig.update(dt, player);
     {
       // the faster, the wider the view (and a little speed blur at the very top, see postfx.js)
       const kmh = driving ? vehicles.speedKmh : 0, boost = driving && vehicles.active.nitroOn ? 1 : 0;
-      const want = baseFov + Math.min(14, kmh * 0.058) + boost * 4;
+      // (after the limiter is switched off the view stays a little wider: the city opens up)
+      const want = baseFov + Math.min(14, kmh * 0.058) + boost * 4 + (S ? S.fovBoost * 7 : 0);
       fovNow += (want - fovNow) * Math.min(1, dt * 3);
-      if (Math.abs(camera.fov - fovNow) > 0.04) { camera.fov = fovNow; camera.updateProjectionMatrix(); effects.setViewport(fovNow, pixelH); }
-      if (postfx.setSpeed) postfx.setSpeed(clamp((kmh - 140) / 90, 0, 1) * 0.8 + boost * 0.25);
-      hud.setWindscreen(driving && rain > 0.3 && (view === 'hood' || view === 'cockpit') && vehicles.active.isCar);
+      if (!film && Math.abs(camera.fov - fovNow) > 0.04) { camera.fov = fovNow; camera.updateProjectionMatrix(); }
+      // the light dots of the lamps are sized for the lens that is used right now (film scenes use long lenses)
+      if (Math.abs(camera.fov - fovSent) > 0.04) { fovSent = camera.fov; effects.setViewport(camera.fov, pixelH); }
+      if (postfx.setSpeed) postfx.setSpeed(film ? 0 : clamp((kmh - 140) / 90, 0, 1) * 0.8 + boost * 0.25);
+      hud.setWindscreen(!film && driving && rain > 0.3 && (view === 'hood' || view === 'cockpit') && vehicles.active.isCar);
     }
     // ---- police: wanted stars, chasers, sirens, the flashing light ----
     const knocked = city.people.takeKnocked();
@@ -260,12 +331,14 @@ async function boot() {
       for (const s of sirens) if (Math.hypot(s.x - px, s.z - pz) < 170) nearSiren = true;
       sound.setSiren(nearSiren);
     }
-    const F = vehicles.flasher;
+    const F = vehicles.flasher, SL = S ? S.light : null;
     flashLight.visible = lighting.nightMode;
-    flashLight.intensity = F.on && lighting.nightMode ? 90 : 0;
-    if (F.on) { flashLight.position.set(F.x, F.y, F.z); flashLight.color.setHex(F.red ? 0xff2010 : 0x1040ff); }
+    // the one real lamp: a flashing Guard car first; else a lamp of the story (a room, a face)
+    if (F.on) { flashLight.intensity = lighting.nightMode ? 90 : 0; flashLight.distance = 26; flashLight.position.set(F.x, F.y, F.z); flashLight.color.setHex(F.red ? 0xff2010 : 0x1040ff); }
+    else if (SL) { flashLight.intensity = lighting.nightMode ? SL.power : 0; flashLight.distance = SL.range; flashLight.position.set(SL.pos[0], SL.pos[1], SL.pos[2]); flashLight.color.setHex(SL.color); }
+    else flashLight.intensity = 0;
     // ---- repair point, messages, phone vibration ----
-    if (driving && car && car.isCar && car.damage > 0.03 && Math.hypot(car.x - garage.repair.x, car.z - garage.repair.z) < 3.2 && Math.hypot(car.vx, car.vz) < 4) {
+    if (gameMode === 'free' && driving && car && car.isCar && car.damage > 0.03 && Math.hypot(car.x - garage.repair.x, car.z - garage.repair.z) < 3.2 && Math.hypot(car.vx, car.vz) < 4) {
       vehicles.repair(car); hud.toast('REPAIRED'); sound.chime();
     }
     const msg = vehicles.takeMessage() || police.takeMessage();
@@ -280,15 +353,30 @@ async function boot() {
     }
 
     // ---- mission, waypoint, GPS route ----
-    missionState = missions.update(dt, { x: px, z: pz, inCar: vehicles.state === 'driving', car: vehicles.active, speed: car ? Math.hypot(car.vx, car.vz) : player.speed });
+    if (gameMode === 'free') missionState = missions.update(dt, { x: px, z: pz, inCar: vehicles.state === 'driving', car: vehicles.active, speed: car ? Math.hypot(car.vx, car.vz) : player.speed });
+    goalState = S ? S.hud : missionState;
     if (waypoint && Math.hypot(waypoint.x - px, waypoint.z - pz) < 14) { waypoint = null; hud.toast('YOU HAVE ARRIVED'); sound.chime(); }
-    const goal = waypoint || missionState.marker;
+    // (in the story the map's yellow line always leads to the objective)
+    const goal = S ? goalState.marker : waypoint || missionState.marker;
     routeTimer -= dt;
-    if (!goal) route = null;
+    // (the raised highway is not part of the street map: up there the arrow points straight at the goal)
+    const onDeck = !!(car && car.arena) || px < layout.highway.maxX;
+    if (!goal || onDeck) route = null;
     else if (routeTimer <= 0) { routeTimer = 0.6; route = gps.route(px, pz, goal.x, goal.z); }
     // the CAR button shows up next to a car
     nearTimer -= dt;
     if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !!vehicles.nearest(px, pz)); vehicles.prefetch(px, pz, active === 'low' ? 2 : active === 'medium' ? 3 : 8); }
+    // ---- rain, traffic hum, waves near the beach, the tape (all made in code: src/audio/music.js) ----
+    music.update(dt, {
+      rain: weather.amount, city: clamp(city.traffic.count / 30, 0, 1) * 0.8, beach: clamp((-250 - pz) / 130, 0, 1),
+      inCar: driving || (!!S && S.indoors),
+    });
+    // ---- the title screen: a slow look along the street in front of Mace's garage ----
+    if (gameMode === 'title') {
+      const cz = TITLE.z + Math.sin(time * 0.045) * 4;
+      camera.position.set(TITLE.x, 2.5 + Math.sin(time * 0.07) * 0.2, cz);
+      camera.lookAt(TITLE.lookX, 2.9, cz - 1.5);
+    }
     // test tool: PG.freeCam = { pos: [x, y, z], look: [x, y, z] } puts the camera anywhere
     const fc = window.PG && window.PG.freeCam;
     if (fc) {
@@ -303,6 +391,7 @@ async function boot() {
   }
   // Get into the nearest car, or (when driving) stop and get out.
   function carAction() {
+    if (gameMode === 'title' || (story.active && story.locks.action)) return;
     if (vehicles.state === 'none') {
       if (!vehicles.tryEnter(player)) hud.toast('NO CAR NEAR YOU', 1200);
     } else if (vehicles.state === 'driving') vehicles.requestExit();
@@ -316,19 +405,21 @@ async function boot() {
     hud.setWanted(stars, police.chased);
     // name tags over the garage vehicles (only when you stand close)
     tags.length = 0;
-    if (vehicles.state === 'none') {
+    if (vehicles.state === 'none' && gameMode !== 'title') {
       for (const v of vehicles.live) {
-        if (!v.tag || Math.abs(v.x - player.position.x) > 22 || Math.abs(v.z - player.position.z) > 22) continue;
+        if (!v.tag || v.away || Math.abs(v.x - player.position.x) > 22 || Math.abs(v.z - player.position.z) > 22) continue;
         _mark.set(v.x, v.y + v.info.roof + 0.75, v.z).project(camera);
         if (_mark.z < 1 && Math.abs(_mark.x) < 1 && Math.abs(_mark.y) < 1) tags.push({ x: (_mark.x * 0.5 + 0.5) * window.innerWidth, y: (-_mark.y * 0.5 + 0.5) * window.innerHeight, text: v.label });
       }
+      // (story people whose model file is missing stand in as mannequins with a name tag)
+      actors.tags(camera, tags);
       _mark.set(garage.repair.x, 1.4, garage.repair.z);
-      if (_mark.distanceTo(player.position) < 30) { _mark.project(camera); if (_mark.z < 1 && Math.abs(_mark.x) < 1 && Math.abs(_mark.y) < 1) tags.push({ x: (_mark.x * 0.5 + 0.5) * window.innerWidth, y: (-_mark.y * 0.5 + 0.5) * window.innerHeight, text: 'REPAIR' }); }
+      if (gameMode === 'free' && _mark.distanceTo(player.position) < 30) { _mark.project(camera); if (_mark.z < 1 && Math.abs(_mark.x) < 1 && Math.abs(_mark.y) < 1) tags.push({ x: (_mark.x * 0.5 + 0.5) * window.innerWidth, y: (-_mark.y * 0.5 + 0.5) * window.innerHeight, text: 'REPAIR' }); }
     }
     hud.setTags(tags);
-    hud.setMission(missionState.active ? missionState : null);
-    const goal = waypoint || missionState.marker;
-    if (!goal) { hud.setArrow(null); hud.setMarker(null); return; }
+    hud.setMission(goalState.active ? goalState : null);
+    const goal = story.active ? goalState.marker : waypoint || missionState.marker;
+    if (!goal || gameMode === 'title') { hud.setArrow(null); hud.setMarker(null); return; }
     const px = player.position.x, pz = player.position.z;
     const dist = Math.hypot(goal.x - px, goal.z - pz);
     // the arrow points along the route (about 28 m ahead), seen from the camera
@@ -337,11 +428,11 @@ async function boot() {
     const fx = Math.sin(rig.yaw), fz = Math.cos(rig.yaw);
     hud.setArrow(Math.atan2(dx * -fz + dz * fx, dx * fx + dz * fz), route && route.length > 1 ? gps.length(route) : dist);
     // the marker floats over the goal (hidden when it is behind the camera)
-    _mark.set(goal.x, city.groundHeight(goal.x, goal.z) + 2.6, goal.z).project(camera);
+    _mark.set(goal.x, (goal.y !== undefined ? goal.y : city.groundHeight(goal.x, goal.z)) + 2.6, goal.z).project(camera);
     if (_mark.z < 1 && Math.abs(_mark.x) < 1.05 && Math.abs(_mark.y) < 1.05) hud.setMarker((_mark.x * 0.5 + 0.5) * window.innerWidth, (-_mark.y * 0.5 + 0.5) * window.innerHeight, dist);
     else hud.setMarker(null);
   }
-  const mapExtra = () => ({ inCar: vehicles.driving, cars: city.traffic.cars, waypoint, marker: missionState.marker, route });
+  const mapExtra = () => ({ inCar: vehicles.driving, cars: city.traffic.cars, waypoint: story.active ? null : waypoint, marker: goalState.marker, route });
 
   // ---- sun glow: is the sun on the screen, and do buildings hide it? ----
   const _sun = new THREE.Vector3(), _camFwd = new THREE.Vector3(), _ray = new THREE.Vector3();
@@ -402,24 +493,28 @@ async function boot() {
   }
 
   // ------------------------------------------------------------ start settings
-  const startTime = urlOption('time');
-  if (startTime) {
-    if (CONFIG.time.presets[startTime] !== undefined) lighting.jumpTo(startTime);
-    else if (!Number.isNaN(parseFloat(startTime))) lighting.setHour(parseFloat(startTime));
+  // (options in the address, for testing free roam: ?time=night&rain=1&pos=10,20&yaw=90 ...)
+  function applyStartOptions() {
+    const startTime = urlOption('time');
+    if (startTime) {
+      if (CONFIG.time.presets[startTime] !== undefined) lighting.jumpTo(startTime);
+      else if (!Number.isNaN(parseFloat(startTime))) lighting.setHour(parseFloat(startTime));
+    }
+    if (urlOption('freeze') === '1') lighting.setRunning(false);
+    if (urlOption('rain') === '1') weather.setInstant(true);
+    const startPos = urlOption('pos');
+    if (startPos) {
+      const [x, z] = startPos.split(',').map(parseFloat);
+      if (!Number.isNaN(x) && !Number.isNaN(z)) player.teleport(x, z);
+    }
+    const startYaw = urlOption('yaw'), startPitch = urlOption('pitch');
+    if (startYaw !== null) {
+      const a = parseFloat(startYaw) * DEG; // compass degrees: 0 north, 90 east, 180 south, 270 west
+      rig.set(Math.atan2(-Math.sin(a), Math.cos(a)), startPitch !== null ? parseFloat(startPitch) * DEG : CONFIG.camera.startPitch);
+    }
   }
-  if (urlOption('freeze') === '1') lighting.setRunning(false);
-  if (urlOption('rain') === '1') weather.setInstant(true);
+  applyStartOptions();
   if (urlOption('nohud') === '1') document.body.classList.add('nohud');
-  const startPos = urlOption('pos');
-  if (startPos) {
-    const [x, z] = startPos.split(',').map(parseFloat);
-    if (!Number.isNaN(x) && !Number.isNaN(z)) player.teleport(x, z);
-  }
-  const startYaw = urlOption('yaw'), startPitch = urlOption('pitch');
-  if (startYaw !== null) {
-    const a = parseFloat(startYaw) * DEG; // compass degrees: 0 north, 90 east, 180 south, 270 west
-    rig.set(Math.atan2(-Math.sin(a), Math.cos(a)), startPitch !== null ? parseFloat(startPitch) * DEG : CONFIG.camera.startPitch);
-  }
   let statsOn = CONFIG.showStats || urlOption('stats') === '1';
   hud.showStats(statsOn);
 
@@ -495,6 +590,7 @@ async function boot() {
   };
   hud.actions.sound = () => {
     sound.setMuted(!sound.muted);
+    ui.setSetting('muted', sound.muted);
     hud.setSoundButton(!sound.muted);
     hud.toast(sound.muted ? 'SOUND OFF' : 'SOUND ON', 1000);
   };
@@ -534,14 +630,120 @@ async function boot() {
   // ---------------------------------------------------------------- main loop
   let last = performance.now();
   let frames = 0, fpsTimer = 0, fps = 60, mapTimer = 0;
-  document.addEventListener('visibilitychange', () => { last = performance.now(); });
+
+  // ------------------------------------------------ title screen, story, free roam
+  // the test garage, its repair ring and the cars of the old test mission only exist in free roam
+  function setTestWorld(on) {
+    for (const v of garage.vehicles) v.away = !on;
+    for (const v of Object.values(missions.cars)) v.away = !on;
+    repairRing.visible = on;
+    // (cars the player took or spawned in free roam do not stay around for the story)
+    if (!on) for (const v of [...vehicles.live]) if (!v.keep && !v.npc && !v.storyId) vehicles.removeVehicle(v);
+  }
+  async function showTitle() {
+    story.stop(); missions.stop();
+    gameMode = 'title'; paused = false;
+    document.body.classList.add('title');
+    setTestWorld(false);
+    hud.showBigMap(false); waypoint = null; route = null;
+    // a rainy night in front of Mace's garage
+    lighting.setHour(23); lighting.setRunning(false); weather.setInstant(true); hud.setRainButton(true);
+    player.place(TITLE.x - 9, TITLE.z, 0); player.setHidden(true);
+    const info = await story.saveInfo();
+    if (gameMode === 'title') ui.title(info, onTitle);
+  }
+  function onTitle(action) {
+    if (action === 'continue') startStory(() => story.resume());
+    else if (action === 'new') startStory(() => story.newGame());
+    else if (action === 'free') startFree(false);
+    else if (action === 'settings') openSettings(showTitle);
+    else if (action === 'select') {
+      // the mission list: every mission of every chapter that exists
+      story.missionList().then((list) => {
+        if (gameMode !== 'title') return;
+        ui.select(list, (id) => { if (id) startStory(() => story.startAt(id.chapter, id.mission)); else showTitle(); });
+      });
+    }
+  }
+  async function startStory(go) {
+    ui.hideMenus();
+    document.body.classList.remove('title');
+    gameMode = 'story';
+    setTestWorld(false);
+    player.setHidden(false);
+    const ok = await go();
+    if (ok === true) return;
+    // (nothing to start: the next chapter does not exist yet, or its file could not be read)
+    if (ok === 'locked') hud.toast(t('ui.locked'), 2800);
+    showTitle();
+  }
+  // fromBoot: the game was opened with ?story=0 (tests): the world stays exactly as the address options made it
+  function startFree(fromBoot) {
+    story.stop();
+    ui.hideMenus();
+    document.body.classList.remove('title');
+    gameMode = 'free';
+    setTestWorld(true);
+    player.setHidden(false);
+    if (!fromBoot) {
+      lighting.setHour(CONFIG.time.startHour); lighting.setRunning(true); weather.setInstant(false); hud.setRainButton(false);
+      player.teleport(layout.spawn.x, layout.spawn.z, layout.spawn.facingDeg);
+      rig.set(player.heading, CONFIG.camera.startPitch);
+      applyStartOptions();
+    }
+    // the placeholder mission starts by itself (add "?mission=0" to the address to play without it)
+    if (urlOption('mission') !== '0' && !missions.running) missions.start('meet-at-neon-mile');
+  }
+  // ---- pause and settings ----
+  function openPause() {
+    if (gameMode === 'title' || ui.menuOpen || story.loading) return;
+    paused = true;
+    ui.pause({ story: gameMode === 'story' }, (action) => {
+      if (action === 'resume') closePause();
+      else if (action === 'settings') openSettings(() => { paused = false; openPause(); });
+      else if (action === 'restart') { closePause(); story.restart(); }
+      else { closePause(); showTitle(); }
+    });
+  }
+  function closePause() { paused = false; ui.hideMenus(); last = performance.now(); }
+  function openSettings(back) {
+    ui.settingsScreen({ quality: mode }, (key, value) => {
+      if (key === 'quality') hud.actions.quality(value);
+      else if (key === 'tilt') controls.setTilt(value);
+      else if (key === 'volume') sound.setVolume(value);
+      else if (key === 'muted') { sound.setMuted(value); hud.setSoundButton(!value); }
+      // (button size and subtitle size are style settings: storyUI.js applies them itself)
+    }, back);
+  }
+  ui.onPauseButton(openPause);
+  controls.onTiltChange = (on) => ui.setSetting('tilt', on);
+  if (ui.settings.tilt) controls.setTilt(true);
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyP' && e.code !== 'Escape') return;
+    if (paused && !document.getElementById('pause').hidden) closePause(); else openPause();
+  });
+  document.addEventListener('visibilitychange', () => {
+    last = performance.now();
+    // the phone was put away or another app came up: no sound in the background, and the game waits in the pause menu
+    if (document.hidden) { sound.pause(true); if (gameMode !== 'title' && !story.cameraActive) openPause(); }
+    else sound.pause(frozen);
+  });
 
   function loop(now) {
     requestAnimationFrame(loop);
     const dt = Math.min(0.1, Math.max(0.0001, (now - last) / 1000)); // never jump more than 1/10 s
     last = now;
+    // a menu is open (pause, settings, mission failed, chapter end): the game and its sound stand still
+    const hold = gameMode !== 'title' && (paused || ui.menuOpen);
+    if (hold !== frozen) { frozen = hold; sound.pause(frozen); }
+    if (frozen) {
+      // (the picture is still drawn now and then, so turning the phone or changing the graphics level shows)
+      if (++idleFrames % 12 === 0) draw();
+      return;
+    }
     step(dt);
     draw();
+    ui.update(dt);
 
     // ---- HUD (not every frame: text and map do not need 60 updates a second) ----
     frames++;
@@ -558,7 +760,7 @@ async function boot() {
       fps = frames / fpsTimer;
       frames = 0;
       fpsTimer = 0;
-      hud.setLocation(layout.districtAt(player.position.x, player.position.z));
+      hud.setLocation(vehicles.active && vehicles.active.arena ? 'IRONHILL HIGHWAY' : layout.districtAt(player.position.x, player.position.z));
       hud.setClock(lighting.hour);
       hud.setWeather(weather.amount > 0.3 ? 'RAIN' : lighting.info.night > 0.6 ? 'NIGHT' : 'CLEAR');
       if (statsOn) {
@@ -580,7 +782,10 @@ async function boot() {
   window.PG = {
     THREE, CONFIG, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
     vehicles, missions, gps, sound, hud, minimap, carLib, effects, police, garage, settings,
-    applyQuality, step, draw, carAction, updateGuides,
+    story, ui, music, save, actors, drivers, director, storyProps, streetLife, GARAGE,
+    applyQuality, step, draw, carAction, updateGuides, showTitle, startFree, startStory, openPause,
+    get mode() { return gameMode; },
+    get paused() { return frozen; },
     get waypoint() { return waypoint; },
     set waypoint(w) { waypoint = w; routeTimer = 0; },
     get route() { return route; },
@@ -590,8 +795,11 @@ async function boot() {
     ready: true,
   };
 
-  // the placeholder mission starts by itself (add "?mission=0" to the address to play without it)
-  if (urlOption('mission') !== '0') missions.start('meet-at-neon-mile');
+  // ---- where the game opens: the title screen, or straight into a mode (address options, for testing) ----
+  const open = urlOption('story');
+  if (open === '0') startFree(true);
+  else if (open) { const [id, m] = open.split('.'); startStory(() => story.startAt(id, parseInt(m || '0', 10) || 0)); }
+  else showTitle();
 
   hud.hideLoading();
   requestAnimationFrame((t) => { last = t; loop(t); });

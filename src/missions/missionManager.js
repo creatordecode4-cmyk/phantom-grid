@@ -139,5 +139,11 @@ export function createMissions({ scene, city, vehicles, hud, sound }) {
     return state;
   }
 
-  return { start, update, advanceDialog, state, cars, get running() { return !!mission; }, get step() { return index; } };
+  // leave the running mission (the story or the title screen takes over)
+  function stop() {
+    mission = null; pending = null;
+    state.active = false; state.marker = null; beam.visible = false;
+    hud.hideDialog();
+  }
+  return { start, stop, update, advanceDialog, state, cars, get running() { return !!mission; }, get step() { return index; } };
 }

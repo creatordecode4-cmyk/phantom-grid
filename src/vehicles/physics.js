@@ -45,7 +45,7 @@ export function initCarState(v) {
     roll: 0, pitch: 0, heave: 0, heaveV: 0, lastGround: null,
     damage: 0, nitro: 1, nitroOn: false, braking: false,
     // what the effects and sounds read
-    fx: { throttle: 0, slip: 0, spin: 0, abs: false, surface: 'road', bump: 0, shifted: false, impact: 0, scrape: 0, ax: 0, ay: 0 },
+    fx: { throttle: 0, slip: 0, spin: 0, abs: false, surface: 'road', bump: 0, shifted: false, impact: 0, scrape: 0, ax: 0, ay: 0, limited: false },
   });
 }
 
@@ -101,12 +101,19 @@ export function stepCar(v, input, dt, world) {
     if (v.reverse) drive = -T.accel * 0.55 * gas * clamp(1 + fwd / 11, 0, 1);
     else if (n < 1.0) drive = T.accel * gas * torque(n) * gearPush(v.gear) * (v.nitroOn ? 1.75 : 1) * (1 - 0.35 * v.damage);
   }
+  // SPEED LIMITER (story: Nate's van): at v.limit (m/s) the engine simply stops pulling
+  fx.limited = false;
+  if (v.limit > 0 && !v.reverse) {
+    const over = fwd - (v.limit - 0.7);
+    if (over > 0) { drive *= clamp(1 - over / 0.7, 0, 1); fx.limited = gas > 0.3 && over > 0.35; }
+  }
   // air drag is set so the car just reaches its top speed in 6th gear
   const roll = 0.16;
   const cD = Math.max(0, (T.accel * gearPush(6) * torque(0.97) - roll) / ((T.topSpeed / 3.6) ** 2));
   let resist = cD * fwd * Math.abs(fwd) + Math.sign(fwd) * Math.min(Math.abs(fwd) / dt, roll + surf.drag * (0.4 + 0.06 * Math.abs(fwd)));
   // engine braking: stronger in a low gear and at high engine speed
   if (gas < 0.02 && !v.reverse && Math.abs(fwd) > 0.5) resist += Math.sign(fwd) * (0.5 + 1.9 * n) * (GEAR_TOP[0] / GEAR_TOP[v.gear - 1]) ** 0.5;
+  if (v.limit > 0 && fwd > v.limit + 0.4) resist += (fwd - v.limit) * 1.6;     // (rolling faster than the limiter allows: it holds the car back)
   let brakeAcc = brake > 0.02 ? brake * 13.5 : 0;
   if (input.handbrake) brakeAcc = Math.max(brakeAcc, 5.5);
 

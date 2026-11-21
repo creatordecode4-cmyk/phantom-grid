@@ -16,6 +16,8 @@ import { MeshBuilder } from '../utils/geometry.js';
 import { simpleBuilding } from './buildings.js';
 import { buildHero } from './heroBuildings.js';
 import { makeTrain } from './models.js';
+import { addMark } from './ground.js';
+import { MARK } from './textures.js';
 
 const T = CONFIG.textures;
 const CONCRETE = [0.74, 0.78, 0.86]; // turns the warm plaster picture into grey concrete
@@ -225,6 +227,27 @@ function buildHighway(ctx) {
   con(0.9);
   pm.quadAuto([x0, 0, zB], [x0 + 0.4, 0, zB], [x0 + 0.4, 0.95, zB], [x0, 0.95, zB], [0, 0, -1], tile);
   pm.quadAuto([x1 - 0.4, 0, zB], [x1, 0, zB], [x1, 0.95, zB], [x1 - 0.4, 0.95, zB], [0, 0, -1], tile);
+
+  // ---- lane markings: double yellow in the middle, dashed lane lines, solid edge lines ----
+  {
+    const mk = ctx.mb.marking, white = [0.95, 0.95, 0.93], yellow = [0.92, 0.7, 0.18], cx = H.centerX;
+    const zN = Math.min(zEnd, L.bounds.maxZ + 420);
+    addMark(mk, cx, zTop, cx, zN, 0.36, MARK.double, 6, yellow, 0.85, deck + 0.022);
+    for (const o of [-4.2, 4.2, -8.4, 8.4]) addMark(mk, cx + o, zTop, cx + o, zN, 0.13, MARK.dashed, 12, white, 0.8, deck + 0.022);
+    for (const o of [-12.1, 12.1]) addMark(mk, cx + o, zTop, cx + o, zN, 0.14, MARK.solid, 6, white, 0.7, deck + 0.022);
+    // on the ramp the paint has to follow the slope: one sloping piece per ramp step
+    const slope = (x, za, zb, w, row, uLen, col, a) => {
+      const ya = H.heightAt(za) + 0.022, yb = H.heightAt(zb) + 0.022, u1 = (zb - za) / uLen;
+      mk.color(col[0], col[1], col[2], a);
+      mk.quad([x + w / 2, ya, za], [x - w / 2, ya, za], [x - w / 2, yb, zb], [x + w / 2, yb, zb], [0, 1, 0], [0, row[0]], [0, row[1]], [u1, row[1]], [u1, row[0]]);
+    };
+    for (let i = 0; i < steps; i++) {
+      const za = zB + ((zTop - zB) * i) / steps, zb = zB + ((zTop - zB) * (i + 1)) / steps;
+      slope(cx, za, zb, 0.36, MARK.double, 6, yellow, 0.85);
+      for (const o of [-4.2, 4.2, -8.4, 8.4]) slope(cx + o, za, zb, 0.13, MARK.dashed, 12, white, 0.8);
+      for (const o of [-12.1, 12.1]) slope(cx + o, za, zb, 0.14, MARK.solid, 6, white, 0.7);
+    }
+  }
 
   // ---- wall along the east edge of the play area (under the highway) ----
   con(0.85);

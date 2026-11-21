@@ -49,6 +49,15 @@
     <button data-pose="walk">WALK</button>
     <button data-pose="idle">IDLE</button>
     <button data-pose="drive">DRIVE</button>
+    <!-- the poses of the story (the same code the game uses): nothing may float above the floor or the seat -->
+    <button data-story="sleep">SLEEP</button>
+    <button data-story="fallen">FALLEN</button>
+    <button data-story="sit">SIT</button>
+    <button data-story="hips">HIPS</button>
+    <button data-story="crossed">CROSSED</button>
+    <button data-story="carry">CARRY</button>
+    <button data-story="phone">PHONE</button>
+    <button data-story="aim">AIM</button>
   </div>
   <div id="result" class="small"></div>
   <div class="bar" id="bottom">
@@ -89,6 +98,11 @@
     const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.014, 8, 32), new THREE.MeshStandardMaterial({ color: 0x111316, roughness: 0.5 }));
     wheel.visible = false;
     scene.add(wheel);
+    // a plain box to sit on (story pose SIT)
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.45, 0.5), new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.9 }));
+    seat.position.set(0, 0.225, -0.2);
+    seat.visible = false;
+    scene.add(seat);
 
     // camera: drag to turn, pinch or wheel to zoom
     const cam = { yaw: 0.5, pitch: 0.12, dist: 4.6, target: new THREE.Vector3(0, 0.95, 0) };
@@ -178,11 +192,25 @@
     const SPEED = { run: 5, walk: 1.6, idle: 0 };
     function setPose(p, seconds = 0.22) {
       pose = p in MODES ? p : 'apose';
-      if (anim) anim.setMode(MODES[pose], seconds);
-      wheel.visible = pose === 'drive';
+      story = '';
+      if (anim) { anim.setMode(MODES[pose], seconds); anim.setPose('idle', seconds); }
+      wheel.visible = pose === 'drive'; seat.visible = false;
       for (const b of document.querySelectorAll('[data-pose]')) b.classList.toggle('on', b.dataset.pose === pose);
+      for (const b of document.querySelectorAll('[data-story]')) b.classList.remove('on');
     }
     for (const b of document.querySelectorAll('[data-pose]')) b.addEventListener('click', () => setPose(b.dataset.pose));
+    // ---- story poses: standing still, then the pose the story asks for ----
+    const STORY = { sleep: 'lie', fallen: 'fallen', sit: 'sitEdge', hips: 'hips', crossed: 'crossed', carry: 'carry', phone: 'phone', aim: 'aim' };
+    let story = '';
+    function setStory(name) {
+      setPose('idle', 0.2);
+      story = name;
+      if (anim) anim.setPose(STORY[name], 0.3);
+      seat.visible = name === 'sit';
+      for (const b of document.querySelectorAll('[data-pose]')) b.classList.remove('on');
+      for (const b of document.querySelectorAll('[data-story]')) b.classList.toggle('on', b.dataset.story === name);
+    }
+    for (const b of document.querySelectorAll('[data-story]')) b.addEventListener('click', () => setStory(b.dataset.story));
     $('b-skeleton').addEventListener('click', () => { state.skeleton = !state.skeleton; applyToggles(); });
     $('b-weights').addEventListener('click', () => { state.weights = !state.weights; applyToggles(); });
     $('b-wire').addEventListener('click', () => { state.wire = !state.wire; applyToggles(); });
@@ -205,7 +233,7 @@
           anim.drive = { steer, wheel: c, radius: 0.17, tilt };
           wheel.position.set(c[0], rig.root.position.y + c[1], c[2]);
           wheel.rotation.set(-tilt, 0, -steer * 1.15, 'XYZ');
-        } else rig.root.position.set(0, 0, 0);
+        } else rig.root.position.set(0, story === 'sit' ? 0.45 : 0, 0);
         anim.update(dt, { speed: SPEED[pose] || 0, heading: 0, inPlace: true });
       }
     }
@@ -224,7 +252,7 @@
       draw();
     }
     // for tests from the console: RIG.step(seconds) moves time by hand when the page was opened with ?manual=1
-    window.RIG = { THREE, scene, camera, cam, renderer, setPose, step: (sec) => { for (let t = 0; t < sec - 1e-6; t += 1 / 60) step(1 / 60); draw(); }, state, applyToggles, load, ready: false };
+    window.RIG = { THREE, scene, camera, cam, renderer, setPose, setStory, step: (sec) => { for (let t = 0; t < sec - 1e-6; t += 1 / 60) step(1 / 60); draw(); }, state, applyToggles, load, ready: false };
     const first = CHARACTERS.includes(url.get('char')) ? url.get('char') : CHARACTERS[0];
     select.value = first;
     if (url.get('pose')) pose = url.get('pose');

@@ -26,6 +26,8 @@
 // b01_twist_tower.glb), buildings.js loads that file instead.
 // ---------------------------------------------------------------------------
 
+import * as THREE from 'three';
+import { CONFIG } from '../config.js';
 import { FLOOR, GLASS_TINTS } from './buildingKit.js';
 
 // Real sizes: height (m) and the lot each hero needs (width along the street x depth).
@@ -41,6 +43,7 @@ export const HEROES = {
   b09: { file: 'b09_neon_arcade', height: 14, w: 46, d: 22 },
   b10: { file: 'b10_scurve_tower', height: 180, w: 46, d: 40 },
   b11: { file: 'b11_hourglass_tower', height: 140, w: 36, d: 36 },
+  g01: { file: 'g01_mace_garage', height: 8, w: 18, d: 14 },   // story: Mace's garage with Nate's flat above it
 };
 
 // A curve on a body as a list of points: f(t) gives where around, y runs from ya to yb.
@@ -568,7 +571,195 @@ function b11(kit, s) {
   return { rect: ground.aabb(), top: curb + H };
 }
 
-const BUILDERS = { b01, b02, b03, b04, b05, b06, b07, b08, b09, b10, b11 };
+// ===========================================================================
+// g01 MACE'S GARAGE (story building)
+//   ground floor: an open repair bay (you can walk in) and a small office
+//   upper floor:  Nate's flat (a real little room: the story's opening is filmed in it)
+// Where things are is also returned as "GARAGE" (in meters, in the world), so
+// the story can put people, cameras and props there.
+// ===========================================================================
+export const GARAGE = { ready: false };
+function g01(kit, s) {
+  const { curb, ctx } = kit;
+  const pm = ctx.mb.plaster, ps = ctx.mb.propStatic, tile = CONFIG.textures.plaster.size;
+  const fx = Math.sin(s.rot), fz = Math.cos(s.rot), rx = Math.cos(s.rot), rz = -Math.sin(s.rot);   // "front" and "right" as world directions
+  const P = (r, y, f) => [s.x + r * rx + f * fx, y, s.z + r * rz + f * fz];
+  const letter = (dx, dz) => (dx > 0.5 ? 'w' : dx < -0.5 ? 'e' : dz > 0.5 ? 'n' : 's');
+  const SIDE = { F: letter(fx, fz), B: letter(-fx, -fz), R: letter(rx, rz), L: letter(-rx, -rz), T: 't', D: 'b' };
+  // a box given in the garage's own directions (r = to the right, f = toward the street). faces: letters of F B R L T D
+  const box = (mb, r0, y0, f0, r1, y1, f1, faces = 'FBRLT', t = 1) => {
+    const a = P(r0, 0, f0), b = P(r1, 0, f1);
+    mb.box(Math.min(a[0], b[0]), y0, Math.min(a[2], b[2]), Math.max(a[0], b[0]), y1, Math.max(a[2], b[2]), t, [...faces].map((c) => SIDE[c]).join(''));
+  };
+  // one flat wall piece that is seen from INSIDE a room. n: the direction it faces, as [r, y, f]
+  const face = (mb, p0, p1, p2, p3, n, t = tile) => mb.quadAuto(P(...p0), P(...p1), P(...p2), P(...p3), [n[0] * rx + n[2] * fx, n[1], n[0] * rz + n[2] * fz], t);
+  const wall = (c, k = 1) => pm.color(c[0] * k, c[1] * k, c[2] * k, 1).data(0, 0, 0, 0);
+  const paint = (c, rough = 0.7, metal = 0, glow = 0) => ps.color(c[0], c[1], c[2], 1).data(rough, metal, 0, glow);
+  const collide = (r0, f0, r1, f1, h) => { const a = P(r0, 0, f0), b = P(r1, 0, f1); ctx.colliders.boxes.push({ minX: Math.min(a[0], b[0]), maxX: Math.max(a[0], b[0]), minZ: Math.min(a[2], b[2]), maxZ: Math.max(a[2], b[2]), h }); };
+  const BRICKRED = [0.42, 0.25, 0.2], CONC = [0.5, 0.52, 0.55], DARK = [0.05, 0.055, 0.06], STEEL = [0.2, 0.21, 0.23];
+  const y0 = curb, y1 = curb + 4.3, y2 = curb + 7.6, y3 = curb + 8.1;        // floor, ceiling of the bay, roof, top of the roof wall
+  const dr0 = -7.4, dr1 = -1.6, dh = curb + 3.5;                              // the big door: from, to, height
+
+  // ---------------- outside ----------------
+  wall(BRICKRED);
+  box(pm, -9, y0, -7, 9, y3, -6.7, 'BRLT', tile);                              // back
+  box(pm, -9, y0, -7, -8.7, y3, 7, 'FBLRT', tile);                              // left side
+  box(pm, 8.7, y0, -7, 9, y3, 7, 'FBRLT', tile);                                // right side
+  box(pm, -8.7, y0, 6.7, dr0, y3, 7, 'FT', tile);                              // front: left of the door
+  box(pm, dr1, y0, 6.7, 8.7, y3, 7, 'FT', tile);                               // front: right of the door (office)
+  box(pm, dr0, dh, 6.7, dr1, y3, 7, 'FDT', tile);                              // front: above the door
+  wall(CONC, 0.8);
+  box(pm, -9, y2, -7, 9, y2 + 0.05, 7, 'T', tile);                            // roof
+  // door frame, the rolled-up door, office door and window, the windows of the flat
+  paint(STEEL, 0.5, 0.7);
+  box(ps, dr0 - 0.12, y0, 6.98, dr0, dh + 0.12, 7.06, 'FRL');
+  box(ps, dr1, y0, 6.98, dr1 + 0.12, dh + 0.12, 7.06, 'FRL');
+  box(ps, dr0 - 0.12, dh, 6.98, dr1 + 0.12, dh + 0.12, 7.06, 'FDT');
+  paint([0.3, 0.31, 0.33], 0.55, 0.6);
+  box(ps, dr0, dh - 0.55, 6.6, dr1, dh, 6.95, 'FBD');                         // the roller door, rolled up
+  paint(DARK, 0.6, 0.3);
+  box(ps, 2.2, y0, 6.98, 3.3, y0 + 2.15, 7.03, 'FRLT');                       // office door
+  paint([0.55, 0.4, 0.22], 0.3, 0, 0.32);
+  box(ps, 4.4, y0 + 1.1, 6.98, 7.8, y0 + 2.5, 7.02, 'F');                     // office window (lit at night)
+  box(ps, 4.1, y1 + 0.95, 6.98, 6.3, y1 + 2.35, 7.02, 'F');                   // the flat's window (lit at night)
+  paint([0.06, 0.08, 0.1], 0.1, 0.4);
+  for (const r of [-6.4, -1.2]) box(ps, r, y1 + 0.95, 6.98, r + 2.0, y1 + 2.35, 7.02, 'F');   // dark windows
+  paint(STEEL, 0.6, 0.5);
+  box(ps, 5.6, y2 + 0.05, -4.5, 7.4, y2 + 0.95, -3.0, 'FBRLT');               // air unit on the roof
+  // sign board above the door (the name is painted on it by the story props)
+  paint([0.07, 0.075, 0.08], 0.6, 0.2);
+  box(ps, dr0 + 0.2, dh + 0.35, 7.0, dr1 - 0.2, dh + 1.25, 7.07, 'FRLTD');
+
+  // ---------------- the repair bay (seen from inside) ----------------
+  const b0 = -8.7, b1 = 0.7, bf0 = -6.7, bf1 = 6.7;
+  wall([0.33, 0.34, 0.36]);
+  face(pm, [b0, y0, bf0], [b1, y0, bf0], [b1, y1, bf0], [b0, y1, bf0], [0, 0, 1]);              // back wall
+  face(pm, [b0, y0, bf0], [b0, y0, bf1], [b0, y1, bf1], [b0, y1, bf0], [1, 0, 0]);              // left wall
+  face(pm, [b1, y0, bf0], [b1, y0, bf1], [b1, y1, bf1], [b1, y1, bf0], [-1, 0, 0]);             // right wall
+  face(pm, [b0, y0, bf1], [dr0, y0, bf1], [dr0, y1, bf1], [b0, y1, bf1], [0, 0, -1]);           // inside of the front wall
+  face(pm, [dr1, y0, bf1], [b1, y0, bf1], [b1, y1, bf1], [dr1, y1, bf1], [0, 0, -1]);
+  face(pm, [dr0, dh, bf1], [dr1, dh, bf1], [dr1, y1, bf1], [dr0, y1, bf1], [0, 0, -1]);
+  wall([0.2, 0.2, 0.21]);
+  face(pm, [b0, y1, bf0], [b1, y1, bf0], [b1, y1, bf1], [b0, y1, bf1], [0, -1, 0]);             // ceiling
+  wall([0.26, 0.26, 0.27]);
+  face(pm, [b0, y0 + 0.012, bf0], [b1, y0 + 0.012, bf0], [b1, y0 + 0.012, bf1 + 0.3], [b0, y0 + 0.012, bf1 + 0.3], [0, 1, 0]);   // oil-dark floor
+  // two strips of light under the ceiling (always on), light falls out onto the sidewalk
+  paint([1.0, 0.9, 0.72], 0.3, 0, 1.75);
+  for (const f of [-3.2, 2.6]) box(ps, -6.6, y1 - 0.09, f - 0.07, -1.4, y1 - 0.03, f + 0.07, 'DFB');
+  const mid = P(-4, 0, 1.5), out = P(-4.5, 0, 9);
+  ctx.shopLights.push({ x: mid[0], z: mid[2], r: 11, power: 1.0 }, { x: out[0], z: out[2], r: 8, power: 0.45 });
+  // work bench with a tool box, a board of tools above it
+  paint([0.3, 0.2, 0.12], 0.8);
+  box(ps, -0.25, y0 + 0.86, -4.2, 0.68, y0 + 0.94, 0.8, 'FBLTD');
+  paint(STEEL, 0.6, 0.6);
+  for (const f of [-4.1, 0.6]) box(ps, -0.2, y0, f, 0.6, y0 + 0.86, f + 0.1, 'FBL');
+  paint([0.6, 0.08, 0.06], 0.45, 0.3);
+  box(ps, 0.0, y0 + 0.94, -1.0, 0.5, y0 + 1.22, -0.2, 'FBLT');
+  paint([0.12, 0.12, 0.13], 0.8);
+  box(ps, 0.62, y0 + 1.25, -3.8, 0.68, y0 + 2.3, 0.4, 'L');
+  for (let i = 0; i < 7; i++) { paint(i % 2 ? [0.55, 0.56, 0.58] : [0.7, 0.35, 0.08], 0.4, 0.7); box(ps, 0.56, y0 + 1.45 + (i % 3) * 0.22, -3.5 + i * 0.55, 0.62, y0 + 1.95 + (i % 2) * 0.1, -3.42 + i * 0.55, 'LFBT'); }
+  // car lift posts, an oil drum, a stack of tires, shelves at the back
+  paint([0.75, 0.55, 0.06], 0.5, 0.4);
+  for (const r of [-6.9, -2.1]) box(ps, r - 0.12, y0, 0.9, r + 0.12, y0 + 2.4, 1.2, 'FBRLT');
+  const cyl = (rad, h, n = 12) => new THREE.CylinderGeometry(rad, rad, h, n);
+  paint([0.08, 0.2, 0.36], 0.55, 0.5);
+  ps.add(cyl(0.3, 0.9), ...P(-0.6, y0 + 0.45, 5.6));
+  paint([0.03, 0.03, 0.035], 0.9);
+  for (let i = 0; i < 4; i++) ps.add(new THREE.TorusGeometry(0.24, 0.11, 6, 14), ...P(-8.1, y0 + 0.12 + i * 0.22, 5.7), [Math.PI / 2, 0, 0]);
+  paint(STEEL, 0.6, 0.5);
+  for (const y of [0.5, 1.2, 1.9]) box(ps, -4.4, y0 + y, -6.6, 0.5, y0 + y + 0.04, -6.1, 'FBRLTD');
+  for (const r of [-4.4, -2.0, 0.44]) box(ps, r, y0, -6.6, r + 0.06, y0 + 2.0, -6.1, 'FRL');
+  for (let i = 0; i < 9; i++) { paint([[0.5, 0.1, 0.08], [0.1, 0.25, 0.4], [0.6, 0.55, 0.3], [0.15, 0.15, 0.16]][i % 4], 0.6); box(ps, -4.2 + i * 0.5, y0 + [0.54, 1.24, 1.94][i % 3], -6.5, -3.9 + i * 0.5, y0 + [0.54, 1.24, 1.94][i % 3] + 0.2 + (i % 2) * 0.1, -6.2, 'FRLT'); }
+  // ---- THEO'S CAR UNDER A TARP, at the back on the left ----
+  {
+    const tr = -6.9, tf = -3.9, len = 4.5, wid = 2.0;
+    // heights and widths of the shape from the back of the car to its nose
+    const prof = [[0, 0.02, 0.9], [0.06, 0.62, 0.96], [0.2, 0.86, 1.0], [0.34, 1.26, 0.9], [0.52, 1.3, 0.88], [0.66, 0.98, 0.98], [0.86, 0.78, 1.0], [0.96, 0.52, 0.94], [1, 0.02, 0.88]];
+    paint([0.2, 0.225, 0.2], 0.96);
+    const ring = (q) => {
+      const [t, h, w] = prof[q], f = tf - len / 2 + t * len, hw = (wid / 2) * w, j = (k) => Math.sin(q * 7.3 + k * 3.1) * 0.035;   // (j: small folds)
+      return [[tr - hw - 0.14, y0 + 0.01, f], [tr - hw + j(1), y0 + h * 0.5, f], [tr - hw * 0.72, y0 + h + j(2), f], [tr, y0 + h * 1.03 + j(3), f], [tr + hw * 0.72, y0 + h + j(4), f], [tr + hw + j(5), y0 + h * 0.5, f], [tr + hw + 0.14, y0 + 0.01, f]];
+    };
+    for (let q = 0; q < prof.length - 1; q++) {
+      const A = ring(q), B = ring(q + 1);
+      for (let k = 0; k < A.length - 1; k++) {
+        const up = k === 0 ? [-1, 0.3, 0] : k === A.length - 2 ? [1, 0.3, 0] : [(k - 2.5) * 0.3, 1, 0];
+        face(ps, A[k], B[k], B[k + 1], A[k + 1], up, 1);
+      }
+    }
+    collide(tr - 1.15, tf - len / 2 - 0.1, tr + 1.15, tf + len / 2 + 0.1, 1.3);
+    GARAGE.tarp = P(tr, y0, tf);
+  }
+
+  // ---------------- the office (a closed block) and NATE'S FLAT above it ----------------
+  const f0 = 2.0, f1 = 8.5, ff0 = 0.6, ff1 = 6.6, fy0 = y1 + 0.25, fy1 = y2 - 0.25;     // the room: 6.5 m x 6 m x 2.8 m
+  wall([0.5, 0.47, 0.42]);
+  face(pm, [f0, fy0, ff0], [f1, fy0, ff0], [f1, fy1, ff0], [f0, fy1, ff0], [0, 0, 1]);
+  face(pm, [f0, fy0, ff1], [f1, fy0, ff1], [f1, fy1, ff1], [f0, fy1, ff1], [0, 0, -1]);
+  face(pm, [f0, fy0, ff0], [f0, fy0, ff1], [f0, fy1, ff1], [f0, fy1, ff0], [1, 0, 0]);
+  face(pm, [f1, fy0, ff0], [f1, fy0, ff1], [f1, fy1, ff1], [f1, fy1, ff0], [-1, 0, 0]);
+  wall([0.3, 0.29, 0.28]);
+  face(pm, [f0, fy1, ff0], [f1, fy1, ff0], [f1, fy1, ff1], [f0, fy1, ff1], [0, -1, 0]);
+  paint([0.2, 0.14, 0.09], 0.75);
+  face(ps, [f0, fy0, ff0], [f1, fy0, ff0], [f1, fy0, ff1], [f0, fy0, ff1], [0, 1, 0], 1);                 // wooden floor
+  // the window to the street (rainy city light), seen from inside
+  paint([0.09, 0.13, 0.22], 0.2, 0, 1.1);
+  face(ps, [4.1, fy0 + 0.75, ff1 - 0.02], [6.3, fy0 + 0.75, ff1 - 0.02], [6.3, fy0 + 2.15, ff1 - 0.02], [4.1, fy0 + 2.15, ff1 - 0.02], [0, 0, -1], 1);
+  paint([0.1, 0.1, 0.11], 0.6, 0.3);
+  box(ps, 5.17, fy0 + 0.75, ff1 - 0.06, 5.23, fy0 + 2.15, ff1 - 0.02, 'BRL');
+  box(ps, 4.1, fy0 + 1.42, ff1 - 0.06, 6.3, fy0 + 1.48, ff1 - 0.02, 'BTD');
+  // bed in the back corner: frame, mattress, pillow, blanket
+  paint([0.16, 0.12, 0.09], 0.8);
+  box(ps, 6.4, fy0, ff0 + 0.05, 8.45, fy0 + 0.3, ff0 + 2.15, 'FBRLT');
+  paint([0.55, 0.55, 0.52], 0.9);
+  box(ps, 6.45, fy0 + 0.3, ff0 + 0.1, 8.4, fy0 + 0.48, ff0 + 2.1, 'FBRLT');
+  // (the blanket covers the whole bed: Nate sleeps on top of it, in his clothes. The pillow lies on it.)
+  paint([0.16, 0.2, 0.26], 0.95);
+  box(ps, 6.45, fy0 + 0.48, ff0 + 0.1, 8.4, fy0 + 0.55, ff0 + 2.1, 'FBRLT');
+  paint([0.7, 0.7, 0.68], 0.9);
+  box(ps, 7.5, fy0 + 0.55, ff0 + 0.16, 8.36, fy0 + 0.7, ff0 + 0.84, 'FBRLT');
+  // the shelf on the wall beside the bed (the mixtape and the photo lie on it: story props)
+  paint([0.27, 0.19, 0.12], 0.8);
+  box(ps, 8.16, fy0 + 1.25, ff0 + 2.5, 8.5, fy0 + 1.29, ff0 + 4.0, 'FBLTD');
+  for (let i = 0; i < 5; i++) { paint([[0.35, 0.1, 0.1], [0.12, 0.2, 0.3], [0.5, 0.45, 0.3], [0.1, 0.1, 0.1], [0.25, 0.3, 0.22]][i], 0.8); box(ps, 8.24, fy0 + 1.29, ff0 + 3.45 + i * 0.07, 8.46, fy0 + 1.52 + (i % 2) * 0.03, ff0 + 3.51 + i * 0.07, 'FBLT'); }
+  // a small table with a lamp, a chair, the door, a hook for the jacket
+  paint([0.22, 0.16, 0.1], 0.8);
+  box(ps, 2.2, fy0 + 0.7, ff1 - 1.5, 3.4, fy0 + 0.74, ff1 - 0.5, 'FBRLTD');
+  for (const [r, f] of [[2.25, ff1 - 1.45], [3.3, ff1 - 1.45], [2.25, ff1 - 0.6], [3.3, ff1 - 0.6]]) box(ps, r, fy0, f, r + 0.05, fy0 + 0.7, f + 0.05, 'FBRL');
+  paint([1.0, 0.72, 0.4], 0.4, 0, 1.6);
+  box(ps, 2.45, fy0 + 0.95, ff1 - 1.05, 2.65, fy0 + 1.12, ff1 - 0.85, 'FBRLTD');
+  paint(STEEL, 0.5, 0.7);
+  box(ps, 2.53, fy0 + 0.74, ff1 - 0.97, 2.57, fy0 + 0.95, ff1 - 0.93, 'FBRL');
+  paint([0.09, 0.09, 0.1], 0.7);
+  box(ps, f0, fy0, ff0 + 0.5, f0 + 0.05, fy0 + 2.1, ff0 + 1.45, 'R');                                   // the door to the stairs
+  paint(STEEL, 0.4, 0.8);
+  box(ps, f0, fy0 + 1.7, ff0 + 2.2, f0 + 0.12, fy0 + 1.74, ff0 + 2.24, 'FBRTD');                        // jacket hook
+
+  // ---------------- what is solid ----------------
+  collide(-9, -7, 9, -6.7, 8); collide(-9, -7, -8.7, 7, 8);                      // back, left
+  collide(0.7, -7, 9, 7, 8);                                                    // the office block
+  collide(-8.7, 6.7, dr0, 7, 8); collide(dr1, 6.7, 0.7, 7, 8);                  // front wall beside the door
+  collide(-0.25, -4.2, 0.7, 0.8, 1.0);                                          // work bench
+  for (const r of [-6.9, -2.1]) { const c = P(r, 0, 1.05); ctx.colliders.circles.push({ x: c[0], z: c[2], r: 0.2 }); }
+  { const c = P(-0.6, 0, 5.6); ctx.colliders.circles.push({ x: c[0], z: c[2], r: 0.33 }); const t = P(-8.1, 0, 5.7); ctx.colliders.circles.push({ x: t[0], z: t[2], r: 0.4 }); }
+
+  // the sidewalk in front of the big door stays free (no trees, benches, lamps)
+  { const a = P(dr0 - 1.2, 0, 7), b = P(dr1 + 1.2, 0, 11); (ctx.clearZones = ctx.clearZones || []).push({ minX: Math.min(a[0], b[0]), maxX: Math.max(a[0], b[0]), minZ: Math.min(a[2], b[2]), maxZ: Math.max(a[2], b[2]) }); }
+
+  // ---------------- places for the story ----------------
+  Object.assign(GARAGE, {
+    ready: true, rot: s.rot, curb,
+    at: (r, y, f) => P(r, y, f),                         // any point given in the garage's own directions
+    door: P((dr0 + dr1) / 2, y0, 7), bay: P(-4.5, y0, 2.5), mace: P(-2.4, y0, 4.6), stairs: P(-0.4, y0, -5.6),
+    sign: { pos: P((dr0 + dr1) / 2, dh + 0.8, 7.08), width: dr1 - dr0 - 0.6, height: 0.7 },
+    van: P(-4.5, 0, 11.3),                               // at the curb in front of the big door
+    flat: { floor: fy0, bed: P(8.05, fy0 + 0.555, ff0 + 1.15), bedEdge: P(6.62, fy0 + 0.555, ff0 + 1.4), shelf: P(8.33, fy0 + 1.29, ff0 + 2.9), hook: P(f0 + 0.1, fy0 + 1.55, ff0 + 2.22), lamp: P(2.55, fy0 + 1.05, ff1 - 0.95), middle: P(5, fy0, 3.4), window: P(5.2, fy0 + 1.45, ff1) },
+  });
+  const a = P(-9, 0, -7), b = P(9, 0, 7);
+  return { rect: { minX: Math.min(a[0], b[0]), maxX: Math.max(a[0], b[0]), minZ: Math.min(a[2], b[2]), maxZ: Math.max(a[2], b[2]) }, top: y3, solid: true };
+}
+
+const BUILDERS = { b01, b02, b03, b04, b05, b06, b07, b08, b09, b10, b11, g01 };
 
 // Build one hero. Returns { rect, top } and adds its collision box.
 export function buildHero(kit, id, site) {

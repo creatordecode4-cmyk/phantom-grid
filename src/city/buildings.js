@@ -48,7 +48,9 @@ function siteRect(inner, h, w, d) {
   const cx = (inner.minX + inner.maxX) / 2, cz = (inner.minZ + inner.maxZ) / 2;
   const minX = h.at.includes('e') ? inner.minX : h.at.includes('w') ? inner.maxX - sx : cx - sx / 2;
   const minZ = h.at.includes('s') ? inner.minZ : h.at.includes('n') ? inner.maxZ - sz : cz - sz / 2;
-  return { minX, maxX: minX + sx, minZ, maxZ: minZ + sz };
+  // "shift": meters to move the lot along the street it faces (+ = north or west)
+  const sh = h.shift || 0;
+  return wide ? { minX: minX + sh, maxX: minX + sh + sx, minZ, maxZ: minZ + sz } : { minX, maxX: minX + sx, minZ: minZ + sh, maxZ: minZ + sh + sz };
 }
 
 // ---------------------------------------------------------------------------
