@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 4.0',
+  version: 'Phase 4.1',
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {
@@ -39,6 +39,9 @@ export const CONFIG = {
     // animations "idle", "walk" and "run"
     riggedModel: 'assets/characters/Nate_Calloway_rigged.glb',
     autoRig: true,          // no skeleton in the model file: build one automatically (src/characters/autoRig.js)
+    faceClean: 1,           // cleans the painted shadows and dark smudges on the faces: 0 = off, 1 = normal, up to 1.4 = strong
+    fillNight: 0.3,         // the characters' own soft light at night (0 = off: faces go black in dark streets)
+    fillDay: 0.02,          // ... and in daylight
     height: 1.8,       // the model is scaled to this height (meters)
     radius: 0.35,      // body radius used for collisions
     walkSpeed: 1.6,    // meters per second

@@ -73,7 +73,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   let rig = null, mover = null;
   if (model && !mixer && P.autoRig !== false) {
     try {
-      rig = await autoRig(THREE, model, { height: P.height, name: 'player', onProgress });
+      rig = await autoRig(THREE, model, { height: P.height, name: 'player', faceClean: P.faceClean, onProgress });
       mover = createAnimator(THREE, rig);
       body.add(rig.root);
     } catch (e) {

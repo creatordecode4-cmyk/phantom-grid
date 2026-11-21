@@ -74,10 +74,17 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
     import { autoRig } from './src/characters/autoRig.js';
+    import { CONFIG } from './src/config.js';
+    import { setCharacterFill } from './src/characters/characterLook.js';
     import { createAnimator } from './src/characters/proceduralAnim.js';
 
     const CHARACTERS = ['Nate_Calloway', 'Adrian_Vance', 'Calder_Voss', 'Dante_Rios', 'Ingrid_Solberg', 'Juno_Kade', 'Lena_Marchetti', 'Mace_Doyle', 'Sloane_Harrow', 'Theo_Calloway', 'Viktor_Rask'];
     const url = new URLSearchParams(location.search);
+    // ?clean=0 shows the faces as they are in the model file, ?clean=1.4 cleans them harder (the game uses CONFIG.player.faceClean)
+    const faceClean = url.has('clean') ? parseFloat(url.get('clean')) || 0 : CONFIG.player.faceClean;
+    // ?fill=0.1 shows the fill light of the game's night (the test screen has its own lamps, so it is off here), ?look=0 switches the matt head off
+    setCharacterFill(parseFloat(url.get('fill')) || 0);
+    const faceDebug = url.has('facedebug') ? (window.FACE_DEBUG = {}) : null;      // (for tests: what the face cleaner found)
     const $ = (id) => document.getElementById(id);
     const progress = (f, text) => { $('load-fill').style.width = Math.round(f * 100) + '%'; if (text) $('load-text').textContent = text.toUpperCase(); };
 
@@ -143,7 +150,7 @@
       if (rig) { scene.remove(rig.root); if (helper) scene.remove(helper); rig.mesh.geometry.dispose(); }
       const gltf = await loader.loadAsync(`assets/characters/${name}.glb`);
       const t0 = performance.now();
-      rig = await autoRig(THREE, gltf.scene, { height: 1.8, name, onProgress: (f, t) => progress(0.1 + f * 0.9, t) });
+      rig = await autoRig(THREE, gltf.scene, { height: 1.8, name, faceClean, faceDebug, look: url.get('look') !== '0', onProgress: (f, t) => progress(0.1 + f * 0.9, t) });
       const ms = Math.round(performance.now() - t0);
       anim = createAnimator(THREE, rig);
       scene.add(rig.root);

@@ -23,6 +23,9 @@
 //   5. SELF-TEST bends every joint through its range, measures how much the
 //                volume of the mesh around the joint changes, repairs the bad
 //                spots (up to 3 rounds) and returns a PASS / WARN table.
+//   6. FACE      everything from the chin up follows the head bone ONLY, so a
+//                face never stretches when the head turns or nods. The painted
+//                shadows on the face are cleaned (faceClean.js).
 //
 // Directions: +Y up, the character looks along +Z, its LEFT hand is at +X.
 // All sizes are in meters after the model has been scaled to its height.
@@ -31,6 +34,9 @@
 // around X by a positive angle bends "forward" (elbow flexes, thigh lifts,
 // spine bows).
 // ---------------------------------------------------------------------------
+
+import { cleanFace } from './faceClean.js';
+import { applyCharacterLook } from './characterLook.js';
 
 // ----------------------------------------------------------- small vector helpers
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -454,8 +460,33 @@ export function analyzeCharacter(positions, index, opts = {}) {
     const hz = (joints.thigh_L[2] + joints.thigh_R[2]) / 2;
     const zc = (y, lim) => hz + clamp(zAt(y) - hz, -lim, lim);
     const hips = [0, hipY + 0.035 * k, hz];
-    const neckBase = neckY - 0.055 * k, headY = neckY + 0.025 * k;
-    const at = (f, lim) => { const y = hips[1] + (neckBase - hips[1]) * f; return [0, y, zc(y, lim)]; };
+    // THE CHIN. A face has no bones in this rig, so the head must move as ONE piece - and for that the rig has
+    // to know where the face ends. Hoods, collars, beards and hair make "the narrowest place" land in the middle
+    // of a face, so the chin is looked for directly: going up the front of the body along the middle line, the
+    // chin is where the surface jumps forward (from the throat out to the face).
+    const front = new Float32Array(nS).fill(NaN);
+    for (let i = sliceOf(0.75 * H); i <= sliceOf(0.93 * H); i++) {
+      let z = -1e9;
+      for (let j = i; j <= i + 1 && j < nS; j++) for (const v of slices[j]) if (Math.abs(W[v * 3]) < 0.05 * k && W[v * 3 + 2] > z) z = W[v * 3 + 2];
+      if (z > -1e8) front[i] = z;
+    }
+    let chinY = Math.min(neckY, 0.845 * H), jump = 0.03 * k, chinFound = false;      // (a jump under 3 cm is not a chin)
+    for (let i = sliceOf(0.795 * H); i <= sliceOf(0.885 * H); i++) {
+      const a = front[i - 2], b = front[i + 2];                                     // 4 cm apart
+      if (Number.isNaN(a) || Number.isNaN(b) || b - a <= jump) continue;
+      jump = b - a; chinFound = true;
+      // the lowest slice where the surface has come most of the way out: that is the under side of the chin
+      let j = i - 2;
+      while (j < i + 2 && !(front[j] > a + 0.6 * (b - a))) j++;
+      chinY = j * SLICE;
+    }
+    if (!chinFound) notes.push('chin not found: the head starts at a normal height');
+    info.chinY = chinY;
+    // the spine keeps its old top (so bodies bend as before); the neck starts lower, below the chin
+    const spineTop = neckY - 0.055 * k;
+    const shoulderTop = Math.max(joints.upperArm_L[1], joints.upperArm_R[1]) + 0.015 * k;
+    const neckBase = Math.max(shoulderTop, Math.min(spineTop, chinY - 0.075 * k)), headY = chinY + 0.04 * k;
+    const at = (f, lim) => { const y = hips[1] + (spineTop - hips[1]) * f; return [0, y, zc(y, lim)]; };
     joints.hips = hips;
     joints.spine = at(0.14, 0.02 * k); joints.spine1 = at(0.42, 0.03 * k); joints.chest = at(0.7, 0.03 * k);
     // head: the middle of the points above the neck tells how far forward the skull sits
@@ -606,7 +637,7 @@ export function analyzeCharacter(positions, index, opts = {}) {
   let fingersSeparate = [false, false];
 
   // the body: spine bones by height, collar bones toward the shoulders
-  const spineLevels = [['hips', -1e9], ['spine', joints.spine[1]], ['spine1', joints.spine1[1]], ['chest', joints.chest[1]], ['neck', joints.neck[1] + 0.01 * k], ['head', joints.head[1] + 0.012 * k]];
+  const spineLevels = [['hips', -1e9], ['spine', joints.spine[1]], ['spine1', joints.spine1[1]], ['chest', joints.chest[1]], ['neck', joints.neck[1] + 0.01 * k], ['head', info.chinY - 0.004 * k - zone.head]];
   function bodyWeights(p, out, amount) {
     if (amount <= 0) return;
     let acc = [];
@@ -701,7 +732,7 @@ export function analyzeCharacter(positions, index, opts = {}) {
         }
       }
       bodyWeights(p, out, body);
-      if (cls[v] === 0 && p[1] > joints.head[1] + zone.head + 0.005 * k) fixed[v] = 1;      // the head is rigid
+      if (cls[v] === 0 && p[1] > info.chinY - 0.003 * k) fixed[v] = 1;      // the head is rigid: everything from the chin up moves as one piece
       weights[v] = out;
     }
   }
@@ -957,7 +988,7 @@ export function analyzeCharacter(positions, index, opts = {}) {
   return {
     positions: P, scale, flip, height: H,
     joints, bones, boneIndex, skinIndex, skinWeight, gains,
-    info: { crotchY, hipY, neckY: info.neckY, restAngles, fingersSeparate, sides: info.side.map((S) => ({ armR: S.armR, elbowR: S.elbowR, wristR: S.wristR, handLen: S.handLen, handW: S.handW, handDir: S.handDir, handLat: S.handLat, thighR: S.thighR, kneeR: S.kneeR, ankleR: S.ankleR, heelZ: S.heelZ, toeZ: S.toeZ, armpitY: S.armpitY })) },
+    info: { crotchY, hipY, neckY: info.neckY, chinY: info.chinY, restAngles, fingersSeparate, sides: info.side.map((S) => ({ armR: S.armR, elbowR: S.elbowR, wristR: S.wristR, handLen: S.handLen, handW: S.handW, handDir: S.handDir, handLat: S.handLat, thighR: S.thighR, kneeR: S.kneeR, ankleR: S.ankleR, heelZ: S.heelZ, toeZ: S.toeZ, armpitY: S.armpitY })) },
     report: { table, symmetry, notes, log, rounds, ms, maxInfluences, leaks, points: nw, bones: bones.length, fingers: fingersSeparate.map((f) => (f ? 'separate fingers' : 'one rigid hand block')) },
     debug: { cls, wOf, weightsOf: (i) => weights[wOf[i]] },
   };
@@ -1016,6 +1047,12 @@ export async function autoRig(THREE, model, opts = {}) {
 
   const material = Array.isArray(src.material) ? src.material[0] : src.material;
   const rig = assemble(THREE, A, geo, material);
+  // the light on a character: a soft fill light from the camera, a matt head (characterLook.js). opts.look: false = off
+  if (opts.look !== false) applyCharacterLook(material, A.info.chinY);
+  // the face: painted shadows and smudges are cleaned in the character's picture (faceClean.js). opts.faceClean: 0 = off
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  try { rig.faceCleaned = cleanFace(THREE, geo, material, A, opts.faceClean === undefined ? 1 : opts.faceClean, opts.faceDebug || null); } catch (e) { rig.faceCleaned = false; console.warn('[autoRig] the face could not be cleaned:', e); }
+  rig.faceCleanMs = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0;
   progress(1, 'Character ready');
   if (opts.log !== false && A.report) {
     console.groupCollapsed(`[autoRig] ${opts.name || 'character'}: ${A.report.table.filter((r) => r.status === 'PASS').length} PASS, ${A.report.table.filter((r) => r.status === 'WARN').length} WARN (${A.report.ms} ms) - open for the full report`);

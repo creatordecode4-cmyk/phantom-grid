@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { autoRig, cloneRig, analyzeCharacter } from '../characters/autoRig.js';
 import { createAnimator } from '../characters/proceduralAnim.js';
 import { makeMannequin } from '../city/models.js';
+import { CONFIG } from '../config.js';
 
 const DEG = Math.PI / 180;
 // compass degrees (0 north, 90 east, 180 south, 270 west) -> our angle (north = +z, east = -x)
@@ -52,7 +53,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     }
     const loader = await loaderPromise;
     const gltf = await loader.loadAsync(`assets/characters/${name}.glb`);
-    return autoRig(THREE, gltf.scene, { height: 1.8, name, log: false, analyze });
+    return autoRig(THREE, gltf.scene, { height: 1.8, name, log: false, analyze, faceClean: CONFIG.player.faceClean });
   }
   // the first rig of a model (shared by everybody who asks)
   function rigOf(model) {

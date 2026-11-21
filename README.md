@@ -137,6 +137,8 @@ src/
     proceduralAnim.js      moves the skeleton: walk, run, idle, driving, foot placement, joint limits,
                            and the poses of the story (sitting, lying, arms crossed, aiming ...)
     rigWorker.js           works out a skeleton in the background, so the game does not stop meanwhile
+    faceClean.js           cleans painted dark rings and smudges on a face (once, when a character loads)
+    characterLook.js       the characters' own soft light, a matt head, softer bumps on the face
   story/
     engine.js              THE STORY ENGINE: reads a chapter file and makes it happen (steps, objectives,
                            film scenes, choices, checkpoints, fail and retry). Its top explains every step
@@ -639,6 +641,45 @@ What is not perfect:
 - With `assets/characters/Nate_Calloway_rigged.glb` (a model with a real skeleton and idle /
   walk / run clips) that file is used instead and the automatic rig is skipped.
 
+### Faces (version 4.1)
+
+Three things made faces look bad, and each has its own fix. All of it happens when a character
+is loaded; the model files in `assets/characters/` are never changed.
+
+1. **A face that stretched when the head moved.** The skeleton put the start of the head at
+   the narrowest part of the neck, which on these models is 5 to 9 cm ABOVE the chin. So the
+   mouth, the cheeks and the nose were pulled half by the neck and half by the head. Now
+   `autoRig.js` finds the chin on the front of the model (the place where the outline jumps
+   forward from the neck to the jaw) and everything from the chin up follows the head bone
+   ONLY. The neck joint sits below the chin. A face keeps its shape in every pose.
+2. **Black rings and smudges.** The models come with one picture, and light and shade are
+   already painted into it. Nate had black rings around both eyes. `faceClean.js` lays the face
+   out flat as seen from the front (colors and depth), finds the nose (the only narrow ridge),
+   the eyes (the hollows beside the nose, then the row with the most contrast), the normal skin
+   color (cheeks and forehead), and lifts what is much darker than that. Eyebrows, lashes,
+   wrinkles, the eyeballs, beards, hair and the frames of glasses stay as they are. A face that
+   was clean changes very little; only where the skin under the eyes is far darker than the
+   cheek below it (painted rings) the hollows of the eyes are cleaned as a whole.
+3. **Faces that went black at night.** The streets are dark, so a face became a black shape
+   and hands looked like dark spots. `characterLook.js` gives every character a soft light
+   that always comes from where the camera is (it costs no real lamp and no extra drawing),
+   keeps the head matt (no more white wet-looking streaks) and halves the small painted bumps
+   on the head. `main.js` sets the strength from the height of the sun.
+
+| In `src/config.js` (`player`) | Meaning |
+|---|---|
+| `faceClean: 1` | 0 = leave the pictures as they are, 1 = normal, up to 1.4 = stronger |
+| `fillNight: 0.3` | the characters' own light at night (0 = off) |
+| `fillDay: 0.02` | ... and with the sun high |
+
+To look at it: `rigtest.html?char=Nate_Calloway` (add `&clean=0` for the face as it is in the
+file, `&fill=0.3` for the night light of the game, `&look=0` for the shiny head of before).
+
+What is not perfect: the cleaning is a careful guess from the shape of the face, it cannot
+repaint a face. Thin dark lines that were painted in stay (for example where a strand of hair
+falls on the forehead). Faces still do not move: no lip movement, no blinking. Nothing of this
+was seen on a real phone yet.
+
 ---
 
 ## The story (version 4.0): Prologue + Chapter 1
@@ -759,7 +800,7 @@ language code, translate the right-hand sides and set `LANGUAGE`.
   phone - timing of the scenes, the difficulty of the race and the chase, the size of the buttons and
   all sound still need a real play-through. The prologue runs about 3 minutes (not 4): the city is one
   kilometer wide. Faces do not move (no lip sync): people speak with a hand gesture and subtitles.
-  The story people are the scanned models with an automatic skeleton: clothes do not swing, and
-  strong head turns can stretch a face. Extras (the two under the awning, the customer, the Guard
+  The story people are the scanned models with an automatic skeleton: clothes do not swing.
+  Extras (the two under the awning, the customer, the Guard
   officer) are dark copies of one body. The two story alleys are only 5 m wide: drive in slowly.
 - Shop names, signs and adverts are invented. No real brands are used.

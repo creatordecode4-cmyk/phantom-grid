@@ -50,6 +50,7 @@ import { createStory } from './story/engine.js';
 import { createStreetLife } from './ai/streetLife.js';
 import { t } from './story/strings.js';
 import { GARAGE } from './city/heroBuildings.js';
+import { setCharacterFill, characterLight } from './characters/characterLook.js';
 
 const hud = createHUD();
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -386,6 +387,15 @@ async function boot() {
     shared.uPgPlayer.value.copy(player.position);
     weather.update(dt);
     lighting.update(dt, player.position, rig.forwardXZ(camDir));
+    // the characters' own soft light (characterLook.js): clear at night, almost nothing in daylight.
+    // (divided by the exposure, so it looks the same on the screen whatever the camera is set to)
+    {
+      const li = lighting.info, P = CONFIG.player, test = window.PG && window.PG.fillOverride;
+      // (how much real light there is: all of it with the sun high, little with a low sun, none at night)
+      const bright = smoothstep(4, 30, li.elevation === undefined ? 90 : li.elevation);
+      const want = P.fillDay + (P.fillNight - P.fillDay) * (1 - bright);
+      setCharacterFill(typeof test === 'number' ? test : want / Math.max(li.exposure || 1, 0.25));
+    }
     city.update(dt, time, player.position.x, player.position.z, quality.propDistance);
     updateSunGlow(dt);
   }
@@ -784,6 +794,7 @@ async function boot() {
     vehicles, missions, gps, sound, hud, minimap, carLib, effects, police, garage, settings,
     story, ui, music, save, actors, drivers, director, storyProps, streetLife, GARAGE,
     applyQuality, step, draw, carAction, updateGuides, showTitle, startFree, startStory, openPause,
+    fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
     get paused() { return frozen; },
     get waypoint() { return waypoint; },
