@@ -1,32 +1,32 @@
 // ---------------------------------------------------------------------------
-// vehicle.js - the cars the player can drive.
+// vehicle.js - every vehicle the player can use: cars, the boat, the drone.
 //
 // HOW IT FITS TOGETHER
 //   * Parked cars are cheap "instanced" copies (see props.js). When the player
-//     gets into one, that copy is hidden and a real car object is put in its
-//     place: body, four turning wheels, real doors that swing open, glass you
-//     can look through, seats and a dashboard inside, brake lights and a
-//     headlight beam on the road.
-//   * Cars made in code are cut into these parts here. Cars from model files
-//     (assets/cars/) come already cut, see carLibrary.js.
-//   * Cars the player leaves behind stay real objects (a few of them at most).
-//
-// DRIVING FEEL (arcade, but with weight)
-//   The car has a speed along its nose ("forward") and a speed sideways
-//   ("slide"). The tires pull the sideways speed back to zero - that is grip.
-//   With the handbrake the grip is low, so the tail swings out: a drift.
-//   Steering gets smaller at high speed, the body leans in corners and dips
-//   when braking.
+//     gets into one, that copy is hidden and a real vehicle object is put in
+//     its place.
+//   * A real car has a body that pitches and rolls, doors that swing open,
+//     glass you can look through, seats, a dashboard and a steering wheel.
+//     Cars made in code are cut into these parts here. Cars from model files
+//     (assets/vehicles/) show a light version first; the detailed model is
+//     loaded when somebody gets in or stands next to it.
+//   * HOW IT MOVES is in physics.js (engine, gears, grip, boat, drone). This
+//     file runs that physics in fixed steps of 1/60 s and turns the results
+//     into what you see and hear: lights, smoke, skid marks, sounds, damage.
+//   * Roles: police cars have flashing lights and a siren, the supercar has
+//     nitro, the armored van is heavy and strong, the boat floats, the drone flies.
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
-import { CAR_TYPES, carInfo, makeCar, makeWheel } from './carModels.js';
+import { CAR_TYPES, carInfo, makeCar, makeWheel, registerCar } from './carModels.js';
 import { makeInterior, makeDriver, splitBody } from './carParts.js';
-import { clamp, damp, smoothstep } from '../utils/math.js';
+import { VEHICLE_SPECS } from './vehicleLoader.js';
+import { initCarState, stepCar, initBoatState, stepBoat, initDroneState, stepDrone, IDLE_RPM, RED_RPM } from './physics.js';
+import { makeDrone, lin } from '../city/models.js';
+import { clamp, damp } from '../utils/math.js';
 
 const KMH = 3.6;
-const BODY_CIRCLES = [1.35, 0, -1.35]; // three circles along the car are its collision shape
-const BODY_R = 0.98;
+const STEP = 1 / 60;                   // the physics always runs in steps of this length
 const ENTER_RANGE = 3.3;               // how close the player has to stand to get in
 
 // Soft light on the road in front of the car (white = light, see-through elsewhere).
@@ -51,7 +51,7 @@ export function makeBeamTexture() {
   return tex;
 }
 
-export function createVehicles({ scene, city, materials, sound, weather, carLib = null }) {
+export function createVehicles({ scene, city, materials, sound, weather, carLib = null, effects, settings }) {
   const mats = materials.mats;
   const L = city.layout, B = L.bounds;
   const geo = { body: {}, wheel: {} };
@@ -62,7 +62,9 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   let stateTime = 0;
   let shake = 0;          // camera shake after a crash (goes back to 0)
   let exitWanted = false;
-  let hornOn = false;
+  let message = '';       // a short text for the player (main.js shows it and clears it)
+  let haptic = 0;         // phone vibration wanted (milliseconds), main.js does it
+  const events = [];      // things other systems react to: { type: 'crash' | 'hitCar' ..., strength }
 
   // ------------------------------------------------------------- build a car
   // glass you can look through (all cars share it)
@@ -77,6 +79,11 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   const shadowGeo = new THREE.PlaneGeometry(1, 1);
   shadowGeo.rotateX(-Math.PI / 2);
   const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: materials.tex.glow, transparent: true, opacity: 0.62, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -12 });
+  const wheelGeo = new THREE.TorusGeometry(0.17, 0.022, 5, 16);
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x101012, roughness: 0.5 });
+  // broken glass: milky and dull
+  const crackedMat = new THREE.MeshPhysicalMaterial({ color: 0x9aa4a8, transparent: true, opacity: 0.78, roughness: 0.65, metalness: 0, depthWrite: false, side: THREE.DoubleSide });
+  let detailed = 0;       // how many vehicles show their detailed model
   const interiors = {};   // seats, dashboard ... one geometry per car type
   const drivers = {};
 
@@ -117,6 +124,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         v.wheels.push({ steerNode, mesh: w, front: wz > 0, spin: sx > 0 ? 1 : -1 });
       }
     }
+    v.paintMeshes = [];
+    v.tilt.traverse((m) => { if (m.isMesh && m.material === mats.carPaint) v.paintMeshes.push(m); });
     addInside(v);
   }
 
@@ -127,8 +136,10 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     const simple = new THREE.Mesh(carLib.geo[v.kind], mats.carPaint);
     simple.castShadow = true; simple.receiveShadow = true;
     v.tilt.add(simple);
-    carLib.loadHi(v.kind).then((scene) => {
+    // the detailed model is only fetched when somebody needs it (v.needDetail())
+    v.needDetail = () => { if (v.detailAsked) return; v.detailAsked = true; detailed++; carLib.loadHi(v.kind).then((scene) => {
       if (!scene || !live.includes(v)) return;
+      const before = new Set([...v.tilt.children, ...v.group.children]);
       const model = scene.clone(true);
       const take = (name) => model.getObjectByName(name);
       const paint = (o) => {
@@ -176,21 +187,37 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
           v.wheels.push({ steerNode, mesh: w, front, spin: sx });
         }
       }
-      v.tilt.remove(simple);
+      v.paintMeshes = [];
+      v.tilt.traverse((m) => { if (m.isMesh && m.material && m.material.userData.paintSrc) v.paintMeshes.push(m); });
       addInside(v);
-    });
+      // everything that was just added is "the detailed model": it can be switched
+      // back to the light version when the car is far away (see prefetch)
+      const nodes = [...v.tilt.children, ...v.group.children].filter((o) => !before.has(o) && o !== v.tilt && o !== v.driver);
+      let on = true;
+      simple.visible = false;
+      v.setDetail = (want) => { if (want === on) return; on = want; simple.visible = !want; for (const o of nodes) o.visible = want; };
+    }).catch((e) => console.warn('[vehicles] could not show the detailed model of', v.kind, e)); };
   }
   // model files bring their own picture; we add a clear coat and the street lamp light at night
   const paintCache = new Map();
+  const damageMats = new Map();
   function paintFor(src) {
     if (paintCache.has(src)) return paintCache.get(src);
-    const m = new THREE.MeshPhysicalMaterial({
-      map: src.map, roughnessMap: src.roughnessMap, metalnessMap: src.metalnessMap, roughness: 1, metalness: 1,
-      clearcoat: 0.6, clearcoatRoughness: 0.12, envMapIntensity: 1.2,
-    });
-    materials.lampPatch(m);
-    paintCache.set(src, m);
-    return m;
+    // (the same picture is kept; three more copies get darker and duller for damaged cars)
+    const make = (level) => {
+      const m = new THREE.MeshPhysicalMaterial({
+        map: src.map, roughnessMap: src.roughnessMap, metalnessMap: src.metalnessMap, roughness: 1, metalness: 1,
+        clearcoat: 0.6 * (1 - level / 3), clearcoatRoughness: 0.12 + level * 0.15, envMapIntensity: 1.3 - level * 0.25,
+      });
+      m.color.setScalar(1 - level * 0.2);
+      m.userData.paintSrc = src; m.userData.level = level;
+      materials.lampPatch(m);
+      return m;
+    };
+    const set = [make(0), make(1), make(2), make(3)];
+    paintCache.set(src, set[0]);
+    damageMats.set(src, set);
+    return set[0];
   }
   // seats, dashboard and (while somebody drives) a driver
   function addInside(v) {
@@ -200,68 +227,78 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     v.driver = new THREE.Mesh(drivers[k], mats.prop);
     v.driver.visible = false;
     v.tilt.add(v.driver);
+    // the steering wheel turns with the front wheels
+    const hub = new THREE.Group();
+    hub.position.fromArray(interiors[k].userData.wheel);
+    hub.rotation.x = -0.45;
+    v.steerWheel = new THREE.Mesh(wheelGeo, wheelMat);
+    hub.add(v.steerWheel);
+    v.tilt.add(hub);
+    v.eye = interiors[k].userData.eye;
   }
 
-  function makeVehicle(kind, x, y, z, rot, color) {
-    const info = carInfo(kind), type = CAR_TYPES[kind];
-    const group = new THREE.Group();   // place and direction
-    const tilt = new THREE.Group();    // body roll and pitch (the wheels stay on the road)
-    group.add(tilt);
-    // brake lights: a red bar that gets very bright when braking
-    // (cars from model files have painted tail lights: there the brake light is a soft red glow, no bar)
-    let brakeMat, brake;
-    if (info.model) {
-      brakeMat = new THREE.MeshBasicMaterial({ color: 0x000000, map: materials.tex.glow, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
-      brake = new THREE.Group();
-      for (const sx of [-1, 1]) {
-        const lamp = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.42), brakeMat);
-        lamp.position.set(sx * info.halfWidth * 0.62, 0, 0);
-        lamp.rotation.y = Math.PI;
-        lamp.renderOrder = 17;
-        brake.add(lamp);
-      }
-      brake.position.set(0, info.tailY, info.backZ - 0.03);
-    } else {
-      brakeMat = new THREE.MeshBasicMaterial({ color: 0x200000 });
-      brake = new THREE.Mesh(new THREE.BoxGeometry(info.tailW * 0.96, 0.055, 0.03), brakeMat);
-      brake.position.set(0, info.tailY, info.backZ - 0.04);
-    }
-    tilt.add(brake);
-    // soft dark spot under the car: it sits on the road in any light (also without real shadows)
-    const shadow = new THREE.Mesh(shadowGeo, shadowMat);
-    shadow.scale.set(info.halfWidth * 2 + 0.9, 1, info.length + 1.0);
-    shadow.position.y = 0.03;
-    shadow.renderOrder = 12;
-    group.add(shadow);
-    // headlight beam: a soft patch of light lying on the road in front of the car
-    const beamGeo = new THREE.PlaneGeometry(8, 19);
-    beamGeo.rotateX(-Math.PI / 2);
-    const beamMat = new THREE.MeshBasicMaterial({
-      map: beamTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0,
-      polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -14, fog: false,
-    });
-    const beam = new THREE.Mesh(beamGeo, beamMat);
-    beam.position.set(0, 0.04, info.frontZ + 9.3);
-    beam.renderOrder = 13;
-    beam.visible = false;
-    group.add(beam);
+  // the drone has no model file: it is made in code (1.8 m wide)
+  let droneGeo = carLib && carLib.drone;
+  if (!droneGeo) {
+    droneGeo = makeDrone();
+    droneGeo.scale(1.7, 1.7, 1.7);
+    registerCar('drone', { length: 1.8, halfWidth: 0.9, boxHalfWidth: 0.9, roof: 0.45, backZ: -0.9, frontZ: 0.9, wheelR: 0.1, wheelX: 0.5, wheelZ: [-0.5, 0.5], door: { z0: 0, z1: 0, y0: 0, y1: 0 }, seat: null }, VEHICLE_SPECS.drone);
+  }
+  const SHORE = L.bounds.minZ - 1.6;   // the boat cannot come closer to the beach than this
+  const seaWorld = { waterLevel: L.ocean.level, shoreZ: SHORE, minX: B.minX - 250, maxX: B.maxX + 250, minZ: B.minZ - 1100 };
 
+  function makeVehicle(kind, x, y, z, rot, color, opts = {}) {
+    const info = carInfo(kind), type = CAR_TYPES[kind];
+    const role = type.role || 'car';
+    const isCar = role === 'car' || role === 'police';
+    const group = new THREE.Group();   // place and direction
+    const tilt = new THREE.Group();    // body roll and pitch
+    group.add(tilt);
+    let beam = null, beamMat = null;
+    if (isCar) {
+      // headlight beam: a soft patch of light lying on the road in front of the car
+      const beamGeo = new THREE.PlaneGeometry(8, 19);
+      beamGeo.rotateX(-Math.PI / 2);
+      beamMat = new THREE.MeshBasicMaterial({
+        map: beamTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0,
+        polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -14, fog: false,
+      });
+      beam = new THREE.Mesh(beamGeo, beamMat);
+      beam.position.set(0, 0.04, info.frontZ + 9.3);
+      beam.renderOrder = 13;
+      beam.visible = false;
+      group.add(beam);
+      // soft dark spot under the car: it sits on the road in any light (also without real shadows)
+      const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+      shadow.scale.set(info.halfWidth * 2 + 0.9, 1, info.length + 1.0);
+      shadow.position.y = 0.03;
+      shadow.renderOrder = 12;
+      group.add(shadow);
+    }
     group.position.set(x, y, z);
     group.rotation.y = rot;
     scene.add(group);
+    // collision shape: three circles along the vehicle, sized from its box
+    const radius = clamp((info.boxHalfWidth || info.halfWidth) * 0.97, role === 'drone' ? 0.5 : 0.85, 1.45);
+    const reach = Math.max(0, info.length / 2 - radius);
     const v = {
-      kind, info, type, group, tilt, wheels: [], doorL: null, doorR: null, driver: null, brakeMat, beam, beamMat, color,
-      x, y, z, heading: rot, vx: 0, vz: 0, steer: 0, roll: 0, pitch: 0, spin: 0, doorOpen: 0,
-      forward: 0, slide: 0, braking: false, born: performance.now(),
+      kind, info, type, role, isCar, group, tilt, wheels: [], doorL: null, doorR: null, driver: null, beam, beamMat, color,
+      x, y, z, heading: rot, doorOpen: 0, radius, circles: reach > 0.3 ? [reach, 0, -reach] : [0],
+      label: type.label, tag: !!opts.tag, keep: !!opts.keep, npc: !!opts.npc, ai: null,
+      siren: false, hiBeam: false, blink: 0, blinkT: 0, startT: 0, level: 0, lastSmoke: 0, wheelPrev: null, hitX: x, hitZ: z, scrapeT: 0, turboArmed: false,
     };
+    if (role === 'boat') initBoatState(v); else if (role === 'drone') initDroneState(v); else initCarState(v);
     live.push(v);
-    if (info.model && carLib && carLib.geo[kind]) partsFromModel(v); else partsFromCode(v);
+    if (role === 'boat') { const m = new THREE.Mesh(carLib.boat, mats.carPaint); m.castShadow = true; tilt.add(m); }
+    else if (role === 'drone') { const m = new THREE.Mesh(droneGeo, carLib && carLib.drone ? mats.carPaint : mats.prop); m.castShadow = true; m.position.y = 0.16; tilt.add(m); }
+    else if (info.model && carLib && carLib.geo[kind]) partsFromModel(v); else partsFromCode(v);
     return v;
   }
 
   function removeVehicle(v) {
     scene.remove(v.group);
-    v.brakeMat.dispose(); v.beamMat.dispose();
+    if (v.beamMat) v.beamMat.dispose();
+    if (v.detailAsked) detailed--;
     const i = live.indexOf(v);
     if (i >= 0) live.splice(i, 1);
   }
@@ -276,33 +313,56 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     city.props.recull();
     return makeVehicle(rec.kind, rec.x, rec.y, rec.z, rec.rot, rec.color);
   }
+  // take the parked copies out of an area (the garage, a spawn place)
+  function clearParked(test) {
+    let any = false;
+    for (const rec of city.parkedCars) {
+      if (rec.taken || !test(rec)) continue;
+      rec.taken = true; any = true;
+      city.props.sets[rec.kind].all.fill(0, rec.index * 16, rec.index * 16 + 16);
+      city.props.sets.carShadow.all.fill(0, rec.shadow * 16, rec.shadow * 16 + 16);
+      for (const c of rec.circles) c.x = 1e7;
+    }
+    if (any) city.props.recull();
+  }
 
-  // ------------------------------------------------------- which car is near?
+  // ------------------------------------------------------- which vehicle is near?
   function nearest(px, pz) {
-    let best = null, bestD = ENTER_RANGE;
+    let best = null, bestD = 1e9;
     for (const v of live) {
-      if (v === active) continue;
-      const d = Math.hypot(v.x - px, v.z - pz);
-      if (d < bestD) { bestD = d; best = { live: v, x: v.x, z: v.z }; }
+      if (v === active || v.npc) continue;
+      const d = Math.hypot(v.x - px, v.z - pz) - (v.role === 'boat' ? 3.5 : 0);
+      if (d < ENTER_RANGE && d < bestD) { bestD = d; best = { live: v, x: v.x, z: v.z }; }
     }
     for (const rec of city.parkedCars) {
       if (rec.taken) continue;
       const dx = rec.x - px, dz = rec.z - pz;
       if (Math.abs(dx) > ENTER_RANGE || Math.abs(dz) > ENTER_RANGE) continue;
       const d = Math.hypot(dx, dz);
-      if (d < bestD) { bestD = d; best = { parked: rec, x: rec.x, z: rec.z }; }
+      if (d < ENTER_RANGE && d < bestD) { bestD = d; best = { parked: rec, x: rec.x, z: rec.z }; }
     }
     return best;
   }
 
   // Start loading the detailed model of the model cars close to the player, so
   // it is ready when they get in (it is about 1 MB per car type).
-  function prefetch(px, pz) {
+  // budget: how many vehicles may show their detailed model at the same time (the nearest ones win)
+  const byDist = [];
+  function prefetch(px, pz, budget = 8) {
     if (!carLib) return;
     for (const rec of city.parkedCars) {
       if (rec.taken || !carLib.geo[rec.kind]) continue;
       if (Math.abs(rec.x - px) < 14 && Math.abs(rec.z - pz) < 14) carLib.loadHi(rec.kind);
     }
+    // the real vehicles nearest to the player show their detailed model, the others the light one
+    byDist.length = 0;
+    for (const v of live) if (v.needDetail) { v.lodD = v === active ? -1 : Math.hypot(v.x - px, v.z - pz); byDist.push(v); }
+    byDist.sort((a, b) => a.lodD - b.lodD);
+    byDist.forEach((v, i) => {
+      const want = v === active || (i < budget && v.lodD < 20);
+      if (want && !v.detailAsked && (v === active || v.lodD < 10)) v.needDetail();
+      if (v.setDetail) v.setDetail(want);
+    });
   }
 
   // is this spot free to stand on?
@@ -314,8 +374,9 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     for (const c of city.colliders.dynamic || []) if (Math.hypot(c.x - x, c.z - z) < c.r + 0.4) return false;
     return true;
   }
-  // where the driver stands next to the car (left side first)
+  // where the driver stands next to the vehicle (left side first)
   function doorSpot(v) {
+    if (v.role === 'boat') return { x: clamp(v.x, B.minX + 1, B.maxX - 1), z: B.minZ + 0.6 }; // step onto the beach
     const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
     const lx = fz, lz = -fx; // the car's left
     const side = v.info.halfWidth + 0.75;
@@ -332,54 +393,70 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     active = near.live || takeParked(near.parked);
     state = 'entering'; stateTime = 0;
     active.vx = active.vz = 0;
-    sound.doorClick();
+    if (active.needDetail) active.needDetail();
+    sound.setTone(active.type.tone);
+    sound.doorClick('open');
     return true;
   }
-  function requestExit() { if (state === 'driving') exitWanted = true; }
+  function requestExit() {
+    if (state !== 'driving') return;
+    const v = active;
+    if (v.role === 'boat' && v.z < SHORE - 9) { message = 'BRING THE BOAT BACK TO THE BEACH TO GET OUT'; return; }
+    if (v.role === 'drone' && v.alt > 1.5) { message = 'LAND THE DRONE FIRST (DOWN BUTTON)'; return; }
+    exitWanted = true;
+  }
 
   // -------------------------------------------------------------- collisions
-  // Push the car out of walls, props and other cars. Returns how hard it hit.
-  const _n = { x: 0, z: 0 };
+  // Push the vehicle out of walls, props and other cars. Returns what it hit:
+  //   { impact (m/s into the obstacle), lever (how much the hit wants to spin the car) }
+  const hitOut = { impact: 0, lever: 0 };
   function collide(v) {
-    let impact = 0;
-    const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
+    let impact = 0, lever = 0;
+    const fx = Math.sin(v.heading), fz = Math.cos(v.heading), R = v.radius;
     for (let pass = 0; pass < 2; pass++) {
-      for (const off of BODY_CIRCLES) {
+      for (const off of v.circles) {
         const cx = v.x + fx * off, cz = v.z + fz * off;
         const cell = city.colliders.near(cx, cz);
-        let px = 0, pz = 0;
+        let px = 0, pz = 0, owner = null;
         for (const b of cell.boxes) {
           if (b.h < 0.3) continue;
           const qx = clamp(cx, b.minX, b.maxX), qz = clamp(cz, b.minZ, b.maxZ);
-          let dx = cx - qx, dz = cz - qz;
-          const d2 = dx * dx + dz * dz;
-          if (d2 >= BODY_R * BODY_R) continue;
-          if (d2 > 1e-8) { const d = Math.sqrt(d2); px += (dx / d) * (BODY_R - d); pz += (dz / d) * (BODY_R - d); }
+          const dx = cx - qx, dz = cz - qz, d2 = dx * dx + dz * dz;
+          if (d2 >= R * R) continue;
+          if (d2 > 1e-8) { const d = Math.sqrt(d2); px += (dx / d) * (R - d); pz += (dz / d) * (R - d); }
           else {
-            // the middle of the circle is inside the box: leave through the nearest side
+            // the middle of the circle is inside the box: leave through the nearest side (never stay stuck in a wall)
             const l = cx - b.minX, r = b.maxX - cx, n = cz - b.minZ, f = b.maxZ - cz, m = Math.min(l, r, n, f);
-            if (m === l) px -= l + BODY_R; else if (m === r) px += r + BODY_R; else if (m === n) pz -= n + BODY_R; else pz += f + BODY_R;
+            if (m === l) px -= l + R; else if (m === r) px += r + R; else if (m === n) pz -= n + R; else pz += f + R;
           }
         }
         const hitCircle = (c) => {
-          const dx = cx + px - c.x, dz = cz + pz - c.z, min = BODY_R + c.r, d2 = dx * dx + dz * dz;
+          if (c.veh === v) return;
+          const dx = cx + px - c.x, dz = cz + pz - c.z, min = R + c.r, d2 = dx * dx + dz * dz;
           if (d2 >= min * min) return;
           const d = Math.sqrt(d2) || 0.001;
           px += (dx / d) * (min - d); pz += (dz / d) * (min - d);
+          if (c.veh || c.car) owner = c;
         };
         for (const c of cell.circles) hitCircle(c);
         for (const c of city.colliders.dynamic || []) hitCircle(c);
         const len = Math.hypot(px, pz);
         if (len < 1e-5) continue;
         v.x += px; v.z += pz;
-        // bounce: take away the speed that goes INTO the obstacle, give a little back
-        _n.x = px / len; _n.z = pz / len;
-        const vn = v.vx * _n.x + v.vz * _n.z;
+        const nx = px / len, nz = pz / len;
+        const vn = v.vx * nx + v.vz * nz;
         if (vn < 0) {
-          v.vx -= 1.25 * vn * _n.x; v.vz -= 1.25 * vn * _n.z;
-          const lose = clamp(1 - (-vn) * 0.03, 0.55, 1) * 0.985; // a hard hit also costs speed along the wall
-          v.vx *= lose; v.vz *= lose;
-          impact = Math.max(impact, -vn);
+          // take away the speed that goes INTO the obstacle, give a little back (bounce)
+          v.vx -= 1.22 * vn * nx; v.vz -= 1.22 * vn * nz;
+          if (-vn > impact) { impact = -vn; v.hitX = cx - nx * R; v.hitZ = cz - nz * R; }
+          lever += off * (nx * fz - nz * fx) * 0.5;
+          // hitting another car pushes it
+          if (owner && -vn > 1) {
+            const share = clamp(v.type.mass / 1500, 0.4, 2.5);
+            if (owner.veh) { owner.veh.vx -= nx * -vn * 0.55 * share / clamp(owner.veh.type.mass / 1500, 0.5, 3); owner.veh.vz -= nz * -vn * 0.55 * share / clamp(owner.veh.type.mass / 1500, 0.5, 3); }
+            if (owner.car) owner.car.bumped = Math.max(owner.car.bumped || 0, -vn);
+            if (-vn > 3) events.push({ type: owner.car ? 'hitCar' : 'hitParked', strength: -vn, police: !!(owner.veh && owner.veh.type.role === 'police') });
+          }
         }
       }
     }
@@ -388,130 +465,210 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     if (v.x > B.maxX - 1) { v.x = B.maxX - 1; if (v.vx > 0) { impact = Math.max(impact, v.vx); v.vx *= -0.25; } }
     if (v.z < B.minZ + 1) { v.z = B.minZ + 1; if (v.vz < 0) { impact = Math.max(impact, -v.vz); v.vz *= -0.25; } }
     if (v.z > B.maxZ - 1) { v.z = B.maxZ - 1; if (v.vz > 0) { impact = Math.max(impact, v.vz); v.vz *= -0.25; } }
-    return impact;
+    if (impact < 0.05) return null;
+    hitOut.impact = impact; hitOut.lever = lever;
+    return hitOut;
+  }
+  // the drone only hits buildings it is lower than
+  function collideAir(v) {
+    const cell = city.colliders.near(v.x, v.z);
+    for (const b of cell.boxes) {
+      if (v.y > b.h + 0.3) continue;
+      const qx = clamp(v.x, b.minX, b.maxX), qz = clamp(v.z, b.minZ, b.maxZ), dx = v.x - qx, dz = v.z - qz, d2 = dx * dx + dz * dz;
+      if (d2 >= v.radius * v.radius) continue;
+      const d = Math.sqrt(d2) || 0.001;
+      if (d2 > 1e-6) { v.x += (dx / d) * (v.radius - d); v.z += (dz / d) * (v.radius - d); } else { v.x -= Math.sin(v.heading) * 1.2; v.z -= Math.cos(v.heading) * 1.2; }
+      return Math.abs(v.forward) + 0.5;
+    }
+    return 0;
   }
 
-  // ------------------------------------------------------------ one car step
-  // drive: { steer -1..1 (right is +), gas 0..1, brake 0..1, handbrake }
-  function physics(v, drive, dt) {
-    const T = v.type, top = T.topSpeed / KMH;
-    const wet = weather && weather.amount > 0.3 ? 0.8 : 1;
-    // split the speed into "along the nose" and "sideways"
-    let fx = Math.sin(v.heading), fz = Math.cos(v.heading);
-    let fwd = v.vx * fx + v.vz * fz;
-    const speed = Math.hypot(v.vx, v.vz);
+  // ------------------------------------------------------------ the ground under a car
+  const SURF = {
+    road: { name: 'road', grip: 1, drag: 0, rough: 0 },
+    wet: { name: 'wet', grip: 1, drag: 0.05, rough: 0 },                 // (the rain itself lowers the grip in physics.js)
+    walk: { name: 'walk', grip: 0.92, drag: 0.2, rough: 0.2 },           // sidewalks: slabs and joints
+    sand: { name: 'sand', grip: 0.45, drag: 2.2, rough: 0.5 },           // the beach: soft, slow, slippery
+  };
+  const world = {
+    surface(x, z) {
+      if (z < L.neon.promenadeMinZ) return SURF.sand;
+      if (city.groundHeight(x, z) > 0.05) return SURF.walk;
+      return weather && weather.amount > 0.3 ? SURF.wet : SURF.road;
+    },
+    ground: (x, z) => city.groundHeight(x, z),
+    collide, collideAir,
+    get wet() { return weather ? clamp(weather.amount, 0, 1) : 0; },
+    get assist() { return settings ? settings.assist : 'normal'; },
+    maxHeight: 150, bounds: B,
+  };
 
-    // ---- steering: quick at low speed, small and calm at high speed ----
-    const maxSteer = 0.6 - 0.5 * smoothstep(0, 38, Math.abs(fwd));
-    const target = drive.steer * maxSteer;
-    v.steer = damp(v.steer, target, Math.abs(target) > Math.abs(v.steer) ? 5.5 : 9, dt);
-    // how fast the car turns (a right turn makes the heading angle smaller)
-    let yawRate = (-fwd * Math.tan(v.steer)) / v.info.wheelbase;
-    if (drive.handbrake) yawRate *= 1.45;
-    // tires can only hold so much: limit the turn at speed
-    const maxLat = (drive.handbrake ? 17 : 11.5) * T.grip * wet;
-    if (Math.abs(fwd) > 1) yawRate = clamp(yawRate, -maxLat / Math.abs(fwd), maxLat / Math.abs(fwd));
-    v.heading += yawRate * dt;
-
-    fx = Math.sin(v.heading); fz = Math.cos(v.heading);
-    const rx = -fz, rz = fx; // the car's right
-    fwd = v.vx * fx + v.vz * fz;
-    let slide = v.vx * rx + v.vz * rz;
-
-    // ---- engine, brakes, air ----
-    let acc = 0;
-    v.braking = false;
-    if (drive.gas > 0.02) {
-      if (fwd < -0.5) { acc += 12 * drive.gas; v.braking = true; }                 // rolling backward: brake first
-      else acc += T.accel * drive.gas * Math.max(0, 1 - (fwd / top) ** 2) * (drive.handbrake ? 0.45 : 1);
+  // ------------------------------------------------------------ damage you can see
+  function showDamage(v) {
+    const level = v.damage > 0.75 ? 3 : v.damage > 0.5 ? 2 : v.damage > 0.22 ? 1 : 0;
+    if (level === v.level || !v.isCar) return;
+    const was = v.level;
+    v.level = level;
+    for (const m of v.paintMeshes || []) {
+      const src = m.material.userData.paintSrc;
+      if (src) m.material = damageMats.get(src)[level];                       // model cars: a darker, duller paint
+      else if (m.geometry.attributes.color && !m.isInstancedMesh) {
+        // cars made in code: darken the colors stored in this car's own body
+        const c = m.geometry.attributes.color, k = (1 - level * 0.17) / (1 - was * 0.17);
+        for (let i = 0; i < c.array.length; i++) c.array[i] *= k;
+        c.needsUpdate = true;
+      }
     }
-    if (drive.brake > 0.02) {
-      if (fwd > 0.6) { acc -= 14 * drive.brake * wet; v.braking = true; v.stopped = 0; }   // brake
-      else if (fwd > -0.3 && (v.stopped || 0) < 0.35) {
-        // the car stands still for a moment before it starts to reverse
-        v.stopped = (v.stopped || 0) + dt; v.braking = true;
-        acc -= Math.sign(fwd) * Math.min(Math.abs(fwd) / dt, 14);
-      } else acc -= T.accel * 0.6 * drive.brake * Math.max(0, 1 + fwd / 11);                // reverse (up to 40 km/h)
-    } else v.stopped = 0;
-    if (drive.handbrake) { acc -= Math.sign(fwd) * Math.min(Math.abs(fwd) / dt, 5.5); v.braking = true; }
-    acc -= fwd * (0.035 + 0.0011 * Math.abs(fwd));                                  // air and rolling drag
-    if (drive.gas < 0.02 && drive.brake < 0.02) acc -= Math.sign(fwd) * Math.min(Math.abs(fwd) / dt, 0.9);
-    fwd += acc * dt;
-
-    // ---- grip: the tires pull the sideways speed back to zero ----
-    let grip = (drive.handbrake ? 1.1 : 7.5) * T.grip * wet;
-    if (Math.abs(slide) > 4.5 && !drive.handbrake) grip *= 0.6; // once it slides, it keeps sliding for a moment
-    slide *= Math.exp(-grip * dt);
-    v.vx = fx * fwd + rx * slide;
-    v.vz = fz * fwd + rz * slide;
-    v.forward = fwd; v.slide = slide;
-
-    // ---- move (in small steps when fast, so the car cannot jump through a wall) ----
-    const steps = Math.max(1, Math.ceil((speed * dt) / 0.6));
-    let impact = 0;
-    for (let i = 0; i < steps; i++) {
-      v.x += (v.vx * dt) / steps; v.z += (v.vz * dt) / steps;
-      impact = Math.max(impact, collide(v));
-    }
-    if (impact > 1.6) {
-      sound.thud(impact / 16);
-      shake = Math.min(1, shake + impact * 0.045);
-    }
-    // follow the ground (curbs, the beach)
-    const gy = (city.groundHeight(v.x + fx * 1.4, v.z + fz * 1.4) + city.groundHeight(v.x - fx * 1.4, v.z - fz * 1.4)) / 2;
-    v.y = damp(v.y, gy, 16, dt);
-
-    // ---- body movement: lean in corners, dip when braking, lift when speeding up ----
-    const lat = fwd * yawRate; // sideways push (m/s2)
-    v.roll = damp(v.roll, clamp(lat * 0.0075 * T.roll, -0.085, 0.085), 5, dt);
-    v.pitch = damp(v.pitch, clamp(-acc * 0.0042 * T.roll, -0.035, 0.045), 5, dt);
-    v.spin += (fwd * dt) / v.info.wheelR;
-    return { acc, top };
+    // broken windows after a strong hit
+    v.tilt.traverse((m) => { if (m.isMesh && (m.material === glassMat || m.material === crackedMat)) m.material = level >= 2 ? crackedMat : glassMat; });
   }
+  function repair(v) { v.damage = 0; showDamage(v); }
 
-  // put the 3D object where the numbers say
-  function place(v, night) {
-    v.group.position.set(v.x, v.y, v.z);
+  // ------------------------------------------------------------ show it: place, tilt, lights
+  function place(v, night, time) {
+    v.group.position.set(v.x, v.y + (v.isCar ? v.heave : 0), v.z);
     v.group.rotation.y = v.heading;
-    v.tilt.rotation.set(v.pitch, 0, v.roll);
+    // engine start: a short shake
+    const shakeStart = v.startT > 0 ? Math.sin(v.startT * 70) * 0.006 * Math.min(1, v.startT * 3) : 0;
+    v.tilt.rotation.set(v.pitch + shakeStart, 0, v.roll + shakeStart);
     for (const w of v.wheels) {
       if (w.front) w.steerNode.rotation.y = -v.steer * 0.8;
       w.mesh.rotation.x = v.spin * w.spin;
     }
+    if (v.steerWheel) v.steerWheel.rotation.z = v.steer * 2.6;
     // the driver's door swings open around its front edge (the other door stays shut)
     if (v.doorL) v.doorL.rotation.y = -v.doorOpen * 1.15;
-    if (v.driver) v.driver.visible = v === active && (state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3));
-    // lights
-    const on = v === active && state !== 'none';
-    const lamp = on ? night : 0;
-    v.beam.visible = lamp > 0.02;
-    v.beamMat.opacity = lamp * 0.95;
-    if (v.info.model) {
-      // glow: off by day, soft at night, strong when braking
-      const red = on && v.braking ? 2.6 : 0.5 * lamp;
-      v.brakeMat.color.setRGB(red, red * 0.05, red * 0.03);
-    } else {
-      const red = on && v.braking ? 5.0 : 0.12 + 1.1 * lamp;
-      v.brakeMat.color.setRGB(red, red * 0.035, red * 0.02);
+    const driven = v === active && state !== 'none';
+    if (v.driver) v.driver.visible = v === active && camMode !== 'cockpit' && (state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3));
+    if (!v.isCar) {
+      // boat and drone: two small position lights at night
+      if ((driven || v.npc) && night > 0.05) { effects.lamp(v.x + Math.sin(v.heading) * v.info.frontZ, v.y + v.info.roof * 0.6, v.z + Math.cos(v.heading) * v.info.frontZ, 1.4, 1.4, 1.2, 0.5); effects.lamp(v.x - Math.sin(v.heading) * v.info.frontZ, v.y + v.info.roof * 0.6, v.z - Math.cos(v.heading) * v.info.frontZ, 1.6, 0.1, 0.08, 0.4); }
+      return;
+    }
+    // ---- lamps: light dots at the ends of the car's box (see effects.js) ----
+    const on = driven || v.npc;
+    const lampOn = on ? night : 0;
+    const blinkOn = v.blink !== 0 && (time * 2.6) % 1 < 0.5;
+    if (on) {
+      effects.carLamps(v.x, v.y + v.heave, v.z, v.heading, v.info.halfWidth, v.info.frontZ, v.info.backZ, v.info.noseY, {
+        head: lampOn > 0.05 ? (v.hiBeam ? 2 : 1) : 0, tail: lampOn, brake: v.braking && !v.reverse, reverse: v.reverse && Math.abs(v.forward) > 0.2, blink: v.blink, blinkOn,
+      });
+    }
+    if (v.beam) {
+      v.beam.visible = lampOn > 0.02 && driven;
+      v.beamMat.opacity = lampOn * (v.hiBeam ? 1.25 : 0.9);
+      v.beam.scale.set(v.hiBeam ? 1.25 : 1, 1, v.hiBeam ? 1.6 : 1);
+      v.beam.position.z = v.info.frontZ + (v.hiBeam ? 14.5 : 9.3);
+    }
+    // ---- police: red and blue lights that flash in turn ----
+    if (v.siren) {
+      const fx = Math.sin(v.heading), fz = Math.cos(v.heading), lx = fz, lz = -fx;
+      const phase = Math.floor(time * 7) % 4;
+      const y = v.y + v.info.roof + 0.08, s = v.info.halfWidth * 0.38;
+      const k = 3.4;
+      if (phase < 2) effects.lamp(v.x + lx * s, y, v.z + lz * s, k, 0.15, 0.1, 0.75); else effects.lamp(v.x - lx * s, y, v.z - lz * s, 0.15, 0.3, k, 0.75);
+      flasher.on = true; flasher.x = v.x; flasher.y = y + 0.6; flasher.z = v.z; flasher.red = phase < 2;
     }
   }
 
+  // ------------------------------------------------------------ smoke, marks, sounds of the driven car
+  let impactCool = 0, bumpCool = 0, squealOn = false, wasBlink = false;
+  function feedback(v, input, dt, time, night) {
+    const fx = v.fx, sx = Math.sin(v.heading), sz = Math.cos(v.heading), lx = sz, lz = -sx;
+    const speed = Math.hypot(v.vx, v.vz);
+    const top = v.type.topSpeed / KMH;
+    impactCool -= dt; bumpCool -= dt;
+    if (v.role === 'boat') {
+      sound.setEngine(true, clamp(0.15 + Math.abs(v.forward) / top * 0.6 + fx.throttle * 0.25, 0, 1), fx.throttle);
+      sound.setWind(speed / 40); sound.setRoad(fx.wake * 0.8, 'wet');
+      // wake: foam at the stern and two white trails on the water
+      if (fx.wake > 0.08) {
+        const bx = v.x - sx * v.info.frontZ * 0.9, bz = v.z - sz * v.info.frontZ * 0.9;
+        if (Math.random() < fx.wake * 0.9) effects.emit('foam', bx + (Math.random() - 0.5) * 2, seaWorld.waterLevel + 0.2, bz + (Math.random() - 0.5) * 2, -v.vx * 0.2, 1.2 + fx.wake * 2, -v.vz * 0.2, 1 + fx.wake);
+        const p = [[bx + lx * 1.5, bz + lz * 1.5], [bx - lx * 1.5, bz - lz * 1.5]];
+        if (v.wheelPrev) for (let i = 0; i < 2; i++) effects.addStrip(v.wheelPrev[i][0], v.wheelPrev[i][1], p[i][0], p[i][1], seaWorld.waterLevel + 0.07, 0.35 + fx.wake * 0.5, [0.9, 0.95, 0.96], 0.34 * fx.wake, 4);
+        v.wheelPrev = p;
+      } else v.wheelPrev = null;
+      if (fx.impact > 1 && impactCool < 0) { impactCool = 0.4; sound.crash('scrape', fx.impact / 8); shake = Math.min(1, shake + fx.impact * 0.04); haptic = 60; }
+      return;
+    }
+    if (v.role === 'drone') {
+      sound.setEngine(true, fx.throttle, fx.throttle * 0.6);
+      sound.setWind(speed / 30);
+      if (fx.impact > 0.5 && impactCool < 0) { impactCool = 0.4; sound.crash('scrape', 0.4); shake = Math.min(1, shake + 0.25); haptic = 50; }
+      return;
+    }
+    // ---- sounds ----
+    const rev = clamp((v.rpm - IDLE_RPM) / (RED_RPM - IDLE_RPM), 0, 1);
+    sound.setEngine(true, 0.1 + rev * 0.9, Math.max(fx.throttle, v.nitroOn ? 1 : 0));
+    const onRoad = fx.surface === 'road' || fx.surface === 'wet';
+    sound.setScreech(onRoad ? fx.slip * (fx.surface === 'wet' ? 0.55 : 1) : 0);
+    sound.setWind(speed / 55);
+    sound.setRoad(clamp(speed / 30, 0, 1) * (onRoad ? 0.5 : 1), fx.surface);
+    sound.setScrape(fx.scrape > 0 && speed > 2);
+    const squeal = v.braking && input.brake > 0.3 && speed > 0.6 && speed < 4.5 && !v.reverse;
+    if (squeal !== squealOn) { squealOn = squeal; sound.setSqueal(squeal); }
+    if (fx.shifted) { sound.shiftClick(); if (v.type.turbo) sound.turbo(); effects.emit('exhaust', v.x + sx * (v.info.backZ - 0.1), v.y + 0.35, v.z + sz * (v.info.backZ - 0.1), -sx, 0.4, -sz); }
+    // turbo cars whoosh when the driver lifts off after a hard pull
+    if (v.type.turbo) { if (fx.throttle > 0.8 && rev > 0.5) v.turboArmed = true; else if (v.turboArmed && fx.throttle < 0.1) { v.turboArmed = false; sound.turbo(); } }
+    if (fx.bump > 0.25 && bumpCool < 0) { bumpCool = 0.18; sound.thump(fx.bump); haptic = Math.max(haptic, 18); shake = Math.min(1, shake + fx.bump * 0.12); }
+    if (fx.abs && bumpCool < 0) { bumpCool = 0.09; haptic = Math.max(haptic, 10); }
+    if (fx.impact > 0.6 && impactCool < 0) {
+      impactCool = 0.3;
+      const hard = fx.impact >= 3.2;
+      sound.crash(hard ? 'heavy' : 'scrape', fx.impact / (hard ? 16 : 5));
+      shake = Math.min(1, shake + (hard ? fx.impact * 0.05 : 0.08));
+      haptic = Math.max(haptic, hard ? Math.min(220, 40 + fx.impact * 9) : 25);
+      if (hard) { for (let i = 0; i < 9; i++) effects.emit('debris', v.hitX, v.y + 0.5, v.hitZ, (Math.random() - 0.5) * 6 + v.vx * 0.3, 2 + Math.random() * 3, (Math.random() - 0.5) * 6 + v.vz * 0.3); events.push({ type: 'crash', strength: fx.impact }); }
+    }
+    // ---- indicators: they blink by themselves when you steer hard at low speed ----
+    v.blink = Math.abs(input.steer) > 0.55 && speed < 16 && speed > 0.3 ? (input.steer < 0 ? -1 : 1) : v.damage > 0.9 ? 2 : 0;
+    const blinkNow = v.blink !== 0 && (time * 2.6) % 1 < 0.5;
+    if (blinkNow !== wasBlink) { wasBlink = blinkNow; if (v.blink) sound.tick(); }
+
+    // ---- particles and skid marks at the rear wheels ----
+    const wz = v.info.wheelZ[0], wx = v.info.wheelX;
+    const p = [[v.x + sx * wz + lx * wx, v.z + sz * wz + lz * wx], [v.x + sx * wz - lx * wx, v.z + sz * wz - lz * wx]];
+    const sliding = fx.slip > 0.22 && speed > 2.5;
+    if (sliding || fx.spin > 0.2) {
+      const kind = fx.surface === 'sand' ? 'dust' : fx.surface === 'wet' ? 'spray' : 'smoke';
+      for (let i = 0; i < 2; i++) if (Math.random() < 0.35 + fx.slip * 0.5) effects.emit(kind, p[i][0], v.y + 0.15, p[i][1], v.vx * 0.15 + (Math.random() - 0.5), 0.6, v.vz * 0.15 + (Math.random() - 0.5), 0.8 + fx.slip);
+      if (v.wheelPrev && fx.surface !== 'sand') for (let i = 0; i < 2; i++) effects.addStrip(v.wheelPrev[i][0], v.wheelPrev[i][1], p[i][0], p[i][1], v.y + 0.022, 0.24, [0.02, 0.02, 0.02], 0.3 + fx.slip * 0.4, 28);
+    } else if (fx.surface === 'sand' && speed > 3) {
+      if (Math.random() < 0.5) effects.emit('dust', p[0][0], v.y + 0.15, p[0][1], -v.vx * 0.1, 0.8, -v.vz * 0.1, 0.9);
+      if (v.wheelPrev) for (let i = 0; i < 2; i++) effects.addStrip(v.wheelPrev[i][0], v.wheelPrev[i][1], p[i][0], p[i][1], v.y + 0.03, 0.26, [0.32, 0.27, 0.2], 0.4, 20);
+    } else if (fx.surface === 'wet' && speed > 9 && Math.random() < 0.5) effects.emit('spray', p[Math.random() < 0.5 ? 0 : 1][0], v.y + 0.12, p[0][1], -v.vx * 0.08, 0.9 + speed * 0.03, -v.vz * 0.08, 0.6 + speed * 0.02);
+    v.wheelPrev = p;
+    // sparks where the body scrapes along a wall
+    if (fx.scrape > 0 && speed > 4) for (let i = 0; i < 2; i++) effects.emit('spark', v.hitX, v.y + 0.4, v.hitZ, v.vx * 0.5 + (Math.random() - 0.5) * 4, 1 + Math.random() * 2.5, v.vz * 0.5 + (Math.random() - 0.5) * 4);
+    // nitro: a blue flame at the back
+    if (v.nitroOn) for (const s of [0.3, -0.3]) effects.emit('flame', v.x + sx * (v.info.backZ - 0.15) + lx * s, v.y + 0.38, v.z + sz * (v.info.backZ - 0.15) + lz * s, v.vx - sx * 5, 0, v.vz - sz * 5);
+    // a badly damaged car smokes from the hood
+    if (v.damage > 0.7 && time - v.lastSmoke > 0.12) { v.lastSmoke = time; effects.emit('hood', v.x + sx * v.info.frontZ * 0.6, v.y + v.info.noseY + 0.3, v.z + sz * v.info.frontZ * 0.6, v.vx * 0.3, 1.5, v.vz * 0.3); }
+    showDamage(v);
+  }
+
   // --------------------------------------------------------------- every frame
-  // drive: input for the car, player: the player object, night: 0..1 (lamps on)
-  function update(dt, drive, player, night) {
+  const idle = { steer: 0, gas: 0, brake: 0, handbrake: true };
+  const flasher = { on: false, x: 0, y: 0, z: 0, red: true };
+  let acc = 0, camMode = 'chase', nitroWas = false, detailTimer = 0;
+  // input: what the player does, player: the player object, night: 0..1 (lamps on), time: seconds
+  function update(dt, input, player, night, time) {
     shake = Math.max(0, shake - dt * 2.6);
-    const idle = { steer: 0, gas: 0, brake: 0, handbrake: true };
+    flasher.on = false;
+    const drive = input.drive;
     if (state === 'entering') {
-      // door opens, the player steps in, door closes
+      // door opens, the player steps in, door closes, the engine starts
       stateTime += dt;
       const v = active;
       v.doorOpen = stateTime < 0.3 ? stateTime / 0.3 : Math.max(0, 1 - (stateTime - 0.45) / 0.3);
       if (stateTime > 0.38) player.setHidden(true);
-      else {
-        const s = doorSpot(v);
-        player.glideTo(s.x, s.z, v.heading, dt);
+      else { const s = v.role === 'boat' ? { x: player.position.x, z: player.position.z } : doorSpot(v); player.glideTo(s.x, s.z, v.heading, dt); }
+      if (stateTime > 0.75) {
+        state = 'driving'; v.doorOpen = 0; exitWanted = false; v.startT = 0.7;
+        if (v.isCar) { sound.doorClick('close'); sound.startEngine(); effects.emit('exhaust', v.x + Math.sin(v.heading) * v.info.backZ, v.y + 0.35, v.z + Math.cos(v.heading) * v.info.backZ, 0, 0.5, 0, 1.5); }
+        if (v.type.role === 'police') message = 'POLICE CAR: HORN BUTTON = SIREN';
       }
-      if (stateTime > 0.75) { state = 'driving'; v.doorOpen = 0; sound.doorClick(); exitWanted = false; }
     } else if (state === 'exiting') {
       stateTime += dt;
       const v = active;
@@ -521,65 +678,140 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         player.place(s.x, s.z, v.heading);
         player.setHidden(false);
       }
-      if (stateTime > 0.8) { state = 'none'; v.doorOpen = 0; active = null; sound.doorClick(); }
+      if (stateTime > 0.8) { state = 'none'; v.doorOpen = 0; v.siren = false; active = null; if (v.isCar) sound.doorClick('close'); }
     }
 
-    for (const v of live) {
-      if (v === active && state === 'driving') {
-        // the EXIT button first stops the car, then the door opens
-        const input = exitWanted ? { steer: drive.steer, gas: 0, brake: v.forward > 0.5 ? 1 : 0, handbrake: Math.abs(v.forward) <= 0.5 || drive.handbrake } : drive;
-        const r = physics(v, input, dt);
-        if (exitWanted && Math.hypot(v.vx, v.vz) < 0.9) { v.vx = v.vz = 0; state = 'exiting'; stateTime = 0; exitWanted = false; sound.doorClick(); }
-        // sounds: the engine "shifts" through five gears
-        const ratio = clamp(Math.abs(v.forward) / r.top, 0, 0.999) * 5;
-        const rev = 0.18 + 0.82 * (ratio < 1 ? ratio : 0.35 + 0.65 * (ratio % 1));
-        sound.setEngine(true, rev, Math.max(input.gas, input.brake * (v.forward < 0.6 ? 1 : 0)));
-        const sliding = Math.max(0, (Math.abs(v.slide) - 2.2) / 6) + (v.braking && Math.abs(v.forward) > 14 && input.brake > 0.8 ? 0.25 : 0);
-        sound.setScreech(clamp(sliding, 0, 1));
-        if (!!drive.horn !== hornOn) { hornOn = !!drive.horn; sound.setHorn(hornOn); }
-        // the player object travels with the car (so the world knows where we are)
-        player.place(v.x, v.z, v.heading);
-      } else if (Math.abs(v.vx) + Math.abs(v.vz) > 0.01 || v === active) {
-        physics(v, idle, dt); // a car without a driver rolls to a stop
+    // ---- the physics, in fixed steps of 1/60 s ----
+    acc = Math.min(acc + dt, STEP * 5);
+    let fxLast = null;
+    // a frame can hold 0, 1 or more physics steps: remember the strongest hit and bump of all of them
+    let pkImpact = 0, pkBump = 0, pkScrape = 0, pkShift = false;
+    while (acc >= STEP) {
+      acc -= STEP;
+      for (const v of live) {
+        if (v.startT > 0) v.startT -= STEP;
+        if (v === active && state === 'driving') {
+          let inp = drive;
+          // the EXIT button first stops the vehicle, then the door opens
+          if (exitWanted) inp = { steer: drive.steer, gas: v.forward < -0.5 ? 1 : 0, brake: v.forward > 0.5 ? 1 : 0, handbrake: Math.abs(v.forward) <= 4 || drive.handbrake, up: false, down: true };   // (rolling backwards: the gas pedal is the brake)
+          if (v.role === 'boat') fxLast = stepBoat(v, inp, STEP, seaWorld);
+          else if (v.role === 'drone') fxLast = stepDrone(v, inp, STEP, world);
+          else { fxLast = stepCar(v, inp, STEP, world); v.spin += (v.forward * STEP) / v.info.wheelR; }
+          pkImpact = Math.max(pkImpact, fxLast.impact || 0); pkBump = Math.max(pkBump, fxLast.bump || 0); pkScrape = Math.max(pkScrape, fxLast.scrape || 0); pkShift = pkShift || !!fxLast.shifted;
+          if (exitWanted && Math.hypot(v.vx, v.vz) < 0.9 && (v.role !== 'drone' || v.alt < 0.3)) { v.vx = v.vz = 0; v.forward = 0; state = 'exiting'; stateTime = 0; exitWanted = false; sound.doorClick('open'); }
+        } else if (v.ai) v.ai(v, STEP, world);
+        else if (v.isCar && (Math.abs(v.vx) + Math.abs(v.vz) > 0.02 || v === active)) { stepCar(v, idle, STEP, world); v.spin += (v.forward * STEP) / v.info.wheelR; } // a car without a driver rolls to a stop
+        else if (v.role === 'boat') stepBoat(v, idle, STEP, seaWorld);
+        else if (v.role === 'drone' && v.alt > 0.01) stepDrone(v, { steer: 0, gas: 0, brake: 0, down: true }, STEP, world);
       }
-      place(v, night);
-    }
-    if (state !== 'driving') {
-      sound.setEngine(false); sound.setScreech(0);
-      if (hornOn) { hornOn = false; sound.setHorn(false); }
     }
 
-    // ---- cars the player left behind: solid for the player and the traffic, and not too many ----
+    const v = active;
+    if (v && v.fx) { v.fx.impact = pkImpact; if (v.isCar) { v.fx.bump = pkBump; v.fx.shifted = pkShift; if (fxLast) v.fx.scrape = pkScrape; } }
+    if (v && state === 'driving') {
+      // police: the horn button switches the siren
+      if (v.type.role === 'police') { if (drive.horn && !nitroWas) { v.siren = !v.siren; } nitroWas = drive.horn; sound.setSiren(v.siren); }
+      else sound.setHorn(!!drive.horn);
+      if (drive.nitro && v.nitroOn && !v.nitroSound) sound.nitro();
+      v.nitroSound = v.nitroOn;
+      feedback(v, drive, dt, time, night);
+      // the player object travels with the vehicle (so the world knows where we are)
+      player.place(v.x, v.z, v.heading);
+    } else if (state !== 'driving') sound.quiet();
+    for (const q of live) place(q, night, time);
+
+    // ---- vehicles the player left behind: solid for the player and the traffic, and not too many ----
     const dyn = city.colliders.dynamic;
     const px = player.position.x, pz = player.position.z;
+    let loose = 0;
+    for (const q of live) if (q !== active && !q.keep && !q.npc) loose++;
     for (let i = live.length - 1; i >= 0; i--) {
-      const v = live[i];
-      if (v === active) continue;
-      const d = Math.hypot(v.x - px, v.z - pz);
-      const extra = live.length - (active ? 1 : 0) > 2; // detailed cars cost many draw calls: keep only a few
-      if (!v.keep && (d > 320 || (extra && d > 90 && v === live.find((o) => o !== active && !o.keep)))) { removeVehicle(v); continue; }
-      if (dyn && d < 40) {
-        const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
-        for (const off of BODY_CIRCLES) dyn.push({ x: v.x + fx * off, z: v.z + fz * off, r: BODY_R });
+      const q = live[i];
+      if (q === active) continue;
+      const d = Math.hypot(q.x - px, q.z - pz);
+      if (!q.keep && !q.npc && (d > 320 || (loose > 2 && d > 90))) { removeVehicle(q); loose--; continue; }
+      if (dyn && d < 45 && q.role !== 'boat' && !(q.role === 'drone' && q.alt > 2.5)) {
+        const fx = Math.sin(q.heading), fz = Math.cos(q.heading);
+        for (const off of q.circles) dyn.push({ x: q.x + fx * off, z: q.z + fz * off, r: q.radius, veh: q });
       }
     }
   }
 
+  // ------------------------------------------------------------ making vehicles appear
+  // a new vehicle at a fixed place. opts: { keep: never disappears, tag: shows its name, npc: driven by the computer }
+  function spawn(kind, x, z, rot, color, opts = { keep: true }) {
+    if (!CAR_TYPES[kind]) return null;
+    const role = CAR_TYPES[kind].role;
+    if (role === 'boat' && !(carLib && carLib.boat)) return null;
+    const y = role === 'boat' ? seaWorld.waterLevel - 0.5 : city.groundHeight(x, z);
+    const v = makeVehicle(kind, x, y, z, rot, color || [1, 1, 1], opts);
+    place(v, 0, 0);
+    return v;
+  }
+  // THE GARAGE: one of each vehicle, parked along the curb next to the start point.
+  function buildGarage() {
+    const gx = L.spawn.x + 3.1, z0 = L.spawn.z + 20, rot = 0;            // at the east curb, noses to the north
+    clearParked((rec) => Math.abs(rec.x - gx) < 3 && rec.z > z0 - 62 && rec.z < z0 + 8);
+    const paint = { sedan: [0.3, 0.31, 0.33], coupe: [0.08, 0.13, 0.26] };
+    const list = ['small_city_car', 'tech_patrol_car', 'police_coupe', 'chrome_supercar', 'armored_van'].filter((k) => CAR_TYPES[k]);
+    let z = z0;
+    const made = [];
+    for (const kind of list) {
+      const len = carInfo(kind).length;
+      z -= len / 2 + 1.4;
+      made.push(spawn(kind, gx, z, rot, [1, 1, 1], { keep: true, tag: true }));
+      z -= len / 2 + 1.4;
+    }
+    // the drone waits on the sidewalk, the boat at the coast
+    made.push(spawn('drone', L.spawn.x - 1.2, L.spawn.z + 3.5, 0, null, { keep: true, tag: true }));
+    const boat = spawn('patrol_boat', -30, SHORE - 2.5, Math.PI, null, { keep: true, tag: true });
+    if (boat) made.push(boat);
+    return { vehicles: made.filter(Boolean), repair: { x: gx + 3.4, z: z0 - 12 }, paint };
+  }
+  // the test menu: put any vehicle in front of the player
+  function spawnInFront(kind, px, pz, yaw) {
+    if (!CAR_TYPES[kind]) return null;
+    const role = CAR_TYPES[kind].role;
+    if (role === 'boat') {
+      const bx = clamp(px, B.minX + 20, B.maxX - 20);
+      message = pz > B.minZ + 60 ? 'THE BOAT IS AT THE BEACH - WALK SOUTH TO THE WATER' : 'BOAT READY';
+      return spawn(kind, bx, SHORE - 2.5, Math.PI, null, { keep: false, tag: true });
+    }
+    const d = role === 'drone' ? 3 : 7;
+    let x = px + Math.sin(yaw) * d, z = pz + Math.cos(yaw) * d;
+    x = clamp(x, B.minX + 3, B.maxX - 3); z = clamp(z, B.minZ + 3, B.maxZ - 3);
+    clearParked((rec) => Math.hypot(rec.x - x, rec.z - z) < 5.5);
+    const v = spawn(kind, x, z, yaw, lin([0.5, 0.52, 0.55]), { keep: false, tag: true });
+    if (v && v.isCar) collide(v);     // push it out of a wall if it landed in one
+    return v;
+  }
+
   // (a plain object with "get" functions: the values are read fresh every time)
   return {
-    live, nearest, tryEnter, requestExit, update, prefetch,
-    // a new car at a fixed place (used by missions). keep = it never disappears by itself.
-    spawn(kind, x, z, rot, color, keep = true) {
-      const v = makeVehicle(kind, x, city.groundHeight(x, z), z, rot, color);
-      v.keep = keep;
-      place(v, 0);
-      return v;
-    },
+    live, nearest, tryEnter, requestExit, update, prefetch, spawn, spawnInFront, buildGarage, repair, removeVehicle, world, events, flasher,
     get active() { return active; },
     get state() { return state; },
     get driving() { return state === 'driving' || state === 'exiting'; },
     get shake() { return shake; },
-    // km/h of the car the player drives
+    // km/h of the vehicle the player drives
     get speedKmh() { return active ? Math.hypot(active.vx, active.vz) * KMH : 0; },
+    // what the dashboard shows
+    get hud() {
+      const v = active;
+      if (!v) return null;
+      return {
+        kmh: Math.hypot(v.vx, v.vz) * KMH, role: v.role, label: v.label, damage: v.damage || 0,
+        gear: v.isCar ? (v.reverse ? 'R' : Math.abs(v.forward) < 0.3 && !v.fx.throttle ? 'N' : String(v.gear)) : '',
+        rpm: v.isCar ? clamp((v.rpm - IDLE_RPM) / (RED_RPM - IDLE_RPM), 0, 1) : v.fx.throttle,
+        nitro: v.type.nitro ? v.nitro : null, blink: v.blink, abs: v.isCar && v.fx.abs, siren: v.siren, height: v.role === 'drone' ? v.alt : null,
+      };
+    },
+    // camera: chase | close | hood | cockpit
+    get camMode() { return camMode; },
+    set camMode(m) { camMode = m; sound.setInside(m === 'cockpit' && state === 'driving'); },
+    toggleHighBeam() { if (active) { active.hiBeam = !active.hiBeam; return active.hiBeam; } return false; },
+    // a short text for the player, and a wanted phone vibration (both are cleared when read)
+    takeMessage() { const m = message; message = ''; return m; },
+    takeHaptic() { const h = haptic; haptic = 0; return h; },
   };
 }

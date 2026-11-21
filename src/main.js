@@ -6,8 +6,8 @@
 //   2. load textures and build the city
 //   3. create lighting, weather, the player, the camera and the controls
 //   4. pick a quality level that fits this device
-//   5. loop forever: read input -> move player or car -> traffic and people
-//      -> missions, map and GPS -> update world -> draw
+//   5. loop forever: read input -> move player or vehicle -> traffic, people,
+//      police -> missions, map and GPS -> update world -> draw
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
@@ -27,8 +27,10 @@ import { createHUD } from './ui/hud.js';
 import { createGPS } from './ui/gps.js';
 import { createSound } from './audio/sound.js';
 import { createVehicles } from './vehicles/vehicle.js';
-import { CAR_TYPES } from './vehicles/carModels.js';
-import { loadCarLibrary } from './vehicles/carLibrary.js';
+import { CAR_TYPES, carInfo } from './vehicles/carModels.js';
+import { loadVehicles } from './vehicles/vehicleLoader.js';
+import { createEffects } from './vehicles/effects.js';
+import { createPolice } from './ai/police.js';
 import { createMissions } from './missions/missionManager.js';
 
 const hud = createHUD();
@@ -82,9 +84,9 @@ async function boot() {
   await nextFrame();
 
   const layout = buildLayout();
-  // car model files (assets/cars); without them the game uses only the cars made in code
-  hud.setProgress(0.33, 'Loading cars');
-  const carLib = await loadCarLibrary();
+  // vehicle model files (assets/vehicles); without them the game uses only the cars made in code
+  hud.setProgress(0.33, 'Loading vehicles');
+  const carLib = await loadVehicles();
   const city = await buildCity(scene, layout, materials, (p, text) => hud.setProgress(0.34 + 0.4 * p, text), carLib);
 
   hud.setProgress(0.78, 'Setting up light');
@@ -107,8 +109,26 @@ async function boot() {
   const unlockSound = () => sound.unlock();
   window.addEventListener('pointerdown', unlockSound, { capture: true });
   window.addEventListener('keydown', unlockSound, { capture: true });
-  const vehicles = createVehicles({ scene, city, materials, sound, weather, carLib });
+  // driving assist: off / normal (traction control + ABS) / easy (also helps with steering)
+  const settings = { assist: 'normal' };
+  try { const a = localStorage.getItem('pg-assist'); if (a === 'off' || a === 'normal' || a === 'easy') settings.assist = a; } catch (e) { /* private mode */ }
+  const effects = createEffects(scene);                 // smoke, sparks, skid marks, lamp glow
+  const vehicles = createVehicles({ scene, city, materials, sound, weather, carLib, effects, settings });
+  const garage = vehicles.buildGarage();                // one of each vehicle, parked next to the start point
   const gps = createGPS(layout);
+  const police = createPolice({ vehicles, gps, layout });
+  // the garage's repair point: a glowing ring on the road (drive onto it to fix the car)
+  const repairRing = new THREE.Mesh(new THREE.RingGeometry(1.9, 2.3, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x5fe0a0, transparent: true, opacity: 0.75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -10 }));
+  repairRing.position.set(garage.repair.x, city.groundHeight(garage.repair.x, garage.repair.z) + 0.03, garage.repair.z);
+  repairRing.renderOrder = 12;
+  scene.add(repairRing);
+  // one real lamp for the flashing police lights (only at night, like the street lamps)
+  const flashLight = new THREE.PointLight(0xff2010, 0, 26, 2);
+  flashLight.visible = false;
+  scene.add(flashLight);
+  const sirens = [], tags = [];
+  const CAM_MODES = ['chase', 'close', 'hood', 'cockpit'];
+  let baseFov = CONFIG.camera.fov, fovNow = CONFIG.camera.fov, pixelH = 720, stars = 0;
   const missions = createMissions({ scene, city, vehicles, hud, sound });
   let waypoint = null;          // a place the player tapped on the big map
   let route = null;             // list of points along the roads (for the minimap)
@@ -138,6 +158,9 @@ async function boot() {
     // tall screens (phone held upright) get a taller view, so you still see enough to the sides
     if (camera.aspect >= 1) camera.fov = CONFIG.camera.fov;
     else camera.fov = clamp((2 * Math.atan(Math.tan((CONFIG.camera.portraitHFov * DEG) / 2) / camera.aspect)) / DEG, CONFIG.camera.fov, 84);
+    baseFov = fovNow = camera.fov;
+    pixelH = h * pr;
+    effects.setViewport(camera.fov, pixelH);
     camera.far = quality.cameraFar;
     camera.updateProjectionMatrix();
     if (usePost) postfx.resize(w * pr, h * pr, quality.msaa);
@@ -172,6 +195,8 @@ async function boot() {
     // ---- E key / CAR button: get in, or stop and get out ----
     if (input.action) carAction();
     if (input.map) hud.actions.map();
+    if (input.camera) hud.actions.camera();
+    if (input.lights) hud.actions.lights();
     rig.rotate(input.lookX, input.lookY);
     const onFoot = vehicles.state === 'none';
     if (onFoot) player.update(dt, input, rig.yaw);
@@ -183,21 +208,67 @@ async function boot() {
     const car = vehicles.active;
     if (car && !onFoot) {
       const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
-      for (const k of [-1.4, 0, 1.4]) obstacles.push({ x: car.x + fx * k, z: car.z + fz * k, r: 1.0 });
+      // (speed and direction: people jump out of the way of a fast car; damaged: the traffic passes slowly)
+      const sp = Math.hypot(car.vx, car.vz), flying = car.role === 'drone' && car.alt > 2.5, atSea = car.role === 'boat';
+      if (!flying && !atSea) for (const k of car.circles) obstacles.push({ x: car.x + fx * k, z: car.z + fz * k, r: car.radius, speed: sp, dx: sp > 0.1 ? car.vx / sp : fx, dz: sp > 0.1 ? car.vz / sp : fz, damaged: car.damage > 0.6 });
     } else obstacles.push({ x: px, z: pz, r: 0.4 });
-    city.traffic.update(dt, time, px, pz, obstacles, city.people.people, night);
+    city.traffic.update(dt, time, px, pz, obstacles, city.people.people, night, police.sirens(sirens));
     city.people.update(dt, time, px, pz, obstacles, night, rain > 0.3 ? 1 : 0);
+    for (const e of city.traffic.events) if (e.type === 'honk') sound.honk(clamp(1.3 - Math.hypot(e.x - px, e.z - pz) / 45, 0, 1));
 
-    // ---- the player's car (after the traffic, so it can bump into it) ----
-    vehicles.update(dt, input.drive, player, night);
+    // ---- lamps of the traffic near the player (light dots; brake lights also by day) ----
+    effects.beginFrame();
+    for (const t of city.traffic.cars) {
+      if (!t.alive || Math.abs(t.wx - px) > 70 || Math.abs(t.wz - pz) > 70) continue;
+      if (night < 0.05 && !t.braking) continue;
+      const info = carInfo(t.kind);
+      effects.carLamps(t.wx, 0, t.wz, t.heading, info.halfWidth, info.frontZ, info.backZ, info.noseY, { head: night > 0.05 ? 1 : 0, tail: night, brake: t.braking, reverse: false, blink: t.turn ? (t.turn.s > 0 ? 1 : -1) : 0, blinkOn: (time * 2.6) % 1 < 0.5 });
+    }
+
+    // ---- the player's vehicle and the other real vehicles (after the traffic, so they can bump into it) ----
+    vehicles.update(dt, input, player, night, time);
+    effects.endFrame(dt);
     const driving = vehicles.driving;
     if (driving !== wasDriving) {
       wasDriving = driving;
-      hud.setDriving(driving, driving && vehicles.active ? CAR_TYPES[vehicles.active.kind].label : '');
-      if (driving) rig.startChase(); else rig.endChase();
+      const v = vehicles.active;
+      hud.setDriving(driving, driving && v ? v.label : '', v ? (v.type.role === 'police' ? 'police' : v.role) : 'car', !!(v && v.type.nitro));
+      hud.setLightButton(!!(v && v.hiBeam));
+      if (driving) rig.startChase(); else { rig.endChase(); sound.setInside(false); }
     }
-    if (driving && vehicles.active) rig.updateChase(dt, vehicles.active, vehicles.shake);
+    const view = vehicles.camMode;
+    if (driving && vehicles.active) rig.updateChase(dt, vehicles.active, vehicles.shake, view);
     else rig.update(dt, player);
+    {
+      // the faster, the wider the view (and a little speed blur at the very top, see postfx.js)
+      const kmh = driving ? vehicles.speedKmh : 0, boost = driving && vehicles.active.nitroOn ? 1 : 0;
+      const want = baseFov + Math.min(14, kmh * 0.058) + boost * 4;
+      fovNow += (want - fovNow) * Math.min(1, dt * 3);
+      if (Math.abs(camera.fov - fovNow) > 0.04) { camera.fov = fovNow; camera.updateProjectionMatrix(); effects.setViewport(fovNow, pixelH); }
+      if (postfx.setSpeed) postfx.setSpeed(clamp((kmh - 140) / 90, 0, 1) * 0.8 + boost * 0.25);
+      hud.setWindscreen(driving && rain > 0.3 && (view === 'hood' || view === 'cockpit') && vehicles.active.isCar);
+    }
+    // ---- police: wanted stars, chasers, sirens, the flashing light ----
+    const knocked = city.people.takeKnocked();
+    if (knocked) { sound.thump(1); if (navigator.vibrate) navigator.vibrate(60); }
+    stars = police.update(dt, { x: px, z: pz, speed: car && !onFoot ? Math.hypot(car.vx, car.vz) : player.speed }, knocked);
+    if (!(driving && vehicles.active && vehicles.active.siren)) {
+      let nearSiren = false;
+      for (const s of sirens) if (Math.hypot(s.x - px, s.z - pz) < 170) nearSiren = true;
+      sound.setSiren(nearSiren);
+    }
+    const F = vehicles.flasher;
+    flashLight.visible = lighting.nightMode;
+    flashLight.intensity = F.on && lighting.nightMode ? 90 : 0;
+    if (F.on) { flashLight.position.set(F.x, F.y, F.z); flashLight.color.setHex(F.red ? 0xff2010 : 0x1040ff); }
+    // ---- repair point, messages, phone vibration ----
+    if (driving && car && car.isCar && car.damage > 0.03 && Math.hypot(car.x - garage.repair.x, car.z - garage.repair.z) < 3.2 && Math.hypot(car.vx, car.vz) < 4) {
+      vehicles.repair(car); hud.toast('REPAIRED'); sound.chime();
+    }
+    const msg = vehicles.takeMessage() || police.takeMessage();
+    if (msg) hud.toast(msg, 2600);
+    const buzz = vehicles.takeHaptic();
+    if (buzz && navigator.vibrate) { try { navigator.vibrate(buzz); } catch (e) { /* not allowed */ } }
 
     // ---- footsteps: a different sound on sand ----
     if (player.steps !== lastSteps) {
@@ -214,7 +285,7 @@ async function boot() {
     else if (routeTimer <= 0) { routeTimer = 0.6; route = gps.route(px, pz, goal.x, goal.z); }
     // the CAR button shows up next to a car
     nearTimer -= dt;
-    if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !!vehicles.nearest(px, pz)); if (onFoot) vehicles.prefetch(px, pz); }
+    if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !!vehicles.nearest(px, pz)); vehicles.prefetch(px, pz, active === 'low' ? 2 : active === 'medium' ? 3 : 8); }
     // test tool: PG.freeCam = { pos: [x, y, z], look: [x, y, z] } puts the camera anywhere
     const fc = window.PG && window.PG.freeCam;
     if (fc) {
@@ -237,6 +308,21 @@ async function boot() {
   // ---- HUD things that follow the world: GPS arrow, floating marker, speed ----
   function updateGuides() {
     hud.setSpeed(vehicles.speedKmh);
+    const dash = vehicles.hud;
+    if (dash && vehicles.driving) hud.setDash(dash, (time * 2.6) % 1 < 0.5);
+    hud.setWanted(stars, police.chased);
+    // name tags over the garage vehicles (only when you stand close)
+    tags.length = 0;
+    if (vehicles.state === 'none') {
+      for (const v of vehicles.live) {
+        if (!v.tag || Math.abs(v.x - player.position.x) > 22 || Math.abs(v.z - player.position.z) > 22) continue;
+        _mark.set(v.x, v.y + v.info.roof + 0.75, v.z).project(camera);
+        if (_mark.z < 1 && Math.abs(_mark.x) < 1 && Math.abs(_mark.y) < 1) tags.push({ x: (_mark.x * 0.5 + 0.5) * window.innerWidth, y: (-_mark.y * 0.5 + 0.5) * window.innerHeight, text: v.label });
+      }
+      _mark.set(garage.repair.x, 1.4, garage.repair.z);
+      if (_mark.distanceTo(player.position) < 30) { _mark.project(camera); if (_mark.z < 1 && Math.abs(_mark.x) < 1 && Math.abs(_mark.y) < 1) tags.push({ x: (_mark.x * 0.5 + 0.5) * window.innerWidth, y: (-_mark.y * 0.5 + 0.5) * window.innerHeight, text: 'REPAIR' }); }
+    }
+    hud.setTags(tags);
     hud.setMission(missionState.active ? missionState : null);
     const goal = waypoint || missionState.marker;
     if (!goal) { hud.setArrow(null); hud.setMarker(null); return; }
@@ -374,6 +460,36 @@ async function boot() {
     hud.showStats(statsOn);
   };
   hud.actions.car = carAction;
+  // ---- CAM: next camera view. boat and drone only have the two outside views ----
+  hud.actions.camera = () => {
+    const v = vehicles.active;
+    const list = v && !v.isCar ? CAM_MODES.slice(0, 2) : CAM_MODES;
+    const next = list[(list.indexOf(vehicles.camMode) + 1) % list.length] || 'chase';
+    vehicles.camMode = next;
+    hud.toast({ chase: 'CHASE CAMERA', close: 'CLOSE CAMERA', hood: 'HOOD CAMERA', cockpit: 'COCKPIT' }[next], 1000);
+  };
+  hud.actions.lights = () => {
+    if (!vehicles.driving) return;
+    const on = vehicles.toggleHighBeam();
+    hud.setLightButton(on);
+    hud.toast(on ? 'HIGH BEAM' : 'LOW BEAM', 900);
+  };
+  // ---- CARS menu (for testing): put any vehicle in front of the player ----
+  hud.setVehicleMenu(['small_city_car', 'tech_patrol_car', 'police_coupe', 'chrome_supercar', 'armored_van', 'patrol_boat', 'drone', 'sedan', 'suv', 'coupe']
+    .filter((k) => CAR_TYPES[k] && (CAR_TYPES[k].role !== 'boat' || carLib.boat)).map((k) => [k, CAR_TYPES[k].label]));
+  hud.actions.spawn = (kind) => {
+    if (vehicles.state !== 'none') { hud.toast('GET OUT OF THE VEHICLE FIRST', 1500); return; }
+    const v = vehicles.spawnInFront(kind, player.position.x, player.position.z, player.heading);
+    const m = vehicles.takeMessage();
+    hud.toast(m || (v ? `${v.label} READY` : 'NOT AVAILABLE'), 1800);
+  };
+  hud.setAssist(settings.assist);
+  hud.actions.assist = (mode) => {
+    settings.assist = mode;
+    try { localStorage.setItem('pg-assist', mode); } catch (e) { /* private mode */ }
+    hud.setAssist(mode);
+    hud.toast({ off: 'ASSIST OFF: NO HELP', normal: 'ASSIST NORMAL: TRACTION CONTROL + ABS', easy: 'ASSIST EASY: ALSO HELPS YOU STEER' }[mode], 2200);
+  };
   hud.actions.sound = () => {
     sound.setMuted(!sound.muted);
     hud.setSoundButton(!sound.muted);
@@ -460,7 +576,7 @@ async function boot() {
   // tools for testing from the browser console (and for screenshots)
   window.PG = {
     THREE, CONFIG, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
-    vehicles, missions, gps, sound, hud, minimap, carLib,
+    vehicles, missions, gps, sound, hud, minimap, carLib, effects, police, garage, settings,
     applyQuality, step, draw, carAction, updateGuides,
     get waypoint() { return waypoint; },
     set waypoint(w) { waypoint = w; routeTimer = 0; },

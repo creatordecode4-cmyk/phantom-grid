@@ -37,6 +37,7 @@ export function createMissions({ scene, city, vehicles, hud, sound }) {
     return target;
   }
 
+  let pending = null;   // { id, t }: a mission that starts in t seconds
   function start(id) {
     const m = MISSIONS.find((q) => q.id === id) || MISSIONS[0];
     if (!m) return false;
@@ -54,6 +55,8 @@ export function createMissions({ scene, city, vehicles, hud, sound }) {
         }
       }
       cars[c.name] = vehicles.spawn(c.kind, c.x, c.z, compassToAngle(c.facing), lin(c.color));
+      // this vehicle does not exist in this copy of the game (its model file is missing): no mission
+      if (!cars[c.name]) { delete cars[c.name]; mission = null; city.props.recull(); return false; }
     }
     city.props.recull();
     state.active = true;
@@ -74,6 +77,8 @@ export function createMissions({ scene, city, vehicles, hud, sound }) {
       hud.toast(mission.done || 'MISSION COMPLETE', 4000);
       sound.chime();
       state.completed.push(mission.id);
+      // the next mission of the story starts by itself a little later
+      if (mission.next) pending = { id: mission.next, t: 7 };
       mission = null; state.active = false; state.marker = null; beam.visible = false;
       return;
     }
@@ -92,6 +97,7 @@ export function createMissions({ scene, city, vehicles, hud, sound }) {
 
   // who: { x, z, inCar (bool), car (the vehicle or null), speed (m/s) }
   function update(dt, who) {
+    if (!mission && pending) { pending.t -= dt; if (pending.t <= 0) { const id = pending.id; pending = null; if (start(id)) hud.toast('NEW MISSION', 2500); } }
     if (!mission) { state.marker = null; beam.visible = false; return state; }
     const step = mission.steps[index];
     stepTime += dt;

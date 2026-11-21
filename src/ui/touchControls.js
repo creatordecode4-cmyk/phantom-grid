@@ -7,6 +7,11 @@
 // DESKTOP: W A S D or arrow keys to move, mouse to look (click the game to
 //          lock the mouse, Esc to free it), hold Shift to run.
 //
+// DRIVING (phone): steering buttons or TILT, GAS and BRAKE are analog (slide the
+//          finger up on the pedal for more), HANDBRAKE, HORN, NITRO, UP / DOWN (drone).
+// DRIVING (keys):  W A S D, Space handbrake, H horn, N nitro, C camera, L lights,
+//          U / J drone up / down.
+//
 // The rest of the game only reads "controls.input".
 // ---------------------------------------------------------------------------
 
@@ -22,7 +27,10 @@ export function createControls(dom) {
     action: false,        // true for one frame when E was pressed (get into / out of a car)
     map: false,           // true for one frame when M was pressed
     // driving: steer -1 (left) .. 1 (right), gas / brake 0..1
-    drive: { steer: 0, gas: 0, brake: 0, handbrake: false, horn: false },
+    //          nitro: boost (supercar), up / down: the drone
+    drive: { steer: 0, gas: 0, brake: 0, handbrake: false, horn: false, nitro: false, up: false, down: false },
+    camera: false,        // true for one frame: next camera view
+    lights: false,        // true for one frame: high beam on / off
   };
 
   // ------------------------------------------------------------------ joystick
@@ -101,13 +109,17 @@ export function createControls(dom) {
 
   // ------------------------------------------------------- driving buttons (phone)
   // a button is "down" while at least one finger is on it
-  const held = { left: false, right: false, gas: false, brake: false, hand: false, horn: false };
+  const held = { left: false, right: false, gas: false, brake: false, hand: false, horn: false, nitro: false, up: false, down: false };
+  // GAS and BRAKE are analog: a finger low on the pedal presses it a little, sliding up presses it fully
+  const pedal = { gas: 1, brake: 1 };
+  const pedalAmount = (node, e) => { const r = node.getBoundingClientRect(); return clamp(0.4 + (0.9 * (r.bottom - e.clientY)) / Math.max(r.height, 1), 0.35, 1); };
   if (dom.drive) {
     for (const name of Object.keys(held)) {
       const node = dom.drive[name];
       if (!node) continue;
       const set = (v) => (e) => { held[name] = v; node.classList.toggle('on', v); e.preventDefault(); e.stopPropagation(); };
-      node.addEventListener('pointerdown', (e) => { try { node.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ } set(true)(e); });
+      node.addEventListener('pointerdown', (e) => { try { node.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ } if (name in pedal) pedal[name] = pedalAmount(node, e); set(true)(e); });
+      if (name in pedal) node.addEventListener('pointermove', (e) => { if (held[name]) { pedal[name] = pedalAmount(node, e); node.style.setProperty('--press', pedal[name].toFixed(2)); } });
       node.addEventListener('pointerup', set(false));
       node.addEventListener('pointercancel', set(false));
       node.addEventListener('lostpointercapture', () => { held[name] = false; node.classList.remove('on'); });
@@ -136,11 +148,13 @@ export function createControls(dom) {
 
   // -------------------------------------------------------------------- keyboard
   const keys = new Set();
-  let actionPressed = false, mapPressed = false;
+  let actionPressed = false, mapPressed = false, camPressed = false, lightPressed = false;
   let steerKey = 0; // keyboard steering moves smoothly, like a hand on a wheel
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyE' && !e.repeat) actionPressed = true;
     if (e.code === 'KeyM' && !e.repeat) mapPressed = true;
+    if (e.code === 'KeyC' && !e.repeat) camPressed = true;
+    if (e.code === 'KeyL' && !e.repeat) lightPressed = true;
     keys.add(e.code);
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   });
@@ -190,16 +204,22 @@ export function createControls(dom) {
 
     input.action = actionPressed; actionPressed = false;
     input.map = mapPressed; mapPressed = false;
+    input.camera = camPressed; camPressed = false;
+    input.lights = lightPressed; lightPressed = false;
     // ---- driving: keys and buttons together ----
     const d = input.drive;
     const kl = keys.has('KeyA') || keys.has('ArrowLeft') || held.left, kr = keys.has('KeyD') || keys.has('ArrowRight') || held.right;
+    // (the steering itself is smoothed in physics.js: the wheel never jumps)
     d.steer = tiltOn ? tiltSteer : (kr ? 1 : 0) - (kl ? 1 : 0);
-    d.gas = keys.has('KeyW') || keys.has('ArrowUp') || held.gas ? 1 : 0;
-    d.brake = keys.has('KeyS') || keys.has('ArrowDown') || held.brake ? 1 : 0;
+    d.gas = keys.has('KeyW') || keys.has('ArrowUp') ? 1 : held.gas ? pedal.gas : 0;
+    d.brake = keys.has('KeyS') || keys.has('ArrowDown') ? 1 : held.brake ? pedal.brake : 0;
+    d.nitro = keys.has('KeyN') || held.nitro;
+    d.up = keys.has('KeyU') || held.up;
+    d.down = keys.has('KeyJ') || held.down;
     d.handbrake = keys.has('Space') || held.hand;
     d.horn = keys.has('KeyH') || held.horn;
     return input;
   }
 
-  return { input, update, keys };
+  return { input, update, keys, get tilt() { return tiltOn; } };
 }

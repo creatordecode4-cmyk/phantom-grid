@@ -131,6 +131,7 @@ export function createPedestrians(ctx) {
     });
   }
   let baseCount = 60;    // from the quality level
+  let knocked = 0;       // how many people were knocked over by the player's car (main.js reads this)
   let wanted = 60;       // fewer at night and in rain
 
   // where is a point on a loop? writes x, z, the walking direction and the piece number
@@ -156,7 +157,7 @@ export function createPedestrians(ctx) {
       const loop = rng.pick(nearLoops), s = rng.range(0, loop.total);
       const a = loopAt(loop, s), d = Math.hypot(a.x - px, a.z - pz);
       if (d < minD || d > maxD) continue;
-      p.loop = loop; p.s = s; p.segIndex = a.index; p.x = a.x; p.z = a.z; p.heading = Math.atan2(a.dx, a.dz); p.alive = true; p.mode = 'walk';
+      p.loop = loop; p.s = s; p.segIndex = a.index; p.x = a.x; p.z = a.z; p.heading = Math.atan2(a.dx, a.dz); p.alive = true; p.mode = 'walk'; p.ox = 0; p.oz = 0; p.fall = 0; p.jump = 0;
       return true;
     }
     return false;
@@ -166,7 +167,7 @@ export function createPedestrians(ctx) {
   //   40 second clock: north-south cars drive from 0 to 19, east-west cars from 20 to 39
   const mayCross = (group, tt) => (group === 0 ? tt > 20.5 && tt < 27 : tt > 0.5 && tt < 7);
 
-  // avoid: [{ x, z, r, fast }] the player and the cars near the player
+  // avoid: [{ x, z, r, speed, dx, dz }] (speed and direction only for a car: people jump away from fast ones) the player and the cars near the player
   function update(dt, time, px, pz, avoid = [], night = 0, rain = 0) {
     const first = !update.started;
     update.started = true;
@@ -219,8 +220,29 @@ export function createPedestrians(ctx) {
       }
 
       // ---- step aside for the player, get out of the way of cars ----
+      // p.ox / p.oz: how far this person jumped off their path (they walk back afterwards)
+      p.jump = Math.max(0, (p.jump || 0) - dt);
+      p.fall = Math.max(0, (p.fall || 0) - dt);
+      if (p.fall > 0) walking = false;
+      if (p.jump <= 0 && p.fall <= 0) { p.ox = (p.ox || 0) * Math.exp(-1.2 * dt); p.oz = (p.oz || 0) * Math.exp(-1.2 * dt); }
+      else if (p.jump > 0) { p.ox += p.jx * 5.5 * dt; p.oz += p.jz * 5.5 * dt; }
+      x += p.ox || 0; z += p.oz || 0;
       for (const ob of avoid) {
         const ex = x - ob.x, ez = z - ob.z, min = ob.r + 0.6;
+        if (ob.speed > 4 && Math.abs(ex) < 9 && Math.abs(ez) < 9 && p.fall <= 0) {
+          const ed = Math.hypot(ex, ez) || 0.001;
+          const along = ex * ob.dx + ez * ob.dz, side = -ex * ob.dz + ez * ob.dx;
+          if (ed < ob.r + 0.7) {
+            // hit by the car: fall on the back, get up again after a moment (nobody gets hurt)
+            p.fall = 3; p.jump = 0; knocked++;
+            p.ox += (ex / ed) * 0.9; p.oz += (ez / ed) * 0.9;
+            p.fallDir = Math.atan2(-ob.dx, -ob.dz);
+          } else if (p.jump <= 0 && along > -0.5 && along < 4 + ob.speed * 0.45 && Math.abs(side) < ob.r + 1.3) {
+            // a fast car is coming straight at them: jump to the side
+            const sg = side >= 0 ? 1 : -1;
+            p.jump = 0.36; p.jx = -ob.dz * sg; p.jz = ob.dx * sg;
+          }
+        }
         if (Math.abs(ex) > min || Math.abs(ez) > min) continue;
         const ed = Math.hypot(ex, ez);
         if (ed < min && ed > 0.001) { x += (ex / ed) * (min - ed); z += (ez / ed) * (min - ed); }
@@ -233,11 +255,16 @@ export function createPedestrians(ctx) {
       if (walking) p.phase += Math.max(p.speed, 1.2) * dt * 4.4; // one full leg swing every 1.4 m
 
       p.y = L.groundHeight(x, z);
+      // lean: 0 = standing .. 1.45 = lying on the back (falls fast, lies, gets up slowly)
+      let lean = 0, hop = 0;
+      if (p.fall > 0) { const t = 3 - p.fall; lean = 1.45 * (t < 0.3 ? t / 0.3 : p.fall < 0.8 ? p.fall / 0.8 : 1); p.heading = p.fallDir; }
+      else if (p.jump > 0) hop = Math.sin((p.jump / 0.36) * Math.PI) * 0.28;
       const c = Math.cos(p.heading) * p.size, sn = Math.sin(p.heading) * p.size;
+      const cl = Math.cos(lean), sl = Math.sin(lean);
       m[o] = c * p.wide; m[o + 1] = 0; m[o + 2] = -sn * p.wide; m[o + 3] = 0;
-      m[o + 4] = 0; m[o + 5] = p.size; m[o + 6] = 0; m[o + 7] = 0;
-      m[o + 8] = sn; m[o + 9] = 0; m[o + 10] = c; m[o + 11] = 0;
-      m[o + 12] = x; m[o + 13] = p.y; m[o + 14] = z; m[o + 15] = 1;
+      m[o + 4] = -sl * sn; m[o + 5] = cl * p.size; m[o + 6] = -sl * c; m[o + 7] = 0;
+      m[o + 8] = cl * sn; m[o + 9] = sl * p.size; m[o + 10] = cl * c; m[o + 11] = 0;
+      m[o + 12] = x; m[o + 13] = p.y + hop + sl * 0.12; m[o + 14] = z; m[o + 15] = 1;
       ph[i] = walking ? p.phase : 0;
     }
     mesh.count = MAX;
@@ -248,6 +275,7 @@ export function createPedestrians(ctx) {
   return {
     people, mesh, loops, update,
     get wanted() { return wanted; },
+    takeKnocked() { const k = knocked; knocked = 0; return k; },
     setQuality(q) {
       baseCount = Math.min(MAX, q.people ?? 60);
       for (let i = baseCount; i < MAX; i++) people[i].alive = false;

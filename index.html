@@ -137,6 +137,53 @@
       position: absolute; left: 50%; bottom: calc(58px + env(safe-area-inset-bottom)); transform: translateX(-50%);
       text-align: center; pointer-events: none; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
     }
+    #drv-cam { width: 58px; height: 58px; font-size: 9px; left: calc(96px + env(safe-area-inset-left)); bottom: calc(136px + env(safe-area-inset-bottom)); }
+    #drv-light { width: 58px; height: 58px; font-size: 9px; left: calc(166px + env(safe-area-inset-left)); bottom: calc(136px + env(safe-area-inset-bottom)); }
+    #drv-nitro { width: 62px; height: 62px; font-size: 9px; right: calc(248px + env(safe-area-inset-right)); bottom: calc(96px + env(safe-area-inset-bottom)); border-color: rgba(120, 200, 255, 0.7); display: none; }
+    body.has-nitro #drv-nitro { display: block; }
+    #drv-up, #drv-down { width: 62px; height: 62px; font-size: 9px; display: none; }
+    #drv-up { right: calc(26px + env(safe-area-inset-right)); bottom: calc(144px + env(safe-area-inset-bottom)); }
+    #drv-down { right: calc(104px + env(safe-area-inset-right)); bottom: calc(132px + env(safe-area-inset-bottom)); }
+    /* the drone has no handbrake and no horn: UP and DOWN take their places */
+    body.role-drone #drv-up, body.role-drone #drv-down { display: block; }
+    body.role-drone #drv-hand, body.role-drone #drv-horn, body.role-drone #drv-light, body.role-boat #drv-light, body.role-boat #drv-hand { display: none; }
+    /* the pedals show how hard they are pressed */
+    #drv-gas.on, #drv-brake.on { background: rgba(255, 255, 255, calc(0.3 + 0.56 * var(--press, 1))); }
+    /* ---------- dashboard: gear, speed, turn arrows, thin bars ---------- */
+    #dash-row { display: flex; align-items: baseline; justify-content: center; gap: 7px; }
+    #gear { font-size: 15px; font-weight: 600; min-width: 16px; padding: 1px 5px; border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 4px; align-self: center; }
+    #ind-l, #ind-r { font-size: 13px; color: #ffb52e; opacity: 0.12; align-self: center; }
+    #ind-l.on, #ind-r.on { opacity: 1; }
+    .dash-bar { width: 132px; height: 3px; margin: 4px auto 0; background: rgba(255, 255, 255, 0.16); border-radius: 2px; overflow: hidden; }
+    .dash-bar i { display: block; height: 100%; width: 0%; background: #fff; }
+    #rpm-bar i.red { background: #ff5a4a; }
+    #dmg-bar { height: 2px; }
+    #dmg-bar i { background: #ff7a4a; }
+    #nitro-bar { height: 2px; display: none; }
+    #nitro-bar i { background: #6fd0ff; }
+    body.has-nitro #nitro-bar { display: block; }
+    body.role-boat #gear, body.role-drone #gear, body.role-boat #dmg-bar, body.role-drone #dmg-bar { display: none; }
+    #hud-wanted { margin-top: 6px; font-size: 15px; letter-spacing: 0.2em; color: #ffd34a; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
+    #hud-wanted[hidden] { display: none; }
+    #hud-wanted.flash { animation: wantedflash 0.5s steps(2) infinite; }
+    @keyframes wantedflash { 50% { color: #6fb6ff; } }
+    /* ---------- name tags over the parked garage vehicles ---------- */
+    #tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .tag { position: absolute; left: 0; top: 0; font-size: 9px; letter-spacing: 0.22em; padding: 4px 8px; border-radius: 5px; white-space: nowrap;
+      background: rgba(10, 12, 14, 0.62); border: 1px solid rgba(255, 255, 255, 0.22); will-change: transform; }
+    .tag[hidden] { display: none; }
+    /* ---------- rain on the windscreen (views from inside the car) ---------- */
+    #windscreen { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    #windscreen[hidden] { display: none; }
+    #windscreen .drops { position: absolute; inset: 0; opacity: 0;
+      background-image: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.5) 0 1.5px, rgba(255,255,255,0.12) 2px 4px, transparent 5px), radial-gradient(circle at 60% 40%, rgba(255,255,255,0.4) 0 1px, rgba(255,255,255,0.1) 2px 3px, transparent 4px);
+      background-size: 97px 83px, 61px 71px; animation: dropsin 1.6s linear infinite; }
+    #windscreen .wiper { position: absolute; left: 50%; bottom: -6%; width: 5px; height: 78%; margin-left: -2px; background: rgba(5, 6, 8, 0.85); border-radius: 3px;
+      transform-origin: 50% 100%; animation: wipe 1.6s ease-in-out infinite; }
+    @keyframes wipe { 0% { transform: rotate(-64deg); } 28% { transform: rotate(64deg); } 56%, 100% { transform: rotate(-64deg); } }
+    @keyframes dropsin { 0% { opacity: 0.85; } 14% { opacity: 0.05; } 100% { opacity: 0.85; } }
+    .menu .menu-row { flex-wrap: wrap; justify-content: center; max-width: 86vw; }
+    #menu-veh .btn { min-width: 118px; }
     #speed-num { font-size: 34px; font-weight: 200; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
     #hud-speed .unit { font-size: 10px; letter-spacing: 0.2em; opacity: 0.75; margin-left: 6px; }
     #speed-car { font-size: 9px; letter-spacing: 0.3em; opacity: 0.6; margin-top: 2px; }
@@ -151,6 +198,11 @@
       #drv-horn { right: calc(84px + env(safe-area-inset-right)); bottom: calc(122px + env(safe-area-inset-bottom)); }
       #drv-exit { right: calc(150px + env(safe-area-inset-right)); bottom: calc(118px + env(safe-area-inset-bottom)); }
       #drv-tilt { left: calc(14px + env(safe-area-inset-left)); bottom: calc(122px + env(safe-area-inset-bottom)); }
+      #drv-cam { left: calc(80px + env(safe-area-inset-left)); bottom: calc(122px + env(safe-area-inset-bottom)); }
+      #drv-light { left: calc(14px + env(safe-area-inset-left)); bottom: calc(188px + env(safe-area-inset-bottom)); }
+      #drv-nitro { right: calc(14px + env(safe-area-inset-right)); bottom: calc(204px + env(safe-area-inset-bottom)); }
+      #drv-up { right: calc(14px + env(safe-area-inset-right)); bottom: calc(132px + env(safe-area-inset-bottom)); }
+      #drv-down { right: calc(84px + env(safe-area-inset-right)); bottom: calc(122px + env(safe-area-inset-bottom)); }
       #hud-speed { bottom: calc(200px + env(safe-area-inset-bottom)); }
     }
     /* with a mouse and keyboard the touch buttons are not needed */
@@ -215,7 +267,7 @@
     @media (min-width: 720px) and (min-height: 521px) { #minimap { width: 138px; height: 138px; } }
     /* phone held sideways: little height, so the buttons go in a row next to the map
        (this keeps them clear of the RUN button in the corner) */
-    @media (orientation: landscape) and (max-height: 520px) {
+    @media (orientation: landscape) and (max-height: 700px) {
       #hud-top-right { flex-direction: row-reverse; align-items: flex-start; }
       #hud-buttons { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: 300px; }
       #hud-buttons .btn { min-width: 56px; padding: 0 6px; }
@@ -255,6 +307,7 @@
         <div id="mission-text"></div>
         <div id="mission-dist"></div>
       </div>
+      <div id="hud-wanted" hidden></div>
     </div>
 
     <div id="gps-arrow" hidden>
@@ -273,6 +326,8 @@
         <button class="btn" id="btn-full" aria-label="Full screen">FULL</button>
         <button class="btn" id="btn-map" aria-label="Open the map">MAP</button>
         <button class="btn on" id="btn-sound" aria-label="Sound on or off">SOUND</button>
+        <button class="btn" id="btn-veh" aria-label="Put a vehicle in front of you">CARS</button>
+        <button class="btn" id="btn-assist" aria-label="Driving assist">ASSIST</button>
       </div>
     </div>
 
@@ -295,6 +350,21 @@
       </div>
     </div>
 
+    <div class="menu" id="menu-veh" hidden>
+      <div class="menu-title">PUT A VEHICLE IN FRONT OF YOU</div>
+      <div class="menu-row" id="menu-veh-row"></div>
+    </div>
+    <div class="menu" id="menu-assist" hidden>
+      <div class="menu-title">DRIVING ASSIST</div>
+      <div class="menu-row">
+        <button class="btn" data-assist="off">OFF</button>
+        <button class="btn" data-assist="normal">NORMAL</button>
+        <button class="btn" data-assist="easy">EASY</button>
+      </div>
+    </div>
+    <div id="tags"></div>
+    <div id="windscreen" hidden><div class="drops"></div><div class="wiper"></div></div>
+
     <div id="joy-base"><div id="joy-knob"></div></div>
     <button class="btn" id="btn-run" aria-label="Run">RUN</button>
     <button class="btn round" id="btn-car" aria-label="Get into the car" hidden>CAR</button>
@@ -309,7 +379,18 @@
       <button class="btn round" id="drv-horn" aria-label="Horn">HORN</button>
       <button class="btn round" id="drv-exit" aria-label="Get out of the car">EXIT</button>
       <button class="btn round" id="drv-tilt" aria-label="Steer by tilting the phone">TILT</button>
-      <div id="hud-speed"><span id="speed-num">0</span><span class="unit">KM/H</span><div id="speed-car"></div></div>
+      <button class="btn round" id="drv-cam" aria-label="Next camera view">CAM</button>
+      <button class="btn round" id="drv-light" aria-label="High beam">LIGHT</button>
+      <button class="btn round" id="drv-nitro" aria-label="Nitro boost">NITRO</button>
+      <button class="btn round" id="drv-up" aria-label="Drone up">UP</button>
+      <button class="btn round" id="drv-down" aria-label="Drone down">DOWN</button>
+      <div id="hud-speed">
+        <div id="dash-row"><span id="ind-l">&#9664;</span><span id="gear">N</span><span id="speed-num">0</span><span class="unit">KM/H</span><span id="ind-r">&#9654;</span></div>
+        <div class="dash-bar" id="rpm-bar"><i></i></div>
+        <div class="dash-bar" id="nitro-bar"><i></i></div>
+        <div class="dash-bar" id="dmg-bar"><i></i></div>
+        <div id="speed-car"></div>
+      </div>
     </div>
 
     <div id="dialog" hidden>
@@ -327,7 +408,7 @@
       </div>
     </div>
     <div id="toast"></div>
-    <div id="hint">W A S D &nbsp;MOVE &nbsp;·&nbsp; MOUSE &nbsp;LOOK &nbsp;·&nbsp; SHIFT &nbsp;RUN &nbsp;·&nbsp; E &nbsp;CAR &nbsp;·&nbsp; M &nbsp;MAP</div>
+    <div id="hint">W A S D &nbsp;MOVE &nbsp;·&nbsp; MOUSE &nbsp;LOOK &nbsp;·&nbsp; SHIFT &nbsp;RUN &nbsp;·&nbsp; E &nbsp;CAR &nbsp;·&nbsp; M &nbsp;MAP &nbsp;·&nbsp; C &nbsp;CAMERA &nbsp;·&nbsp; N &nbsp;NITRO</div>
   </div>
 
   <div id="loading">

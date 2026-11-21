@@ -26,11 +26,13 @@ const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 // How every car type drives (used by vehicle.js and by the traffic).
 //   topSpeed in km/h, accel in m/s2, grip: how well it holds the road,
 //   roll: how much the body leans in corners
+//   mass in kg, drive: 'fwd' front wheels push, 'rwd' rear wheels, 'awd' all four
+//   armor: how well it takes hits, tone: how the engine sounds
 export const CAR_TYPES = {
-  sedan: { label: 'SEDAN', topSpeed: 165, accel: 7.5, grip: 1.0, roll: 1.0, mass: 1.0 },
-  suv: { label: 'SUV', topSpeed: 150, accel: 6.4, grip: 0.9, roll: 1.45, mass: 1.3 },
-  van: { label: 'VAN', topSpeed: 125, accel: 4.8, grip: 0.82, roll: 1.6, mass: 1.6 },
-  coupe: { label: 'SPORTS COUPE', topSpeed: 182, accel: 10.5, grip: 1.15, roll: 0.7, mass: 0.9 },
+  sedan: { label: 'SEDAN', topSpeed: 165, accel: 7.5, grip: 1.0, roll: 1.0, mass: 1500, drive: 'fwd', armor: 1, tone: 'smooth', role: 'car' },
+  suv: { label: 'SUV', topSpeed: 150, accel: 6.4, grip: 0.9, roll: 1.45, mass: 2000, drive: 'awd', armor: 1.2, tone: 'smooth', role: 'car' },
+  van: { label: 'VAN', topSpeed: 125, accel: 4.8, grip: 0.82, roll: 1.6, mass: 2400, drive: 'rwd', armor: 1.3, tone: 'rumble', role: 'car' },
+  coupe: { label: 'SPORTS COUPE', topSpeed: 182, accel: 10.5, grip: 1.15, roll: 0.7, mass: 1350, drive: 'rwd', armor: 0.9, tone: 'muscle', role: 'car' },
 };
 
 const CAR_SPECS = {
@@ -97,16 +99,15 @@ const CAR_SPECS = {
   },
 };
 
-// Cars that come from model files (see carLibrary.js) are added here when they are loaded.
+// Vehicles that come from model files (see vehicleLoader.js) are added here when they are loaded.
 const MODEL_INFO = {};
-export function registerCar(name, info) {
-  CAR_TYPES[name] = { label: info.label, ...info.type };
+export function registerCar(name, info, spec) {
+  CAR_TYPES[name] = { ...spec };
   const hw = info.halfWidth, r = info.wheelR;
   MODEL_INFO[name] = {
-    kind: name, model: true, wheelR: r, wheelX: info.wheelX, wheelZ: info.wheelZ, wheelbase: info.wheelZ[1] - info.wheelZ[0],
-    backZ: info.backZ, frontZ: info.frontZ, length: info.length, halfWidth: hw, roof: info.roof,
+    kind: name, model: true, ...info, wheelbase: info.wheelZ[1] - info.wheelZ[0],
     noseY: r * 1.7, noseW: hw * 1.5, tailY: r * 2.15, tailW: hw * 1.45,
-    door: { ...info.door, x: hw + 0.012 }, seat: info.seat, wheels: info.wheels, codeWheels: !!info.codeWheels,
+    door: { ...info.door, x: hw + 0.012 },
   };
 }
 

@@ -1,7 +1,10 @@
 # Car build tools
 
 These scripts turned the six big car scans (about 60 MB and 1.9 million triangles
-each) into the small files in `assets/cars/`. They are kept here so the steps can be
+each) into the small files that now live in `assets/vehicles/` (they were renamed there:
+`hatch` -> `small_city_car`, `luxury` -> `tech_patrol_car`, `police` -> `police_coupe`,
+`hyper` -> `chrome_supercar`, `armored` -> `armored_van`, `boat` -> `patrol_boat`, and
+`cars.json` -> `vehicles.json`). They are kept here so the steps can be
 repeated for new cars. They are NOT needed to play the game.
 
 1. `bake.html` + `bake.mjs` (run in a headless browser): takes six straight-on

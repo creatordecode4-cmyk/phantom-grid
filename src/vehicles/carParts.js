@@ -46,9 +46,12 @@ export function makeInterior(info) {
   parts.push(P(box((hw - 0.14) * 2, 0.3 * k, 0.34), [0, s.y + 0.1 + 0.32 * k, dz], trim, 0.7, 0));
   parts.push(P(box(0.34, 0.14 * k, 0.02), [0, s.y + 0.1 + 0.4 * k, dz - 0.18], [0.25, 0.6, 0.75], 0.2, 0, { glow: 0.5 }));
   parts.push(P(box(0.2, 0.2, 0.9), [0, s.y + 0.05, s.z + 0.2], trim, 0.7, 0));
-  parts.push(P(new THREE.TorusGeometry(0.17, 0.02, 5, 14), [s.x, s.y + 0.1 + 0.42 * k, dz - 0.26], dark, 0.5, 0, { rot: [-0.45, 0, 0] }));
   parts.push(P(box(0.05, 0.05, 0.22), [s.x, s.y + 0.1 + 0.4 * k, dz - 0.16], dark, 0.5, 0));
-  return mergeParts(parts);
+  const g = mergeParts(parts);
+  // the steering wheel is its own small part (it turns): remember where it sits and where the driver's eyes are
+  g.userData.wheel = [s.x, s.y + 0.1 + 0.42 * k, dz - 0.26];
+  g.userData.eye = [s.x, s.y + 0.16 + 0.68 * k, s.z - 0.1 - (1 - k) * 0.3];
+  return g;
 }
 
 // A simple driver: body, head, arms on the wheel. Sits in the left seat.

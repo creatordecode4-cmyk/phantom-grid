@@ -11,6 +11,8 @@
 //     left turn it lets the cars from the other direction pass
 //   * brakes for the player (on foot or in a car) and for people on the road
 //   * at the edge of the walkable city it has to turn, so nobody drives away
+//   * honks when the player blocks it, steers a little around things, pulls
+//     over to the right for a siren, stops for a moment after being hit
 //
 // Only cars within 250 m of the player exist. A car that gets too far away
 // is put back on a road closer to the player (out of sight if possible).
@@ -60,12 +62,14 @@ export function createTraffic(ctx, beamTexture) {
   // ---- the meshes: one per car type ----
   const cars = [];
   const meshes = {};
-  // cars from model files join in (about every third car)
+  // cars from model files: mostly the small city car, now and then a van, a patrol car, a supercar
   const modelKinds = ctx.carLib ? ctx.carLib.kinds : [];
+  const has = (k) => modelKinds.includes(k);
+  const RARE = { 5: 'armored_van', 8: 'chrome_supercar', 11: 'tech_patrol_car', 23: 'armored_van', 29: 'chrome_supercar', 35: 'tech_patrol_car' };
   const kindList = [];
-  for (let i = 0; i < MAX; i++) kindList.push(modelKinds.length && i % 3 === 1 ? modelKinds[Math.floor(i / 3) % modelKinds.length] : KINDS[i % KINDS.length]);
+  for (let i = 0; i < MAX; i++) kindList.push(RARE[i] && has(RARE[i]) ? RARE[i] : has('small_city_car') && i % 2 === 1 ? 'small_city_car' : KINDS[i % KINDS.length]);
   for (let i = 0; i < MAX; i++) {
-    cars.push({ kind: kindList[i], slot: 0, alive: false, turn: null, plan: null, x: 0, z: 0, heading: 0, v: 0, v0: 7, road: null, c: 0, dir: 1, t: 0, still: 0 });
+    cars.push({ kind: kindList[i], slot: 0, alive: false, turn: null, plan: null, x: 0, z: 0, heading: 0, v: 0, v0: 7, road: null, c: 0, dir: 1, t: 0, still: 0, side: 0, wx: 0, wz: 0, stun: 0, blockT: 0, honkT: 0, braking: false, bumped: 0 });
   }
   for (const kind of ['sedan', 'suv', 'van', 'coupe', ...modelKinds]) {
     const mine = cars.filter((c) => c.kind === kind);
@@ -182,11 +186,13 @@ export function createTraffic(ctx, beamTexture) {
 
   // circles around the cars close to the player (nobody can walk or drive through a car)
   const dynamicCircles = [];
+  const events = [];      // things main.js turns into sound: { type: 'honk', x, z }
   const _m = new THREE.Matrix4();
 
   // obstacles: [{ x, z, r }] things the cars must not hit (the player, the player's car)
   // people:    the walking people (cars brake for the ones on the road)
-  function update(dt, time, px, pz, obstacles = [], people = null, night = 0) {
+  // sirens:    [{ x, z }] police cars with the siren on (the traffic pulls over)
+  function update(dt, time, px, pz, obstacles = [], people = null, night = 0, sirens = []) {
     // traffic lights: 40 second cycle (the same clock as the signal lamps in props.js)
     const tt = time % 40;
     const state = [tt < 16 ? 2 : tt < 19 ? 1 : 0, tt >= 20 && tt < 36 ? 2 : tt >= 36 && tt < 39 ? 1 : 0]; // 2 green, 1 yellow, 0 red
@@ -194,6 +200,7 @@ export function createTraffic(ctx, beamTexture) {
     update.started = true;
     let placed = 0, nBeams = 0;
     dynamicCircles.length = 0;
+    events.length = 0;
     const beamOn = night > 0.05;
     for (let i = 0; i < MAX; i++) {
       const car = cars[i];
@@ -208,11 +215,29 @@ export function createTraffic(ctx, beamTexture) {
       const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
       const slowTo = (dist, speed) => { want = Math.min(want, Math.sqrt(speed * speed + 2 * BRAKE * 0.6 * Math.max(dist, 0))); };
       // ---- things in front of the car: the player, the player's car, people ----
+      let sideWant = 0, blocked = false;
       for (const ob of obstacles) {
         const ax = ob.x - car.x, az = ob.z - car.z;
-        const ahead = ax * fx + az * fz, side = Math.abs(-ax * fz + az * fx);
-        if (ahead > -1 && ahead < 22 && side < 1.3 + ob.r) slowTo(ahead - 3.4 - ob.r * 1.6, 0);
+        const ahead = ax * fx + az * fz, right = -ax * fz + az * fx, side = Math.abs(right);
+        if (ahead > -1 && ahead < 22 && side < 1.3 + ob.r) { slowTo(ahead - 3.4 - ob.r * 1.6, 0); if (ahead < 9) blocked = true; }
+        // something close to the lane: steer a little away from it
+        if (ahead > 0 && ahead < 16 && side > 0.5 && side < 3.2 + ob.r) sideWant = right > 0 ? -0.8 : 0.8;
+        // a broken car at the roadside: pass slowly
+        if (ob.damaged && Math.abs(ax) < 16 && Math.abs(az) < 16) want = Math.min(want, 4);
       }
+      // a siren close by: move to the right edge of the road and stop
+      if (!car.turn) for (const s of sirens) {
+        const sd = Math.hypot(s.x - car.x, s.z - car.z);
+        if (sd < 65) { sideWant = 1.5; want = Math.min(want, sd < 38 ? 0 : 3); }
+      }
+      // somebody drove into this car: it stops for a moment and honks
+      if (car.bumped > 0) { car.stun = 2 + Math.min(3, car.bumped * 0.3); car.v = Math.max(0, car.v - car.bumped * 0.6); car.bumped = 0; events.push({ type: 'honk', x: car.x, z: car.z }); }
+      if (car.stun > 0) { car.stun -= dt; want = 0; }
+      // the player blocks the road: honk after a moment, then again and again
+      car.honkT -= dt;
+      car.blockT = blocked && car.v < 0.6 ? car.blockT + dt : 0;
+      if (car.blockT > 2.5 && car.honkT <= 0) { car.honkT = 3 + (i % 5) * 0.6; events.push({ type: 'honk', x: car.x, z: car.z }); }
+      const before = car.v;
       if (people && pd < 90) {
         for (const p of people) {
           if (!p.alive) continue;
@@ -286,15 +311,19 @@ export function createTraffic(ctx, beamTexture) {
         }
       }
       car.still = car.v < 0.1 ? car.still + dt : 0;
+      car.braking = car.v < before - 0.01 || car.v < 0.2;
+      car.side += (sideWant - car.side) * Math.min(1, dt * 1.8);
 
       const c = Math.cos(car.heading), sn = Math.sin(car.heading);
+      // where the car really is: on its lane, moved a little to the side (its right is (-c, sn))
+      car.wx = car.x - c * car.side; car.wz = car.z + sn * car.side;
       out[o] = c; out[o + 1] = 0; out[o + 2] = -sn; out[o + 3] = 0;
       out[o + 4] = 0; out[o + 5] = 1; out[o + 6] = 0; out[o + 7] = 0;
       out[o + 8] = sn; out[o + 9] = 0; out[o + 10] = c; out[o + 11] = 0;
-      out[o + 12] = car.x; out[o + 13] = 0; out[o + 14] = car.z; out[o + 15] = 1;
-      if (pd < 45) for (const k of [-1.45, 0, 1.45]) dynamicCircles.push({ x: car.x + sn * k, z: car.z + c * k, r: 1.0 });
+      out[o + 12] = car.wx; out[o + 13] = 0; out[o + 14] = car.wz; out[o + 15] = 1;
+      if (pd < 45) for (const k of [-1.45, 0, 1.45]) dynamicCircles.push({ x: car.wx + sn * k, z: car.wz + c * k, r: 1.0, car });
       if (beamOn && pd < 150) {
-        _m.makeRotationY(car.heading); _m.setPosition(car.x, 0, car.z);
+        _m.makeRotationY(car.heading); _m.setPosition(car.wx, 0, car.wz);
         beams.setMatrixAt(nBeams++, _m);
       }
     }
@@ -305,7 +334,7 @@ export function createTraffic(ctx, beamTexture) {
   }
 
   return {
-    cars, meshes, dynamicCircles, update,
+    cars, meshes, dynamicCircles, events, update,
     get count() { return carCount; },
     setQuality(q) { carCount = Math.min(MAX, q.traffic ?? 30); },
   };

@@ -20,12 +20,17 @@ export function createHUD() {
     arrow: $('gps-arrow'), arrowIcon: $('gps-arrow-icon'), arrowDist: $('gps-dist'),
     marker: $('marker'), markerDist: $('marker-dist'),
     dialog: $('dialog'), dialogName: $('dialog-name'), dialogText: $('dialog-text'),
+    btnVeh: $('btn-veh'), btnAssist: $('btn-assist'), menuVeh: $('menu-veh'), menuVehRow: $('menu-veh-row'), menuAssist: $('menu-assist'),
+    btnCam: $('drv-cam'), btnLight: $('drv-light'), btnHorn: $('drv-horn'),
+    gear: $('gear'), indL: $('ind-l'), indR: $('ind-r'), rpm: $('rpm-bar').firstElementChild, dmg: $('dmg-bar').firstElementChild, nitro: $('nitro-bar').firstElementChild,
+    wanted: $('hud-wanted'), tags: $('tags'), windscreen: $('windscreen'),
     bigmap: $('bigmap'), bigmapClear: $('bigmap-clear'), bigmapClose: $('bigmap-close'), minimap: $('minimap'),
   };
 
   // main.js fills these in
   const actions = {
     time: () => {}, rain: () => {}, quality: () => {}, stats: () => {},
+    camera: () => {}, lights: () => {}, spawn: () => {}, assist: () => {},
     car: () => {}, map: () => {}, mapClose: () => {}, mapClear: () => {}, sound: () => {}, dialog: () => {},
   };
 
@@ -33,6 +38,8 @@ export function createHUD() {
   function closeMenus() {
     el.menuTime.hidden = true;
     el.menuQuality.hidden = true;
+    el.menuVeh.hidden = true;
+    el.menuAssist.hidden = true;
   }
   function toggleMenu(menu) {
     const open = menu.hidden;
@@ -55,6 +62,11 @@ export function createHUD() {
       else (d.exitFullscreen || d.webkitExitFullscreen || (() => {})).call(d);
     } catch (err) { /* not allowed - ignore */ }
   });
+  press(el.btnVeh, () => toggleMenu(el.menuVeh));
+  press(el.btnAssist, () => toggleMenu(el.menuAssist));
+  press(el.btnCam, () => actions.camera());
+  press(el.btnLight, () => actions.lights());
+  for (const b of el.menuAssist.querySelectorAll('[data-assist]')) press(b, () => { closeMenus(); actions.assist(b.dataset.assist); });
   press(el.btnCar, () => actions.car());
   press(el.btnExit, () => actions.car());
   press(el.btnMap, () => { closeMenus(); actions.map(); });
@@ -76,6 +88,8 @@ export function createHUD() {
 
   let toastTimer = 0;
   let lastLocation = '', lastClock = '', lastWeather = '';
+  let lastGear = '', lastRpm = -1, lastDmg = -1, lastNitro = -1, lastBlink = 0, lastWanted = -1, lastRole = '';
+  const tagNodes = [];
   let lastSpeed = -1, lastMission = '', lastDist = '', lastArrowDist = '', carShown = false, arrowShown = false, markerShown = false;
   const meters = (d) => (d >= 1000 ? `${(d / 1000).toFixed(1)} KM` : `${Math.round(d)} M`);
 
@@ -86,14 +100,69 @@ export function createHUD() {
       zoneLook: $('zone-look'), zoneMove: $('zone-move'),
       joyBase: $('joy-base'), joyKnob: $('joy-knob'), runButton: $('btn-run'),
       minimap: $('minimap'), bigmapCanvas: $('bigmap-canvas'),
-      drive: { left: $('drv-left'), right: $('drv-right'), gas: $('drv-gas'), brake: $('drv-brake'), hand: $('drv-hand'), horn: $('drv-horn'), tilt: $('drv-tilt') },
+      drive: { left: $('drv-left'), right: $('drv-right'), gas: $('drv-gas'), brake: $('drv-brake'), hand: $('drv-hand'), horn: $('drv-horn'), tilt: $('drv-tilt'), nitro: $('drv-nitro'), up: $('drv-up'), down: $('drv-down') },
     },
     // ---- driving ----
-    setDriving(on, carLabel = '') {
-      document.body.classList.toggle('driving', on);
+    // role: car / police / boat / drone (some buttons only exist for some vehicles)
+    setDriving(on, carLabel = '', role = 'car', nitro = false) {
+      const c = document.body.classList;
+      c.toggle('driving', on);
+      if (lastRole) c.remove('role-' + lastRole);
+      lastRole = on ? role : '';
+      if (on) c.add('role-' + role);
+      c.toggle('has-nitro', on && nitro);
+      el.btnHorn.textContent = role === 'police' ? 'SIREN' : 'HORN';
       el.speedCar.textContent = carLabel;
       if (on) { carShown = false; el.btnCar.hidden = true; }
     },
+    // the dashboard: d = vehicles.hud (gear, rpm 0..1, damage 0..1, nitro 0..1 or null, blink), blinkOn: lamp lit now
+    setDash(d, blinkOn) {
+      if (d.gear !== lastGear) { lastGear = d.gear; el.gear.textContent = d.gear; }
+      const r = Math.round(d.rpm * 50);
+      if (r !== lastRpm) { lastRpm = r; el.rpm.style.width = `${r * 2}%`; el.rpm.classList.toggle('red', r > 45); }
+      const g = Math.round(d.damage * 50);
+      if (g !== lastDmg) { lastDmg = g; el.dmg.style.width = `${g * 2}%`; }
+      const n = d.nitro === null ? -1 : Math.round(d.nitro * 50);
+      if (n !== lastNitro) { lastNitro = n; el.nitro.style.width = `${Math.max(0, n) * 2}%`; }
+      const b = blinkOn ? d.blink : 0;
+      if (b !== lastBlink) { lastBlink = b; el.indL.classList.toggle('on', b === -1 || b === 2); el.indR.classList.toggle('on', b === 1 || b === 2); }
+    },
+    setLightButton(on) { el.btnLight.classList.toggle('on', on); },
+    // wanted level: 0 hides the stars
+    setWanted(stars, chased) {
+      const key = stars * 2 + (chased ? 1 : 0);
+      if (key === lastWanted) return;
+      lastWanted = key;
+      el.wanted.hidden = stars <= 0;
+      el.wanted.textContent = '\u2605'.repeat(stars) + '\u2606'.repeat(Math.max(0, 5 - stars));
+      el.wanted.classList.toggle('flash', chased);
+    },
+    // the test menu: one button per vehicle. list: [[kind, label], ...]
+    setVehicleMenu(list) {
+      el.menuVehRow.textContent = '';
+      for (const [kind, label] of list) {
+        const b = document.createElement('button');
+        b.className = 'btn'; b.textContent = label; b.dataset.kind = kind;
+        press(b, () => { closeMenus(); actions.spawn(kind); });
+        el.menuVehRow.appendChild(b);
+      }
+    },
+    setAssist(mode) {
+      for (const b of el.menuAssist.querySelectorAll('[data-assist]')) b.classList.toggle('on', b.dataset.assist === mode);
+      el.btnAssist.textContent = 'ASSIST ' + mode.toUpperCase();
+    },
+    // name tags: list of { x, y, text } in screen pixels
+    setTags(list) {
+      while (tagNodes.length < list.length) { const d = document.createElement('div'); d.className = 'tag'; d.hidden = true; el.tags.appendChild(d); tagNodes.push({ d, text: '' }); }
+      for (let i = 0; i < tagNodes.length; i++) {
+        const t = tagNodes[i], it = list[i];
+        if (!it) { if (!t.d.hidden) t.d.hidden = true; continue; }
+        if (t.text !== it.text) { t.text = it.text; t.d.textContent = it.text; }
+        t.d.style.transform = `translate(${Math.round(it.x)}px, ${Math.round(it.y)}px) translate(-50%, -100%)`;
+        if (t.d.hidden) t.d.hidden = false;
+      }
+    },
+    setWindscreen(on) { if (el.windscreen.hidden === on) el.windscreen.hidden = !on; },
     setSpeed(kmh) {
       const v = Math.round(kmh);
       if (v !== lastSpeed) { lastSpeed = v; el.speedNum.textContent = String(v); }

@@ -12,6 +12,10 @@ in `assets/reference/buildings/` - see "The buildings" below.
 Version 1.3 is a polish pass: natural trees and palms, real-looking asphalt, more
 reflecting glass, people on the sidewalks, driving cars and a warm sun with a soft glow -
 see "The polish pass" below.
+Version 2.1 is the **vehicles pass**: seven vehicles with their own jobs (police cars, an
+armored van, a supercar with nitro, a boat, a drone), a new driving model with engine, gears
+and tire grip, damage, smoke and skid marks, four camera views and a wanted level - see
+"The vehicles pass" below.
 
 - No build step, no npm, no bundler. Plain HTML + JavaScript modules.
 - three.js (version 0.170) is loaded from a CDN with an import map.
@@ -36,7 +40,14 @@ Open the GitHub Pages address of this repository (see "Publish on GitHub Pages" 
 | FPS + draw calls | `FPS` button | same, or key `F` |
 | Full screen | `FULL` button | same |
 | Get into / out of a car | `CAR` button (shows up next to a car), `EXIT` while driving | `E` |
-| Drive | `◀` `▶` steer (or `TILT`: steer by tilting the phone), `GAS`, `BRAKE` (hold = reverse), `HANDBRAKE`, `HORN` | `W` gas, `S` brake / reverse, `A` `D` steer, `Space` handbrake, `H` horn |
+| Drive | `◀` `▶` steer (or `TILT`: steer by tilting the phone), `GAS`, `BRAKE` (hold = reverse), `HANDBRAKE`, `HORN`. The pedals are analog: slide your finger up on `GAS` / `BRAKE` for more | `W` gas, `S` brake / reverse, `A` `D` steer, `Space` handbrake, `H` horn |
+| Camera view | `CAM`: chase, close, hood, cockpit | `C` |
+| High beam | `LIGHT` | `L` |
+| Nitro (supercar) | `NITRO` | `N` |
+| Siren (police cars) | the `HORN` button becomes `SIREN` | `H` |
+| Drone | `UP`, `DOWN`, `GAS` forward, `BRAKE` backward, `◀` `▶` turn | `U` up, `J` down, `W` `S` `A` `D` |
+| Put a vehicle in front of you (testing) | `CARS` button, then pick one | same |
+| Driving assist | `ASSIST` button: Off / Normal (traction control + ABS) / Easy (also helps steering) | same |
 | Look around the car | Drag on the screen | Mouse |
 | Big map + waypoint | `MAP` button or tap the minimap, then tap a place | `M`, then click a place |
 | Sound on / off | `SOUND` button | same |
@@ -98,11 +109,15 @@ src/
   vehicles/
     carModels.js           THE FOUR CAR TYPES (sedan, SUV, van, sports coupe), built in code,
                            and how each one drives (top speed, grip ...)
-    carLibrary.js          loads the car model files from assets/cars/
+    vehicleLoader.js       loads the vehicle model files from assets/vehicles/, fits them (size,
+                           ground, direction) and holds THE NUMBERS OF EVERY VEHICLE (VEHICLE_SPECS)
+    physics.js             how vehicles move: engine, 6 gears, tire grip, surfaces, crashes, boat, drone
+    effects.js             smoke, dust, spray, sparks, skid marks and the glow of the lamps
     carParts.js            seats, dashboard and driver; cuts car bodies into doors and glass
-    vehicle.js             the cars you drive: physics, collisions, get in / out, doors, lights
+    vehicle.js             all vehicles you can use: get in / out, doors, lights, damage, sounds, garage
   ai/
-    traffic.js             the other cars: lanes, traffic lights, turns, braking
+    traffic.js             the other cars: lanes, traffic lights, turns, braking, honking, pulling over
+    police.js              the wanted level and the police cars that chase you
     pedestrians.js         the people: sidewalks, crosswalks, red lights
   missions/
     missions.js            THE MISSIONS AS DATA - add your story here
@@ -383,12 +398,13 @@ handbrake makes the tail slide. Walls, props and other cars stop it with a bump 
 camera shake. Headlights and tail lights come on at dusk, the brake lights when you brake.
 The numbers for each type are in `CAR_TYPES` in `src/vehicles/carModels.js`.
 
-**Car model files (`assets/cars/`).** Five cars come from model files: police cruiser,
-luxury coupe, hypercar, city hatchback and armored truck (plus a boat that floats off the
-beach). They are parked around the city, drive in the traffic and can be driven like the
-other cars. The original scans were about 60 MB each and one welded shell, so they were
+**Vehicle model files (`assets/vehicles/`).** Five cars come from model files (see "The
+vehicles pass" below), plus a boat. They are parked around the city, drive in the traffic and
+can be driven like the other cars. The original scans were about 60 MB each and one welded shell, so they were
 rebuilt (see `tools/cars/`): every car now has a light version for parked cars and traffic
-(about 100 KB) and a detailed version (about 1.2 MB) that is only downloaded when you get in.
+(about 100 KB) and a detailed version (about 1.2 MB) that is only downloaded when you get in or stand next to it.
+Only the nearest vehicles show the detailed version (2 on Low, 3 on Medium, 8 on High); the
+others show the light one.
 
 **Doors, glass and interior.** On every car you drive, the driver's door really swings open
 when you get in or out. The glass is see-through: you can look at the seats, the dashboard,
@@ -434,11 +450,107 @@ read the dialog. Add `?mission=0` to the address to play without it.
 
 ---
 
+## The vehicles pass (version 2.1)
+
+### The vehicles
+
+| File name in `assets/vehicles/` | In the game | Length | Top speed | What is special |
+|---|---|---|---|---|
+| `small_city_car` | CITY CAR | 3.4 m | 140 km/h | light, front-wheel drive; most of the traffic |
+| `tech_patrol_car` | TECH PATROL CAR | 4.9 m | 200 km/h | police: flashing lights + siren, all-wheel drive |
+| `police_coupe` | POLICE COUPE | 4.8 m | 210 km/h | police: flashing lights + siren, rear-wheel drive |
+| `armored_van` | ARMORED VAN | 6.0 m | 120 km/h | 4.2 tons, slow to speed up, shrugs off crashes; used in a mission |
+| `chrome_supercar` | CHROME SUPERCAR | 4.6 m | 230 km/h | the fastest; `NITRO` button with a blue flame, turbo whoosh |
+| `patrol_boat` | PATROL BOAT | 8 m | 75 km/h | floats at the beach of Neon Mile; bobs, leans, leaves a wake |
+| `drone` | DRONE | 1.8 m wide | 70 km/h | flies up to 150 m high |
+
+The loader (`src/vehicles/vehicleLoader.js`) looks for `<name>.glb` (detailed) and
+`<name>_lo.glb` (light version). A missing file is skipped, the game still starts. A plain
+one-piece model also works: it is centered, set on the ground, turned so its long side points
+forward and scaled to the length in the table. All the numbers (mass, drive, top speed, grip,
+armor, engine sound) are in `VEHICLE_SPECS` at the top of that file.
+
+Notes about the files in this repository:
+- They are the six scans from the earlier "car models" update under the new names. Those were
+  already rebuilt with separate wheels, doors and glass, so wheels still turn and doors still
+  open. (A one-piece model would only pitch, roll and bounce.)
+- There is **no drone model file**. The drone is built in code. Put `drone_lo.glb` into the
+  folder and it is used instead.
+- The boat only has a light version.
+
+**The garage.** One of each vehicle is parked at the curb next to the start point (the drone
+on the sidewalk, the boat at the beach south of the start street). A name tag floats over each
+when you are close. The green ring on the road next to them is the **repair point**: drive a
+damaged car onto it. The `CARS` button puts any vehicle in front of you.
+
+### How driving works (`src/vehicles/physics.js`)
+
+The physics runs in fixed steps of 1/60 s. Only your own car uses the full model:
+- **Engine and gearbox:** a torque curve, 6 gears that shift by themselves with a short pause,
+  an RPM value, engine braking and a rev limiter.
+- **Weight:** mass, drive type (front, rear, all wheels). Braking puts weight on the front
+  wheels, speeding up on the rear ones; the body dips, lifts and leans.
+- **Tires:** each axle has a grip limit. Too fast into a corner: the car pushes straight on.
+  Too much gas in a rear-wheel-drive car: the tail steps out. The handbrake starts a drift.
+- **Surfaces:** dry road = full grip; rain = clearly less grip and longer braking; sand at the
+  beach = very little grip and it slows you down; sidewalks = bumpy.
+- **Crashes:** a light touch scrapes along with sparks. A hard hit stops the car quickly, turns
+  it a little, shakes the camera and adds damage. Hitting a traffic car makes it stop and honk.
+  Cars cannot get stuck inside walls.
+- **Damage:** the paint gets darker in three steps, the glass cracks after strong hits, the hood
+  smokes when the car is badly damaged, and a very damaged car is slower.
+- **Driving assist** (`ASSIST` button): Off = wheels can spin and lock; Normal = traction control
+  and ABS; Easy = also holds back the steering at speed so the car is hard to spin.
+
+Police chasers use a much simpler model, traffic cars drive on rails.
+
+### What you see and hear
+
+- Lamps are glowing dots at the front and back of each car's box: headlights, tail lights,
+  bright brake lights, white reverse lights, blinking orange indicators (they switch on by
+  themselves in slow, tight turns), high beam. A soft patch of light lies on the road in front
+  of your car at night. Police cars flash red and blue; at night one real lamp lights the street.
+- Tire smoke, sand dust, spray on wet roads, sparks, crash debris, exhaust puffs at engine start
+  and gear changes, hood smoke, boat foam. Skid marks stay for half a minute and fade.
+- The view gets wider with speed, the camera hangs back a little and shakes on rough ground;
+  on Medium and High the picture edges blur at very high speed.
+- Cockpit and hood view in rain: drops on the windscreen and a wiper.
+- Sound is still made in code: every vehicle has its own engine tone that follows the RPM, plus
+  gear click, turbo whoosh, tire screech, wind, road rumble (different on sand and wet roads),
+  suspension thump, brake squeal, scrape and crash, door, indicator tick, horn, siren. In the
+  cockpit view the outside sounds are muffled.
+- Dashboard at the bottom: speed, gear, RPM bar (red near the limit), nitro bar, damage bar,
+  turn arrows.
+- Phones that support it vibrate on crashes and bumps.
+
+### Traffic, people, police
+
+- Traffic cars honk when you block them, steer a little around things at the edge of their lane,
+  pass a badly damaged car slowly, and pull over to the right and stop for a siren.
+- People jump out of the way of a fast car. If you still hit one they fall on their back and get
+  up again after a moment.
+- **Wanted level:** ramming traffic or parked cars and knocking people over raises it (0 to 5
+  stars, top-left). From 2 stars a police car comes after you, from 4 stars two. It cools down
+  when you keep out of trouble. Stop next to a police car for a few seconds: "busted", the stars
+  are gone.
+- Second mission "The Armored Run" starts after the first one: bring the armored van to the garage
+  before the time runs out.
+
+---
+
 ## Known limits
 
-- People and cars are simple: no crashes between traffic cars and people, people never get run over
-  (they jump aside), traffic cars do not avoid a car you leave in their lane - they wait behind it.
-- Car bodies do not get dents. Parked cars are solid and do not move when hit.
+- Traffic cars drive on rails: when hit they stop and honk, but they are not pushed away. Parked
+  cars are solid and do not move. Vehicles you left behind and police cars do get pushed.
+- Car bodies do not get dents: damage is shown with darker paint, cracked glass and smoke.
+- Not done from the wish list: the Doppler effect for passing traffic, mirror-like headlight
+  reflections on wet roads and separate fog lamps (the wet road only gets the normal light patch).
+  The cockpit is the same simple dashboard in every car, without working dials.
+- The boat cannot leave the water and you can only get out at the beach. The drone has no camera
+  of its own and does not collide with trees or lamps, only with buildings.
+- The police only chase by car; they do not get out and there is no shooting.
+- The new driving feel was tuned with numbers and a software renderer, not on a real phone - the
+  grip, steering speed and button sizes will need a round of tuning after real play.
 - The car model files were scans without an inside and without separate doors. Doors, glass and
   wheels were cut out by a script, so their edges are not perfect, and all cars share one simple
   interior. Only the driver's door opens. Parked and traffic cars keep dark, solid windows.

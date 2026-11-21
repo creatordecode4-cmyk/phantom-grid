@@ -113,25 +113,54 @@ export function createCameraRig(camera, city) {
   let lookAround = 0;      // extra angle from dragging
   let chaseDist = 6.5;
   let chaseFirst = true;
-  function updateChase(dt, car, shake = 0) {
+  // mode: 'chase' (behind), 'close' (near and low), 'hood' (over the hood), 'cockpit' (the driver's eyes)
+  const _eye = new THREE.Vector3();
+  function updateChase(dt, car, shake = 0, mode = 'chase') {
     idle += dt;
     const speed = Math.hypot(car.vx, car.vz);
+    const big = car.role === 'boat' ? 1.8 : car.role === 'drone' ? 0.6 : Math.max(1, car.info.length / 4.7);
+    // at speed and on rough ground the camera trembles a little
+    shake += Math.min(0.1, speed * 0.0016) + (car.fx && car.fx.bump ? car.fx.bump * 0.12 : 0);
+    if ((mode === 'hood' || mode === 'cockpit') && car.isCar) {
+      // ---- views from inside: the camera sits on the car and looks where it drives ----
+      if (chaseFirst) { lookAround = 0; chaseFirst = false; pivot.set(car.x, car.y + 1.25, car.z); }
+      else lookAround = clamp(angleDelta(car.heading, yaw), -1.9, 1.9);
+      if (idle > 1.1) lookAround *= Math.exp(-4 * dt);
+      yaw = car.heading + lookAround;
+      pitch = idle > 1.1 ? damp(pitch, 0.05, 3, dt) : clamp(pitch, -0.35, 0.6);
+      if (mode === 'cockpit' && car.eye) _eye.set(car.eye[0], car.eye[1], car.eye[2]);
+      else _eye.set(0, car.info.roof * 0.86 + 0.12, car.info.frontZ * 0.2);
+      car.tilt.updateWorldMatrix(true, false);
+      _eye.applyMatrix4(car.tilt.matrixWorld);
+      const k = shake * 0.12;
+      camera.position.set(_eye.x + (Math.random() - 0.5) * k, _eye.y + (Math.random() - 0.5) * k, _eye.z + (Math.random() - 0.5) * k);
+      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      look.set(_eye.x + Math.sin(yaw) * cp * 10, _eye.y - sp * 10 - car.pitch * 6, _eye.z + Math.cos(yaw) * cp * 10);
+      camera.lookAt(look);
+      camera.rotateZ(-car.roll * 0.6);
+      pivot.set(car.x, car.y + 1.25, car.z);
+      return;
+    }
+    const close = mode === 'close' || mode === 'hood' || mode === 'cockpit';
     // "yaw" was changed by rotate(): keep it as an offset to the car's direction
-    if (chaseFirst) { lookAround = 0; chaseFirst = false; chaseDist = 6.5; pivot.set(car.x, car.y + 1.25, car.z); }
+    if (chaseFirst) { lookAround = 0; chaseFirst = false; chaseDist = 6.5 * big; pivot.set(car.x, car.y + 1.25, car.z); }
     else lookAround = angleDelta(car.heading, yaw);
     if (idle > 1.1) lookAround *= Math.exp(-3.2 * dt);
     // when reversing for a while the camera stays behind the car (no flipping)
     yaw = car.heading + lookAround;
-    pitch = idle > 1.1 ? damp(pitch, 0.2, 2.5, dt) : clamp(pitch, -0.1, 0.9);
+    pitch = idle > 1.1 ? damp(pitch, close ? 0.12 : 0.2, 2.5, dt) : clamp(pitch, -0.1, 0.9);
 
-    pivot.x = damp(pivot.x, car.x, 14, dt);
-    pivot.y = damp(pivot.y, car.y + 1.25, 8, dt);
-    pivot.z = damp(pivot.z, car.z, 14, dt);
+    // the camera hangs a little behind the car's movements (lag): it feels heavier and faster
+    const follow = close ? 18 : 11;
+    pivot.x = damp(pivot.x, car.x, follow, dt);
+    pivot.y = damp(pivot.y, car.y + (close ? 1.0 : 1.25) * Math.min(big, 1.4), 8, dt);
+    pivot.z = damp(pivot.z, car.z, follow, dt);
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
     dir.set(Math.sin(yaw) * cp, -sp, Math.cos(yaw) * cp);
-    const wantDist = 6.3 + Math.min(4.8, speed * 0.085);
+    const wantDist = close ? 4.1 * big + Math.min(1.5, speed * 0.03) : 6.3 * big + Math.min(4.8, speed * 0.085);
     const free = castRay(pivot.x, pivot.y, pivot.z, -dir.x, -dir.y, -dir.z, wantDist);
     const want = Math.max(1.6, free);
+    if (chaseDist > want + 3) chaseDist = want + 3;
     chaseDist = want < chaseDist ? want : damp(chaseDist, want, 3, dt);
     let cx = pivot.x - dir.x * chaseDist, cy = pivot.y - dir.y * chaseDist + 0.55, cz = pivot.z - dir.z * chaseDist;
     // a crash shakes the camera for a moment

@@ -22,7 +22,9 @@
 // Map directions: +z is north, -z is south, -x is east, +x is west.
 //
 // "cars" are put into the world when the mission starts:
-//   { name, kind: 'sedan' | 'suv' | 'van' | 'coupe', x, z, facing (compass degrees), color: [r, g, b] }
+//   { name, kind: 'sedan' | 'suv' | 'van' | 'coupe' | 'armored_van' | 'small_city_car' | ..., x, z, facing (compass degrees), color: [r, g, b] }
+//   (model cars keep their own colors: use [1, 1, 1])
+// "next": the id of the mission that starts by itself after this one.
 // ---------------------------------------------------------------------------
 
 export const MISSIONS = [
@@ -45,6 +47,24 @@ export const MISSIONS = [
           'Kessler-Vance is moving something through The Crown tonight. I will call you when I know more.',
         ],
       },
+    ],
+    done: 'MISSION COMPLETE',
+    next: 'armored-run',
+  },
+  {
+    id: 'armored-run',
+    title: 'THE ARMORED RUN',
+    cars: [
+      // the heavy armored van, parked at the east curb of the start street near the beach, nose to the north
+      { name: 'van', kind: 'armored_van', x: -12.7, z: -338, facing: 0, color: [1, 1, 1] },
+    ],
+    steps: [
+      { type: 'dialog', name: 'MARA VELLANI', lines: ['One more thing. There is an armored van one block north of the beach. It is heavy and slow - and it has to be at the garage before anyone misses it.'] },
+      { type: 'goto', text: 'Go to the armored van north of Neon Mile', target: { car: 'van' }, radius: 6 },
+      { type: 'enterCar', text: 'Get into the armored van', car: 'van' },
+      { type: 'timer', text: 'Drive the van north to the garage at the start point', target: { x: -8, z: 112 }, radius: 11, seconds: 150, failTo: 1 },
+      { type: 'wait', text: 'Stop the van', seconds: 1.5 },
+      { type: 'dialog', name: 'MARA VELLANI', lines: ['Not a scratch? I am impressed. The garage will take it from here.'] },
     ],
     done: 'MISSION COMPLETE',
   },

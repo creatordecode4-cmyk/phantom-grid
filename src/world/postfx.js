@@ -125,6 +125,7 @@ export function createPostFX(renderer) {
     uRes: { value: new THREE.Vector2(1, 1) },
     uSunPos: { value: new THREE.Vector2(0.5, 0.5) },   // where the sun is on the screen (0..1)
     uSunGlow: { value: new THREE.Vector3(0, 0, 0) },   // color x strength of the sun glow (0 = off)
+    uSpeed: { value: 0 },                              // 0..1: speed blur at the edges of the picture
   };
   const final = pass(/* glsl */ `
     uniform sampler2D tScene;
@@ -136,10 +137,17 @@ export function createPostFX(renderer) {
     uniform vec2 uRes;
     uniform vec2 uSunPos;
     uniform vec3 uSunGlow;
+    uniform float uSpeed;
     varying vec2 vUv;
     float hash( vec2 p ) { return fract( sin( dot( p, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 ); }
     void main() {
       vec3 col = texture2D( tScene, vUv ).rgb;
+      // ---- speed blur: at very high speed the edges of the picture streak toward the middle ----
+      if ( uSpeed > 0.004 ) {
+        vec2 sd = vUv - 0.5;
+        float sk = uSpeed * smoothstep( 0.03, 0.42, dot( sd, sd ) ) * 0.075;
+        col = ( col + texture2D( tScene, vUv - sd * sk ).rgb + texture2D( tScene, vUv - sd * sk * 2.0 ).rgb + texture2D( tScene, vUv - sd * sk * 3.0 ).rgb ) * 0.25;
+      }
       col += texture2D( tBloom, vUv ).rgb * uBloom;
       // ---- sun glow + a subtle lens flare (only while the sun can be seen) ----
       if ( uSunGlow.r + uSunGlow.g + uSunGlow.b > 0.0001 ) {
@@ -251,5 +259,8 @@ export function createPostFX(renderer) {
     finalUniforms.uSunGlow.value.set(r, g, b);
   }
 
-  return { supported, resize, render, setQuality, setSun };
+  // 0 = off .. 1 = strongest (main.js sets it from the car's speed)
+  function setSpeed(k) { finalUniforms.uSpeed.value = k; }
+
+  return { supported, resize, render, setQuality, setSun, setSpeed };
 }

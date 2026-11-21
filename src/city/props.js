@@ -214,11 +214,11 @@ export function buildProps(ctx) {
   S('barrier', M.makeBarrier(), mats.prop, { maxDistance: 320 });
   // parked cars: four types, metallic paint with a clear coat
   for (const kind of ['sedan', 'suv', 'van', 'coupe']) S(kind, makeCar(kind), mats.carPaint, { maxDistance: 150, useColor: true });
-  // cars from model files (assets/cars): they bring their own colors
+  // cars from model files (assets/vehicles): they bring their own colors
   const modelKinds = ctx.carLib ? ctx.carLib.kinds : [];
   for (const kind of modelKinds) S(kind, ctx.carLib.geo[kind], mats.carPaint, { maxDistance: 150, useColor: true });
   // how often each model car is parked somewhere (the rest are the cars made in code)
-  const MODEL_SHARE = { hatch: 0.13, luxury: 0.08, police: 0.045, hyper: 0.045, armored: 0.035 };
+  const MODEL_SHARE = { small_city_car: 0.16, chrome_supercar: 0.04, armored_van: 0.03, tech_patrol_car: 0.025, police_coupe: 0.025 };
   // the soft shadow under every parked car (its own copies, so it can go away when the player takes the car)
   {
     const mb = new MeshBuilder();
@@ -237,7 +237,7 @@ export function buildProps(ctx) {
   function addParkedCar(kind, x, y, z, rot, color) {
     if (isModel(kind)) color = [1, 1, 1]; // model cars keep the colors they came with
     const index = sets[kind].add(x, y, z, rot, 1, color);
-    const shadow = sets.carShadow.add(x, y + 0.021, z, rot, kind === 'van' || kind === 'armored' ? [1.09, 1, 1.13] : 1);
+    const shadow = sets.carShadow.add(x, y + 0.021, z, rot, kind === 'van' || kind === 'armored_van' ? [1.09, 1, 1.13] : 1);
     const fx = Math.sin(rot), fz = Math.cos(rot);
     const own = [-1.45, 0, 1.45].map((o) => ({ x: x + fx * o, z: z + fz * o, r: 1.0 }));
     circles.push(...own);
