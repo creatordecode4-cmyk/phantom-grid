@@ -24,7 +24,8 @@ const only = process.argv.slice(2);
 //   door:   the front doors as a box  z0..z1, y0..y1, outside |x| > x
 //   glass:  where the windows are (boxes [z0, z1, y0, y1]) and how dark window pixels are (0..1)
 const CARS = {
-  police: { src: 'car1', label: 'POLICE CRUISER', L: 4.95, trim: 1.1, hi: 24000, lo: 3000,
+  // codeWheels: this scan has its tires grown into the body, so the game mounts clean wheels made in code
+  police: { src: 'car1', label: 'POLICE CRUISER', L: 4.95, trim: 1.1, hi: 24000, lo: 3000, codeWheels: true,
     wheels: { zr: -1.42, zf: 1.33, r: 0.40, xi: 0.62 }, door: { z0: -0.72, z1: 0.58, y0: 0.33, y1: 1.45, x: 0.5 },
     glass: { boxes: [[-1.7, 1.05, 1.03, 1.47]], lum: [0, 0.2] }, type: { topSpeed: 190, accel: 9.5, grip: 1.08, roll: 0.9, mass: 1.1 } },
   luxury: { src: 'car3', label: 'LUXURY COUPE', L: 5.0, hi: 24000, lo: 3000,
@@ -239,7 +240,9 @@ async function build(name) {
     for (const t of soup) {
       let w = null;
       for (const [n, z, sx] of wheelDefs) {
-        if (t.v.every((q) => q.p[0] * sx > W.xi && Math.hypot(q.p[1] - W.r, q.p[2] - z) < W.r * 1.05)) { w = n; break; }
+        const inside = (q) => q.p[0] * sx > W.xi && Math.hypot(q.p[1] - W.r, q.p[2] - z) < W.r * 1.05;
+        // (with wheels made in code: also take away triangles that only partly belong to the old wheel)
+        if (C.codeWheels ? t.v.some(inside) || (t.c[0] * sx > W.xi && Math.hypot(t.c[1] - W.r, t.c[2] - z) < W.r * 1.08) : t.v.every(inside)) { w = n; break; }
       }
       if (w) parts[w].push(t); else rest.push(t);
     }
@@ -296,7 +299,8 @@ async function build(name) {
       let ry0 = 1e9, ry1 = -1e9, rz0 = 1e9, rz1 = -1e9;
       for (const t of parts[n]) for (const q of t.v) if (Math.abs(q.p[0] - outer) < 0.09) { ry0 = Math.min(ry0, q.p[1]); ry1 = Math.max(ry1, q.p[1]); rz0 = Math.min(rz0, q.p[2]); rz1 = Math.max(rz1, q.p[2]); }
       const o = parts[n].length ? [(x0 + x1) / 2, (ry0 + ry1) / 2, (rz0 + rz1) / 2] : [sx * 0.8, W.r, z];
-      node(n, parts[n], o, paint);
+      if (C.codeWheels) { o[1] = W.r; o[2] = z; o[0] = sx * (Math.max(Math.abs(x0), Math.abs(x1)) - 0.13); }
+      else node(n, parts[n], o, paint);
       wheelInfo[n] = o.map((q) => +q.toFixed(3));
     }
     for (const [side, sx] of [['door_l', 1], ['door_r', -1]]) {
@@ -312,7 +316,7 @@ async function build(name) {
       halfWidth: +hw.toFixed(3), roof: +(dims[1] * s).toFixed(2), wheelR: +((wheelInfo.wheel_fl[1] + wheelInfo.wheel_rl[1]) / 2).toFixed(3),
       wheelX: +Math.abs(wheelInfo.wheel_fl[0]).toFixed(3), wheelZ: [wheelInfo.wheel_rl[2], wheelInfo.wheel_fl[2]], wheels: wheelInfo,
       door: { z0: D.z0, z1: D.z1, y0: D.y0, y1: D.y1 }, seat: { x: +(hw * 0.42).toFixed(2), y: +(D.y0 + 0.02).toFixed(2), z: +((D.z0 + D.z1) / 2 - 0.12).toFixed(2) },
-      backZ: -C.L / 2, frontZ: C.L / 2,
+      backZ: -C.L / 2, frontZ: C.L / 2, codeWheels: !!C.codeWheels,
     });
     console.log(name, 'hi parts', JSON.stringify(count), 'file', (fs.statSync(`${OUT}/${name}.glb`).size / 1024).toFixed(0) + ' KB');
   }

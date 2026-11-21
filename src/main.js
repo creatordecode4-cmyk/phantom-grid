@@ -214,7 +214,7 @@ async function boot() {
     else if (routeTimer <= 0) { routeTimer = 0.6; route = gps.route(px, pz, goal.x, goal.z); }
     // the CAR button shows up next to a car
     nearTimer -= dt;
-    if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !!vehicles.nearest(px, pz)); }
+    if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !!vehicles.nearest(px, pz)); if (onFoot) vehicles.prefetch(px, pz); }
     // test tool: PG.freeCam = { pos: [x, y, z], look: [x, y, z] } puts the camera anywhere
     const fc = window.PG && window.PG.freeCam;
     if (fc) {

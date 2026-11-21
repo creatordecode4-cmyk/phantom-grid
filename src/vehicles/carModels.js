@@ -106,7 +106,7 @@ export function registerCar(name, info) {
     kind: name, model: true, wheelR: r, wheelX: info.wheelX, wheelZ: info.wheelZ, wheelbase: info.wheelZ[1] - info.wheelZ[0],
     backZ: info.backZ, frontZ: info.frontZ, length: info.length, halfWidth: hw, roof: info.roof,
     noseY: r * 1.7, noseW: hw * 1.5, tailY: r * 2.15, tailW: hw * 1.45,
-    door: { ...info.door, x: hw + 0.012 }, seat: info.seat, wheels: info.wheels,
+    door: { ...info.door, x: hw + 0.012 }, seat: info.seat, wheels: info.wheels, codeWheels: !!info.codeWheels,
   };
 }
 
@@ -172,8 +172,8 @@ function wheelParts(r, sx, x, y, z, detail = 12) {
 
 // One loose wheel (for the car the player drives: its wheels turn and steer).
 // It sits around the origin, its outside looks to +x.
-export function makeWheel(kind) {
-  const r = CAR_SPECS[kind].wheelR;
+export function makeWheel(kind, radius = null) {
+  const r = radius || CAR_SPECS[kind].wheelR;
   const parts = wheelParts(r, 1, 0, 0, 0, 14);
   // the inner side is closed too, because a steered wheel shows it
   parts.push(P(new THREE.CircleGeometry(r, 14), [-0.12, 0, 0], RUBBER, 0.9, 0, { rot: [0, -HALF_PI, 0] }));

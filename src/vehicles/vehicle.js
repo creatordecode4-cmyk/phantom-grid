@@ -73,6 +73,10 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // the dark inside of the body shell and the doors
   const liningMat = new THREE.MeshStandardMaterial({ color: 0x0d0e10, roughness: 0.9, side: THREE.BackSide });
   const addLining = (mesh) => { const m = new THREE.Mesh(mesh.geometry, liningMat); m.name = 'lining'; mesh.add(m); };
+  // the dark spot under every real car
+  const shadowGeo = new THREE.PlaneGeometry(1, 1);
+  shadowGeo.rotateX(-Math.PI / 2);
+  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: materials.tex.glow, transparent: true, opacity: 0.62, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -12 });
   const interiors = {};   // seats, dashboard ... one geometry per car type
   const drivers = {};
 
@@ -119,6 +123,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // A CAR FROM A MODEL FILE. First the light version is shown; the detailed one
   // (with doors, glass and turning wheels) replaces it as soon as it is loaded.
   function partsFromModel(v) {
+    const info = v.info;
     const simple = new THREE.Mesh(carLib.geo[v.kind], mats.carPaint);
     simple.castShadow = true; simple.receiveShadow = true;
     v.tilt.add(simple);
@@ -156,6 +161,21 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         v.group.add(steerNode);
         v.wheels.push({ steerNode, mesh: o, front, spin: 1 });
       }
+      // this scan had no usable wheels: mount clean wheels made in code
+      if (info.codeWheels && info.wheels) {
+        if (!geo.wheel[v.kind]) geo.wheel[v.kind] = makeWheel(null, info.wheelR);
+        for (const [name, front, sx] of [['wheel_fl', true, 1], ['wheel_fr', true, -1], ['wheel_rl', false, 1], ['wheel_rr', false, -1]]) {
+          const p = info.wheels[name];
+          const steerNode = new THREE.Group();
+          steerNode.position.set(p[0], info.wheelR, p[2]);
+          const w = new THREE.Mesh(geo.wheel[v.kind], mats.carPaint);
+          w.castShadow = true;
+          if (sx < 0) w.rotation.y = Math.PI;
+          steerNode.add(w);
+          v.group.add(steerNode);
+          v.wheels.push({ steerNode, mesh: w, front, spin: sx });
+        }
+      }
       v.tilt.remove(simple);
       addInside(v);
     });
@@ -188,10 +208,31 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     const tilt = new THREE.Group();    // body roll and pitch (the wheels stay on the road)
     group.add(tilt);
     // brake lights: a red bar that gets very bright when braking
-    const brakeMat = new THREE.MeshBasicMaterial({ color: 0x200000 });
-    const brake = new THREE.Mesh(new THREE.BoxGeometry(info.tailW * 0.96, 0.055, 0.03), brakeMat);
-    brake.position.set(0, info.tailY, info.backZ - 0.04);
+    // (cars from model files have painted tail lights: there the brake light is a soft red glow, no bar)
+    let brakeMat, brake;
+    if (info.model) {
+      brakeMat = new THREE.MeshBasicMaterial({ color: 0x000000, map: materials.tex.glow, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+      brake = new THREE.Group();
+      for (const sx of [-1, 1]) {
+        const lamp = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.42), brakeMat);
+        lamp.position.set(sx * info.halfWidth * 0.62, 0, 0);
+        lamp.rotation.y = Math.PI;
+        lamp.renderOrder = 17;
+        brake.add(lamp);
+      }
+      brake.position.set(0, info.tailY, info.backZ - 0.03);
+    } else {
+      brakeMat = new THREE.MeshBasicMaterial({ color: 0x200000 });
+      brake = new THREE.Mesh(new THREE.BoxGeometry(info.tailW * 0.96, 0.055, 0.03), brakeMat);
+      brake.position.set(0, info.tailY, info.backZ - 0.04);
+    }
     tilt.add(brake);
+    // soft dark spot under the car: it sits on the road in any light (also without real shadows)
+    const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+    shadow.scale.set(info.halfWidth * 2 + 0.9, 1, info.length + 1.0);
+    shadow.position.y = 0.03;
+    shadow.renderOrder = 12;
+    group.add(shadow);
     // headlight beam: a soft patch of light lying on the road in front of the car
     const beamGeo = new THREE.PlaneGeometry(8, 19);
     beamGeo.rotateX(-Math.PI / 2);
@@ -252,6 +293,16 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       if (d < bestD) { bestD = d; best = { parked: rec, x: rec.x, z: rec.z }; }
     }
     return best;
+  }
+
+  // Start loading the detailed model of the model cars close to the player, so
+  // it is ready when they get in (it is about 1 MB per car type).
+  function prefetch(px, pz) {
+    if (!carLib) return;
+    for (const rec of city.parkedCars) {
+      if (rec.taken || !carLib.geo[rec.kind]) continue;
+      if (Math.abs(rec.x - px) < 14 && Math.abs(rec.z - pz) < 14) carLib.loadHi(rec.kind);
+    }
   }
 
   // is this spot free to stand on?
@@ -435,8 +486,14 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     const lamp = on ? night : 0;
     v.beam.visible = lamp > 0.02;
     v.beamMat.opacity = lamp * 0.95;
-    const red = on && v.braking ? 5.0 : 0.12 + 1.1 * lamp;
-    v.brakeMat.color.setRGB(red, red * 0.035, red * 0.02);
+    if (v.info.model) {
+      // glow: off by day, soft at night, strong when braking
+      const red = on && v.braking ? 2.6 : 0.5 * lamp;
+      v.brakeMat.color.setRGB(red, red * 0.05, red * 0.03);
+    } else {
+      const red = on && v.braking ? 5.0 : 0.12 + 1.1 * lamp;
+      v.brakeMat.color.setRGB(red, red * 0.035, red * 0.02);
+    }
   }
 
   // --------------------------------------------------------------- every frame
@@ -510,7 +567,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
 
   // (a plain object with "get" functions: the values are read fresh every time)
   return {
-    live, nearest, tryEnter, requestExit, update,
+    live, nearest, tryEnter, requestExit, update, prefetch,
     // a new car at a fixed place (used by missions). keep = it never disappears by itself.
     spawn(kind, x, z, rot, color, keep = true) {
       const v = makeVehicle(kind, x, city.groundHeight(x, z), z, rot, color);

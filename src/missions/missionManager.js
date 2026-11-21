@@ -45,7 +45,8 @@ export function createMissions({ scene, city, vehicles, hud, sound }) {
       if (cars[c.name]) continue;
       // make room: a parked car that stands at this spot goes away
       for (const rec of city.parkedCars) {
-        if (!rec.taken && Math.hypot(rec.x - c.x, rec.z - c.z) < 6) {
+        // (also the cars parked right in front of and behind it, so the player can drive off at once)
+        if (!rec.taken && Math.hypot(rec.x - c.x, rec.z - c.z) < 30 && Math.abs(rec.x - c.x) < 3) {
           rec.taken = true;
           city.props.sets[rec.kind].all.fill(0, rec.index * 16, rec.index * 16 + 16);
           city.props.sets.carShadow.all.fill(0, rec.shadow * 16, rec.shadow * 16 + 16);
