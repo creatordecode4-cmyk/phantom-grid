@@ -97,7 +97,7 @@ async function boot() {
   await lighting.tryLoadHDRI();
 
   hud.setProgress(0.84, 'Loading character');
-  const player = await createPlayer(scene, city, materials);
+  const player = await createPlayer(scene, city, materials, (f, text) => hud.setProgress(0.84 + 0.05 * f, text));
   const rig = createCameraRig(camera, city);
   rig.set(player.heading, CONFIG.camera.startPitch);
   const controls = createControls(hud.dom);
@@ -114,6 +114,7 @@ async function boot() {
   try { const a = localStorage.getItem('pg-assist'); if (a === 'off' || a === 'normal' || a === 'easy') settings.assist = a; } catch (e) { /* private mode */ }
   const effects = createEffects(scene);                 // smoke, sparks, skid marks, lamp glow
   const vehicles = createVehicles({ scene, city, materials, sound, weather, carLib, effects, settings });
+  vehicles.riggedDriver = player.autoRigged;
   const garage = vehicles.buildGarage();                // one of each vehicle, parked next to the start point
   const gps = createGPS(layout);
   const police = createPolice({ vehicles, gps, layout });
@@ -228,6 +229,8 @@ async function boot() {
     // ---- the player's vehicle and the other real vehicles (after the traffic, so they can bump into it) ----
     vehicles.update(dt, input, player, night, time);
     effects.endFrame(dt);
+    // the player character sits in the driver's seat, hands on the wheel (only with the automatic skeleton)
+    player.sit(vehicles.seat, dt);
     const driving = vehicles.driving;
     if (driving !== wasDriving) {
       wasDriving = driving;

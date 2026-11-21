@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 2.1',
+  version: 'Phase 2.2',
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {
@@ -38,6 +38,7 @@ export const CONFIG = {
     // if this file exists it is used instead: a model with a skeleton and the
     // animations "idle", "walk" and "run"
     riggedModel: 'assets/characters/Nate_Calloway_rigged.glb',
+    autoRig: true,          // no skeleton in the model file: build one automatically (src/characters/autoRig.js)
     height: 1.8,       // the model is scaled to this height (meters)
     radius: 0.35,      // body radius used for collisions
     walkSpeed: 1.6,    // meters per second

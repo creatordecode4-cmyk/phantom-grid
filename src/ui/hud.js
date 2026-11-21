@@ -62,6 +62,8 @@ export function createHUD() {
       else (d.exitFullscreen || d.webkitExitFullscreen || (() => {})).call(d);
     } catch (err) { /* not allowed - ignore */ }
   });
+  // the rig test is its own page (character skeleton, poses, self-test)
+  press($('btn-rig'), () => { location.href = 'rigtest.html'; });
   press(el.btnVeh, () => toggleMenu(el.menuVeh));
   press(el.btnAssist, () => toggleMenu(el.menuAssist));
   press(el.btnCam, () => actions.camera());

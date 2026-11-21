@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PHANTOM GRID - rig test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d10">
+  <!-- RIG TEST: shows a character from assets/characters/ with its automatic skeleton.
+       Poses, a walk and run cycle, the skeleton, the skin weights as colors, a wire view
+       and the PASS / WARN table of the self-test.
+       Address options:  ?char=Nate_Calloway  &pose=apose|arms|bend|run|walk|idle|drive
+                         &skeleton=1 &weights=1 &wire=1 &view=front|side|back -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; background: #14171b; color: #fff; overflow: hidden; touch-action: none;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-user-select: none; user-select: none; }
+    canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    .bar { position: fixed; left: 0; right: 0; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px calc(8px + env(safe-area-inset-right)) 8px calc(8px + env(safe-area-inset-left)); justify-content: center; }
+    #top { top: env(safe-area-inset-top); }
+    #bottom { bottom: env(safe-area-inset-bottom); }
+    button, select { font: inherit; font-size: 10px; letter-spacing: 0.14em; color: #fff; background: rgba(10, 12, 14, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; height: 36px; padding: 0 11px; }
+    button.on { background: rgba(255, 255, 255, 0.88); color: #0b0d10; }
+    #result { position: fixed; left: calc(8px + env(safe-area-inset-left)); top: calc(96px + env(safe-area-inset-top)); font-size: 10px; letter-spacing: 0.06em; line-height: 1.55;
+      background: rgba(10, 12, 14, 0.62); border-radius: 8px; padding: 8px 10px; max-height: 58vh; overflow: auto; white-space: pre; font-family: ui-monospace, Menlo, Consolas, monospace; }
+    #result .warn { color: #ffb347; } #result .pass { color: #7ee2a0; } #result b { letter-spacing: 0.14em; }
+    #result.small { max-height: 34px; overflow: hidden; }
+    #load { position: fixed; inset: 0; background: #0b0d10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; font-size: 10px; letter-spacing: 0.24em; }
+    #load .track { width: min(240px, 60vw); height: 2px; background: rgba(255, 255, 255, 0.14); }
+    #load .fill { height: 100%; width: 0%; background: #fff; transition: width 0.2s; }
+    #load.done { display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div class="bar" id="top">
+    <select id="char"></select>
+    <button data-pose="apose">A-POSE</button>
+    <button data-pose="arms">ARMS 90</button>
+    <button data-pose="bend">DEEP BEND</button>
+    <button data-pose="run">RUN</button>
+    <button data-pose="walk">WALK</button>
+    <button data-pose="idle">IDLE</button>
+    <button data-pose="drive">DRIVE</button>
+  </div>
+  <div id="result" class="small"></div>
+  <div class="bar" id="bottom">
+    <button id="b-skeleton">SKELETON</button>
+    <button id="b-weights">WEIGHTS</button>
+    <button id="b-wire">WIRE</button>
+    <button id="b-slow">SLOW</button>
+    <button id="b-back">BACK TO GAME</button>
+  </div>
+  <div id="load"><div id="load-text">LOADING</div><div class="track"><div class="fill" id="load-fill"></div></div></div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+    import { autoRig } from './src/characters/autoRig.js';
+    import { createAnimator } from './src/characters/proceduralAnim.js';
+
+    const CHARACTERS = ['Nate_Calloway', 'Adrian_Vance', 'Calder_Voss', 'Dante_Rios', 'Ingrid_Solberg', 'Juno_Kade', 'Lena_Marchetti', 'Mace_Doyle', 'Sloane_Harrow', 'Theo_Calloway', 'Viktor_Rask'];
+    const url = new URLSearchParams(location.search);
+    const $ = (id) => document.getElementById(id);
+    const progress = (f, text) => { $('load-fill').style.width = Math.round(f * 100) + '%'; if (text) $('load-text').textContent = text.toUpperCase(); };
+
+    // ---------------------------------------------------------------- scene
+    const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: true });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1e24);
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.05, 60);
+    scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3630, 2.2));
+    const sun = new THREE.DirectionalLight(0xfff1dd, 2.6);
+    sun.position.set(2.5, 4, 3);
+    scene.add(sun);
+    const floor = new THREE.GridHelper(8, 32, 0x556070, 0x2c333c);
+    scene.add(floor);
+    // a simple steering wheel for the driving pose
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.014, 8, 32), new THREE.MeshStandardMaterial({ color: 0x111316, roughness: 0.5 }));
+    wheel.visible = false;
+    scene.add(wheel);
+
+    // camera: drag to turn, pinch or wheel to zoom
+    const cam = { yaw: 0.5, pitch: 0.12, dist: 4.6, target: new THREE.Vector3(0, 0.95, 0) };
+    const views = { front: 0, side: Math.PI / 2, back: Math.PI, q: 0.6 };
+    if (url.get('view') in views) cam.yaw = views[url.get('view')];
+    const pointers = new Map();
+    let pinch = 0;
+    addEventListener('pointerdown', (e) => { if (e.target.tagName === 'CANVAS') pointers.set(e.pointerId, [e.clientX, e.clientY]); });
+    addEventListener('pointerup', (e) => { pointers.delete(e.pointerId); pinch = 0; });
+    addEventListener('pointercancel', (e) => { pointers.delete(e.pointerId); pinch = 0; });
+    addEventListener('pointermove', (e) => {
+      const p = pointers.get(e.pointerId);
+      if (!p) return;
+      if (pointers.size === 1) { cam.yaw -= (e.clientX - p[0]) * 0.008; cam.pitch = Math.max(-0.4, Math.min(1.3, cam.pitch + (e.clientY - p[1]) * 0.006)); }
+      p[0] = e.clientX; p[1] = e.clientY;
+      if (pointers.size === 2) { const [a, b] = [...pointers.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) cam.dist = Math.max(1.2, Math.min(9, cam.dist * pinch / d)); pinch = d; }
+    });
+    addEventListener('wheel', (e) => { cam.dist = Math.max(1.2, Math.min(9, cam.dist * (1 + e.deltaY * 0.001))); });
+    function resize() {
+      const w = innerWidth, h = innerHeight;
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    addEventListener('resize', resize);
+    resize();
+
+    // ---------------------------------------------------------------- the character
+    let rig = null, anim = null, helper = null, pose = 'apose', slow = false, weightMat = null, baseMat = null;
+    const state = { skeleton: url.get('skeleton') === '1', weights: url.get('weights') === '1', wire: url.get('wire') === '1' };
+    const loader = new GLTFLoader();
+    loader.setMeshoptDecoder(MeshoptDecoder);
+
+    async function load(name) {
+      $('load').classList.remove('done');
+      progress(0.02, 'Loading ' + name.replace('_', ' '));
+      if (rig) { scene.remove(rig.root); if (helper) scene.remove(helper); rig.mesh.geometry.dispose(); }
+      const gltf = await loader.loadAsync(`assets/characters/${name}.glb`);
+      const t0 = performance.now();
+      rig = await autoRig(THREE, gltf.scene, { height: 1.8, name, onProgress: (f, t) => progress(0.1 + f * 0.9, t) });
+      const ms = Math.round(performance.now() - t0);
+      anim = createAnimator(THREE, rig);
+      scene.add(rig.root);
+      helper = new THREE.SkeletonHelper(rig.list[0]);
+      helper.material.depthTest = false;
+      helper.renderOrder = 10;
+      scene.add(helper);
+      baseMat = rig.mesh.material;
+      // weight colors: every bone has its own color, a point shows the mix of its bones
+      const n = rig.mesh.geometry.attributes.position.count, col = new Float32Array(n * 3), c = new THREE.Color();
+      const si = rig.def.skinIndex, sw = rig.def.skinWeight;
+      for (let i = 0; i < n; i++) for (let j = 0; j < 4; j++) {
+        const w = sw[i * 4 + j];
+        if (!w) continue;
+        const b = si[i * 4 + j];
+        c.setHSL((b * 0.381) % 1, 0.85, 0.42 + 0.16 * ((b * 5) % 3) / 2);
+        col[i * 3] += c.r * w; col[i * 3 + 1] += c.g * w; col[i * 3 + 2] += c.b * w;
+      }
+      rig.mesh.geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      weightMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+      applyToggles();
+      showResult(name, ms);
+      setPose(pose, 0);
+      $('load').classList.add('done');
+      window.RIG.rig = rig; window.RIG.anim = anim; window.RIG.ms = ms;
+    }
+    function showResult(name, ms) {
+      const R = rig.report, pass = R.table.filter((r) => r.status === 'PASS').length, warn = R.table.filter((r) => r.status === 'WARN').length;
+      let html = `<b>${name.replace('_', ' ').toUpperCase()}</b>  <span class="pass">${pass} PASS</span>  <span class="${warn ? 'warn' : 'pass'}">${warn} WARN</span>  rig ${ms} ms  (tap)\n`;
+      for (const r of R.table) html += `<span class="${r.status === 'WARN' ? 'warn' : 'pass'}">${r.status.padEnd(4)}</span> ${r.joint.padEnd(15)} ${r.text}\n`;
+      html += `\nhands: ${R.fingers[0]}\nbones ${R.bones}, at most ${R.maxInfluences} per point, leaks ${R.leaks}\n`;
+      for (const s of R.symmetry) html += `left/right ${s.part}: ${s.difference} % (${s.action})\n`;
+      for (const note of R.notes) html += `note: ${note}\n`;
+      $('result').innerHTML = html;
+    }
+    $('result').addEventListener('click', () => $('result').classList.toggle('small'));
+
+    function applyToggles() {
+      if (!rig) return;
+      helper.visible = state.skeleton;
+      rig.mesh.material = state.weights ? weightMat : baseMat;
+      weightMat.wireframe = state.wire; baseMat.wireframe = state.wire;
+      $('b-skeleton').classList.toggle('on', state.skeleton); $('b-weights').classList.toggle('on', state.weights); $('b-wire').classList.toggle('on', state.wire);
+    }
+    const MODES = { apose: 'apose', arms: 'armsForward', bend: 'deepBend', run: 'auto', walk: 'auto', idle: 'auto', drive: 'drive' };
+    const SPEED = { run: 5, walk: 1.6, idle: 0 };
+    function setPose(p, seconds = 0.22) {
+      pose = p in MODES ? p : 'apose';
+      if (anim) anim.setMode(MODES[pose], seconds);
+      wheel.visible = pose === 'drive';
+      for (const b of document.querySelectorAll('[data-pose]')) b.classList.toggle('on', b.dataset.pose === pose);
+    }
+    for (const b of document.querySelectorAll('[data-pose]')) b.addEventListener('click', () => setPose(b.dataset.pose));
+    $('b-skeleton').addEventListener('click', () => { state.skeleton = !state.skeleton; applyToggles(); });
+    $('b-weights').addEventListener('click', () => { state.weights = !state.weights; applyToggles(); });
+    $('b-wire').addEventListener('click', () => { state.wire = !state.wire; applyToggles(); });
+    $('b-slow').addEventListener('click', () => { slow = !slow; $('b-slow').classList.toggle('on', slow); });
+    $('b-back').addEventListener('click', () => { location.href = './'; });
+    const select = $('char');
+    for (const c of CHARACTERS) { const o = document.createElement('option'); o.value = c; o.textContent = c.replace('_', ' ').toUpperCase(); select.appendChild(o); }
+    select.addEventListener('change', () => load(select.value));
+
+    // ---------------------------------------------------------------- loop
+    let steer = 0, time = 0;
+    function step(dt) {
+      time += dt;
+      if (anim) {
+        if (pose === 'drive') {
+          // the root sits on the seat; a wheel in front of the chest
+          steer = Math.sin(time * 0.9) * 0.9;
+          rig.root.position.set(0, 0.42, 0);
+          const c = [0, 0.1 + 0.5, 0.4], tilt = 0.38;
+          anim.drive = { steer, wheel: c, radius: 0.17, tilt };
+          wheel.position.set(c[0], rig.root.position.y + c[1], c[2]);
+          wheel.rotation.set(-tilt, 0, -steer * 1.15, 'XYZ');
+        } else rig.root.position.set(0, 0, 0);
+        anim.update(dt, { speed: SPEED[pose] || 0, heading: 0, inPlace: true });
+      }
+    }
+    function draw() {
+      const cp = Math.cos(cam.pitch);
+      camera.position.set(cam.target.x + Math.sin(cam.yaw) * cp * cam.dist, cam.target.y + Math.sin(cam.pitch) * cam.dist, cam.target.z + Math.cos(cam.yaw) * cp * cam.dist);
+      camera.lookAt(cam.target);
+      renderer.render(scene, camera);
+    }
+    let last = performance.now(), auto = url.get('manual') !== '1';
+    function loop(now) {
+      requestAnimationFrame(loop);
+      const dt = Math.min(0.05, (now - last) / 1000) * (slow ? 0.25 : 1);
+      last = now;
+      if (auto) step(dt);
+      draw();
+    }
+    // for tests from the console: RIG.step(seconds) moves time by hand when the page was opened with ?manual=1
+    window.RIG = { THREE, scene, camera, cam, renderer, setPose, step: (sec) => { for (let t = 0; t < sec - 1e-6; t += 1 / 60) step(1 / 60); draw(); }, state, applyToggles, load, ready: false };
+    const first = CHARACTERS.includes(url.get('char')) ? url.get('char') : CHARACTERS[0];
+    select.value = first;
+    if (url.get('pose')) pose = url.get('pose');
+    load(first).then(() => { window.RIG.ready = true; requestAnimationFrame(loop); }).catch((e) => { console.error(e); $('load-text').textContent = 'COULD NOT LOAD: ' + e.message; });
+  </script>
+</body>
+</html>

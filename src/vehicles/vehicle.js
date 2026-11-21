@@ -19,7 +19,7 @@
 
 import * as THREE from 'three';
 import { CAR_TYPES, carInfo, makeCar, makeWheel, registerCar } from './carModels.js';
-import { makeInterior, makeDriver, splitBody } from './carParts.js';
+import { makeInterior, makeDriver, splitBody, seatOf } from './carParts.js';
 import { VEHICLE_SPECS } from './vehicleLoader.js';
 import { initCarState, stepCar, initBoatState, stepBoat, initDroneState, stepDrone, IDLE_RPM, RED_RPM } from './physics.js';
 import { makeDrone, lin } from '../city/models.js';
@@ -539,7 +539,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     // the driver's door swings open around its front edge (the other door stays shut)
     if (v.doorL) v.doorL.rotation.y = -v.doorOpen * 1.15;
     const driven = v === active && state !== 'none';
-    if (v.driver) v.driver.visible = v === active && camMode !== 'cockpit' && (state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3));
+    if (v.driver) v.driver.visible = !riggedDriver && v === active && camMode !== 'cockpit' && (state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3));
     if (!v.isCar) {
       // boat and drone: two small position lights at night
       if ((driven || v.npc) && night > 0.05) { effects.lamp(v.x + Math.sin(v.heading) * v.info.frontZ, v.y + v.info.roof * 0.6, v.z + Math.cos(v.heading) * v.info.frontZ, 1.4, 1.4, 1.2, 0.5); effects.lamp(v.x - Math.sin(v.heading) * v.info.frontZ, v.y + v.info.roof * 0.6, v.z - Math.cos(v.heading) * v.info.frontZ, 1.6, 0.1, 0.08, 0.4); }
@@ -652,6 +652,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   const idle = { steer: 0, gas: 0, brake: 0, handbrake: true };
   const flasher = { on: false, x: 0, y: 0, z: 0, red: true };
   let acc = 0, camMode = 'chase', nitroWas = false, detailTimer = 0;
+  let riggedDriver = false;   // true: the real player character sits in the car (main.js puts it there), the simple driver stays hidden
   // input: what the player does, player: the player object, night: 0..1 (lamps on), time: seconds
   function update(dt, input, player, night, time) {
     shake = Math.max(0, shake - dt * 2.6);
@@ -806,6 +807,16 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         nitro: v.type.nitro ? v.nitro : null, blink: v.blink, abs: v.isCar && v.fx.abs, siren: v.siren, height: v.role === 'drone' ? v.alt : null,
       };
     },
+    // Where the driver sits right now (null = nobody is to be seen in the seat). Used to put the real player character into the car.
+    get seat() {
+      const v = active;
+      if (!v || !v.isCar || !v.driver || camMode === 'cockpit') return null;
+      if (!(state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3))) return null;
+      const s = seatOf(v.info);
+      // low cars: a smaller driver, so the head stays under the roof
+      return { node: v.tilt, x: s.x, y: s.y + 0.02, z: s.z - 0.05, scale: clamp((v.info.roof - 0.1 - (s.y + 0.12)) / 0.93, 0.62, 1), wheel: interiors[v.kind].userData.wheel, steer: v.steer };
+    },
+    set riggedDriver(on) { riggedDriver = !!on; },
     // camera: chase | close | hood | cockpit
     get camMode() { return camMode; },
     set camMode(m) { camMode = m; sound.setInside(m === 'cockpit' && state === 'driving'); },

@@ -16,6 +16,9 @@ Version 2.1 is the **vehicles pass**: seven vehicles with their own jobs (police
 armored van, a supercar with nitro, a boat, a drone), a new driving model with engine, gears
 and tire grip, damage, smoke and skid marks, four camera views and a wanted level - see
 "The vehicles pass" below.
+Version 2.2 gives the characters an **automatic skeleton**: the plain character models are
+rigged in the browser when the game loads and moved by code (walking, running, standing,
+driving) - see "Automatic character rig" below.
 
 - No build step, no npm, no bundler. Plain HTML + JavaScript modules.
 - three.js (version 0.170) is loaded from a CDN with an import map.
@@ -48,6 +51,7 @@ Open the GitHub Pages address of this repository (see "Publish on GitHub Pages" 
 | Drone | `UP`, `DOWN`, `GAS` forward, `BRAKE` backward, `◀` `▶` turn | `U` up, `J` down, `W` `S` `A` `D` |
 | Put a vehicle in front of you (testing) | `CARS` button, then pick one | same |
 | Driving assist | `ASSIST` button: Off / Normal (traction control + ABS) / Easy (also helps steering) | same |
+| Character rig test | `RIG TEST` button (opens `rigtest.html`) | same |
 | Look around the car | Drag on the screen | Mouse |
 | Big map + waypoint | `MAP` button or tap the minimap, then tap a place | `M`, then click a place |
 | Sound on / off | `SOUND` button | same |
@@ -115,6 +119,10 @@ src/
     effects.js             smoke, dust, spray, sparks, skid marks and the glow of the lamps
     carParts.js            seats, dashboard and driver; cuts car bodies into doors and glass
     vehicle.js             all vehicles you can use: get in / out, doors, lights, damage, sounds, garage
+  characters/
+    autoRig.js             finds the joints of a character model, builds the skeleton and the skin,
+                           tests every joint (PASS / WARN table)
+    proceduralAnim.js      moves the skeleton: walk, run, idle, driving, foot placement, joint limits
   ai/
     traffic.js             the other cars: lanes, traffic lights, turns, braking, honking, pulling over
     police.js              the wanted level and the police cars that chase you
@@ -423,8 +431,8 @@ crosswalks, and step out of your way.
 
 **Animated player (optional).** Put a model with a skeleton at
 `assets/characters/Nate_Calloway_rigged.glb`. If it has animations whose names contain `idle`,
-`walk` and `run`, the game blends between them by speed. Without that file the current model
-is used and slides.
+`walk` and `run`, the game blends between them by speed. Without that file the plain model gets
+an automatic skeleton and is moved by code (see "Automatic character rig" below).
 
 **Sound.** All sounds are made in code with Web Audio (no sound files): engine, tire screech,
 horn, crash, door, footsteps (different on sand). Sound starts after your first tap.
@@ -538,6 +546,70 @@ Police chasers use a much simpler model, traffic cars drive on rails.
 
 ---
 
+## Automatic character rig (version 2.2)
+
+The models in `assets/characters/` are plain meshes in an A-pose without a skeleton. When the
+game loads, `src/characters/autoRig.js` builds one (about half a second on a computer; it runs
+once and shows on the loading bar):
+
+1. **Joints from the shape.** The mesh is cut by planes 1 cm apart (level cuts for body and
+   legs, cuts across the arm for the arms). Each cut gives the outline of the body there; a
+   joint is put at the **center of that outline**. Elbow, knee, wrist and ankle are moved to
+   the thinnest outline near the place where a body normally has them. The gaps between the
+   legs and between arms and body give the crotch and the armpits.
+2. **Bones** (64): hips, 3 spine bones, neck, head; per side collar bone, upper arm + twist
+   bone, forearm + twist bone, hand, 5 fingers with 3 bones each, thigh, shin, foot, toe; and
+   helper bones at shoulder, elbow, hip and knee. Bones never scale and never change length.
+3. **Check.** Every bone length and the rest angles are logged. Left and right are compared:
+   more than 3 % apart and the side whose joints were found more reliably is mirrored.
+4. **Skin.** Soft blends about 7 cm wide at the joints, exactly one bone in the middle of a
+   limb, rigid head, hands and feet. Leaks are blocked with rules and with the distance along
+   the mesh surface (a leg never follows the other leg, the jacket next to the arm does not
+   follow the arm). Smoothed 3 times over mesh neighbours, at most 4 bones per point, weights
+   under 0.02 dropped.
+5. **No collapsing joints.** Shoulder, elbow, hip and knee each have a helper bone that turns
+   half as far as the limb and moves a little to the outside of the bend. This does what
+   "dual quaternion" skinning is used for, with normal skinning.
+6. **Self-test.** Every joint is bent through its range and the volume of the mesh around it
+   is measured. More than 12 % change is a WARN. WARN joints are repaired automatically (other
+   helper strength, narrower or wider soft zone) and tested again, up to 3 rounds. The table
+   is printed in the browser console and shown on the rig test screen.
+
+`src/characters/proceduralAnim.js` moves the skeleton. There are no animation files:
+- **Walk and run** with the phases contact, down, passing, up: heel first, roll to the toes,
+  toe-off; hips turn and tilt, the spine turns against them, arms swing opposite to the legs
+  with the elbows a little late, the head stays level.
+- **Feet do not slide:** a foot on the ground stays at its place in the world while the body
+  moves over it. Feet follow curbs and slopes, knees point where the foot points, the body
+  sinks when the feet are far apart.
+- **Joint limits** in degrees: elbow 0 to 150, knee 0 to 140 (backward only), hip -30 to 120
+  forward and 45 sideways, shoulder 170 forward and 160 sideways, wrist -70 to 80, ankle -20 to
+  40, spine 25 per bone (`LIMITS` at the top of the file).
+- **Idle:** breathing, weight shifting from foot to foot, slow looks around.
+- **Driving:** the player really sits in the driver's seat with the hands on the wheel.
+- Changes between poses blend over about 0.2 seconds.
+
+**Rig test screen** (`rigtest.html`, or the `RIG TEST` button): pick any of the 11 characters,
+show the A-pose, arms forward 90 degrees, a deep knee bend with elbows bent 120 degrees, run,
+walk, idle and the driving pose; switch on the skeleton, the weight colors and the wire view.
+Drag to turn, pinch to zoom. Tap the result box for the full PASS / WARN table.
+
+Result for Nate Calloway: 10 PASS, 2 WARN (both hips, +13 to +15 % volume when the leg is
+lifted 45 degrees to the side - the trousers stretch between the legs).
+
+What is not perfect:
+- The hands of most models are small closed blobs. Finger bones are always built, but on those
+  models the hand is one rigid block and finger poses do not show.
+- Jackets, coats, backpacks and straps are part of the one mesh: they bend with the body and
+  have no cloth movement of their own (the spring bones were skipped).
+- Models with a long coat or skirt hide the legs: hips and knees are then placed from normal
+  body proportions and the coat stretches in a deep bend.
+- Other people in the city are still the simple instanced figures; only the player uses the rig.
+- With `assets/characters/Nate_Calloway_rigged.glb` (a model with a real skeleton and idle /
+  walk / run clips) that file is used instead and the automatic rig is skipped.
+
+---
+
 ## Known limits
 
 - Traffic cars drive on rails: when hit they stop and honk, but they are not pushed away. Parked
@@ -556,6 +628,7 @@ Police chasers use a much simpler model, traffic cars drive on rails.
   interior. Only the driver's door opens. Parked and traffic cars keep dark, solid windows.
 - Tested with a software renderer only; real phone frame rates, the feel of the touch buttons, tilt
   steering and the sound still have to be checked on a real phone.
-- Without the rigged model file the player has no animation.
+- The player's movement is made by code, not by an animator: it is clean but simpler than hand-made
+  animation (no turning on the spot animation, no jumping, the same walk for everyone).
 - Buildings cannot be entered.
 - Shop names, signs and adverts are invented. No real brands are used.

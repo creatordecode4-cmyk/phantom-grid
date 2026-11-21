@@ -5,8 +5,10 @@
 //   * if that file is missing, a simple mannequin with real human
 //     proportions is used instead
 //   * if assets/characters/Nate_Calloway_rigged.glb exists (a model with a
-//     skeleton and the animations idle, walk, run) it is used and animated;
-//     without it the plain model is moved and turned, and it slides a little
+//     skeleton and the animations idle, walk, run) it is used and animated
+//   * without it the plain model gets an AUTOMATIC skeleton (src/characters/
+//     autoRig.js) and is moved by code (src/characters/proceduralAnim.js):
+//     walking, running, standing, sitting in a car
 //   * walks 1.6 m/s, runs 5 m/s, turns smoothly
 //   * cannot walk through buildings, cars, poles or out of the map
 // ---------------------------------------------------------------------------
@@ -15,6 +17,8 @@ import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { clamp, damp, angleDelta, DEG } from '../utils/math.js';
 import { makeMannequin } from '../city/models.js';
+import { autoRig } from '../characters/autoRig.js';
+import { createAnimator } from '../characters/proceduralAnim.js';
 
 // Load the character file. Returns a three.js object, or null if it is missing.
 async function loadCharacter(url) {
@@ -37,7 +41,7 @@ async function loadCharacter(url) {
   }
 }
 
-export async function createPlayer(scene, city, materials) {
+export async function createPlayer(scene, city, materials, onProgress = () => {}) {
   const P = CONFIG.player;
   const layout = city.layout;
   const root = new THREE.Group();   // moves and turns
@@ -65,7 +69,20 @@ export async function createPlayer(scene, city, materials) {
     }
     if (!anim.idle && !anim.walk && !anim.run) mixer = null; // no clip with a name we know
   }
-  if (model) {
+  // ---- no skeleton in the file: build one from the shape of the mesh ----
+  let rig = null, mover = null;
+  if (model && !mixer && P.autoRig !== false) {
+    try {
+      rig = await autoRig(THREE, model, { height: P.height, name: 'player', onProgress });
+      mover = createAnimator(THREE, rig);
+      body.add(rig.root);
+    } catch (e) {
+      console.warn('[player] the automatic skeleton failed, the model is shown without animation.', e);
+      rig = null; mover = null;
+    }
+  }
+  if (rig) { /* the rig already has the right size and stands on the ground */ }
+  else if (model) {
     // scale to exactly 1.8 m and stand it on the ground, centered
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
@@ -194,7 +211,11 @@ export async function createPlayer(scene, city, materials) {
     root.rotation.y = heading;
 
     if (mixer) animate(dt);
-    else {
+    else if (mover) {
+      // the procedural animation: it needs the speed along the walking direction and the ground under the feet
+      const forward = vel.x * Math.sin(heading) + vel.y * Math.cos(heading);
+      mover.update(dt, { speed: forward, x: pos.x, z: pos.z, y: pos.y, heading, groundAt: city.groundHeight });
+    } else {
       // no skeleton: a tiny up-down bob and a forward lean, so it does not look like sliding
       stepPhase += dt * (4.5 + speed * 2.2);
       const k = clamp(speed / P.walkSpeed, 0, 1);
@@ -234,6 +255,7 @@ export async function createPlayer(scene, city, materials) {
   let hidden = false;
   function setHidden(h) { hidden = h; root.visible = !h; blob.visible = !h; }
   function place(x, z, angle) {
+    if (mover && Math.hypot(pos.x - x, pos.z - z) > 0.5) mover.reset();
     pos.set(x, city.groundHeight(x, z), z);
     vel.set(0, 0); speed = 0;
     heading = angle;
@@ -247,7 +269,35 @@ export async function createPlayer(scene, city, materials) {
     blob.position.set(pos.x, pos.y + 0.02, pos.z);
   }
 
+  // ---- sitting in a car (only with the automatic skeleton) ----
+  // seat: { node (the car body), x, y, z (the seat inside it), scale, wheel [x, y, z], steer } or null = not sitting
+  let sitting = null;
+  function sit(seat, dt) {
+    if (!mover) return;
+    if (!seat) {
+      if (!sitting) return;
+      // back on the street: the character belongs to the player object again
+      sitting = null;
+      body.add(rig.root);
+      rig.root.position.set(0, 0, 0); rig.root.scale.setScalar(1);
+      mover.setMode('auto', 0);
+      mover.reset();
+      return;
+    }
+    if (sitting !== seat.node) {
+      sitting = seat.node;
+      seat.node.add(rig.root);
+      mover.setMode('drive', 0);
+    }
+    const sc = seat.scale;
+    rig.root.position.set(seat.x, seat.y, seat.z);
+    rig.root.scale.setScalar(sc);
+    mover.drive = { steer: seat.steer, wheel: [(seat.wheel[0] - seat.x) / sc, (seat.wheel[1] - seat.y) / sc, (seat.wheel[2] - seat.z) / sc], radius: 0.17 / sc, tilt: -0.45 };
+    mover.update(dt, {});
+  }
+
   function teleport(x, z, compassDeg = null) {
+    if (mover) mover.reset();
     pos.set(x, city.groundHeight(x, z), z);
     vel.set(0, 0);
     if (compassDeg !== null) heading = compassToAngle(compassDeg);
@@ -261,8 +311,8 @@ export async function createPlayer(scene, city, materials) {
     update,
     teleport,
     usingMannequin,
-    rigged, animated: !!mixer,
-    setHidden, place, glideTo,
+    rigged, animated: !!mixer || !!mover, autoRigged: !!rig, rig, anim: mover,
+    setHidden, place, glideTo, sit,
     get hidden() { return hidden; },
     get steps() { return steps; },   // goes up by one with every footstep
     get heading() { return heading; },
