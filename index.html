@@ -357,6 +357,8 @@
     #mirror[hidden] { display: none; }
     body.mirror #gps-arrow { top: calc(68px + env(safe-area-inset-top)); }
     body.mirror #wren { top: calc(120px + env(safe-area-inset-top)); }
+    /* a narrow (upright) phone: the mirror needs the place of the district name and the clock */
+    @media (max-width: 560px) { body.mirror #hud-location, body.mirror #hud-sub { visibility: hidden; } }
     #tape { margin-top: 8px; display: inline-flex; align-items: center; gap: 8px; padding: 5px 9px; border-radius: 6px; background: rgba(8, 10, 12, 0.5); font-size: 9px; letter-spacing: 0.2em; }
     #tape[hidden] { display: none; }
     #tape .reels { display: inline-block; width: 22px; height: 10px; border: 1px solid rgba(255, 255, 255, 0.7); border-radius: 2px; position: relative; }
