@@ -135,7 +135,7 @@ function softRound() {
 function makeLampHalo(lampGlow, count) {
   const g0 = lampGlow.geometry, geo = new THREE.InstancedBufferGeometry();
   geo.index = g0.index;
-  for (const k of ['position', 'uv', 'aOffset', 'aColor']) geo.setAttribute(k, g0.attributes[k]);
+  for (const k of ['position', 'uv', 'aOffset', 'aColor', 'aSize']) geo.setAttribute(k, g0.attributes[k]);
   geo.instanceCount = count;
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTex: { value: softRound() } }]);
   uniforms.uPgNight = shared.uPgNight;
@@ -145,6 +145,7 @@ function makeLampHalo(lampGlow, count) {
     vertexShader: /* glsl */ `
       attribute vec3 aOffset;
       attribute vec3 aColor;
+      attribute float aSize;
       uniform float uPgNight, uPgWet;
       varying vec2 vUv;
       varying vec3 vCol;
@@ -154,12 +155,15 @@ function makeLampHalo(lampGlow, count) {
         vec4 mvPosition = viewMatrix * vec4( aOffset, 1.0 );
         float dist = - mvPosition.z;
         float haze = 0.28 + 0.72 * uPgWet;                 // how much water is in the air
-        mvPosition.xy += position.xy * ( 4.2 + 3.6 * uPgWet );
+        // small lamps (the lanterns of The Sunk hang close together on strings) get smaller, fainter halos:
+        // added up they would melt into one white blot
+        float hs = clamp( aSize / 1.5, 0.3, 1.0 );
+        mvPosition.xy += position.xy * ( 4.2 + 3.6 * uPgWet ) * hs;
         mvPosition.z += 0.6;
         gl_Position = projectionMatrix * mvPosition;
         // (only the lamps near the camera: far away the halos would melt into one orange sky)
         float near = 1.0 - smoothstep( 45.0, 140.0, dist );
-        vCol = aColor * uPgNight * haze * near * 0.28;
+        vCol = aColor * uPgNight * haze * near * 0.28 * hs * hs;
         #include <fog_vertex>
       }`,
     fragmentShader: /* glsl */ `
