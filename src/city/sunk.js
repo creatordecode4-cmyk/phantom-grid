@@ -1341,7 +1341,7 @@ function createSunkRuntime(ctx, { lenaRoom, spots, lanternList }) {
     // the mist drifts along its canal; only near The Sunk
     const near = inSunk(cam.x, cam.z, 160);
     mist.visible = near && quality.sunkMist !== false;
-    group.visible = inSunk(cam.x, cam.z, 900);
+    group.visible = inSunk(cam.x, cam.z, 450);          // (further away the fog hides it all)
     if (mist.visible) {
       for (let i = 0; i < MIST; i++) {
         const m = mistData[i], w = m.w;
