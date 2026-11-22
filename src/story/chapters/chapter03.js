@@ -352,16 +352,16 @@ export default {
           do: 'cutscene', skippable: true,
           shots: [
             // the dark room. Screens. A match. The lantern.
-            { seconds: 6, cam: { from: [708.6, 2.2, -121.6], to: [708.2, 2.1, -121.9], look: [700.9, 1.4, -126], fov: 38 },
+            { seconds: 6, cam: { from: [708.6, 2.7, -121.6], to: [708.2, 2.6, -121.9], look: [700.9, 1.9, -126], fov: 38 },
               do: [{ do: 'player', stage: { at: [705.4, 1.2, -121.4], face: 230, pose: 'idle' }, mood: 'stern' },
                 { do: 'actorSet', id: 'lena', at: [701.6, 1.2, -125.6], face: 225, pose: 'hold', look: { yaw: 0, pitch: 0.5 } }, { do: 'music', calm: 0 }],
               lines: [{ at: 2.6, do: [{ do: 'remove', ids: ['lanternOff'] }, { do: 'prop', id: 'lantern', kind: 'lantern', at: LENA.lantern, lit: true },
                 { do: 'light', at: [700.8, 1.75, -126.1], color: 0xffb070, power: 26, range: 11 }, { do: 'sound', name: 'tick' }] }] },
             // she looks up at him
-            { seconds: 7.4, cam: { from: [703.6, 1.85, -122.6], look: [701.6, 1.6, -125.4], fov: 32 },
+            { seconds: 7.4, cam: { from: [703.6, 2.75, -122.6], look: [701.6, 2.6, -125.4], fov: 32 },
               do: [{ do: 'actorSet', id: 'lena', pose: 'idle', look: 'player' }],
               lines: [{ at: 0.6, who: 'lena', text: 'c3.lena.hi', seconds: 2.4, mood: 'smirk' }, { at: 3.3, who: 'nate', text: 'c3.nate.mace', seconds: 1.4 }, { at: 5.0, who: 'lena', text: 'c3.lena.mace', seconds: 2.2, mood: 'neutral' }] },
-            { seconds: 3.4, cam: { from: [702.6, 1.7, -124.8], look: [705.4, 1.55, -121.4], fov: 34 },
+            { seconds: 3.4, cam: { from: [702.6, 2.75, -124.8], look: [705.4, 2.65, -121.4], fov: 34 },
               lines: [{ at: 0.4, who: 'lena', text: 'c3.lena.chip', seconds: 1.5, mood: 'stern' }],
               end: [{ do: 'actorSet', id: 'lena', at: [705.2, 1.2, -112.6], face: 0, pose: 'hold', look: { x: 702.2, y: 2.05, z: -110.8 } },
                 { do: 'player', stage: { at: [706.9, 1.2, -114.6], face: 330, pose: 'idle' } },
@@ -373,16 +373,16 @@ export default {
             // THE REVEAL: nothing is said. A long hold on the screen. The rain.
             { seconds: 9, cam: { from: [705.2, 2.38, -112.7], to: [705.2, 2.35, -112.2], look: [705.2, 2.38, -110.9], fov: 30 },
               do: [{ do: 'music', silence: 14 }] },
-            { seconds: 6.8, cam: { from: [706.4, 1.8, -114.0], look: [705.2, 1.75, -112.4], fov: 30 },
+            { seconds: 6.8, cam: { from: [706.4, 2.75, -114.0], look: [705.2, 2.7, -112.4], fov: 30 },
               lines: [{ at: 0.5, who: 'lena', text: 'c3.lena.notai', seconds: 1.8, mood: 'worried' }, { at: 2.8, who: 'lena', text: 'c3.lena.minds', seconds: 3.6 }] },
-            { seconds: 6.8, cam: { from: [704.2, 1.8, -113.0], look: [706.9, 1.65, -114.6], fov: 30 },
+            { seconds: 6.8, cam: { from: [704.2, 2.8, -113.0], look: [706.9, 2.75, -114.6], fov: 30 },
               lines: [{ at: 0.3, who: 'nate', text: 'c3.nate.racers', seconds: 2.0, mood: 'stern' }, { at: 2.7, who: 'lena', text: 'c3.lena.fast', seconds: 3.4, mood: 'sad' }] },
             // Nate, alone with it
-            { seconds: 5.4, cam: { from: [705.6, 1.7, -113.4], look: [706.9, 1.66, -114.6], fov: 26 },
+            { seconds: 5.4, cam: { from: [705.6, 2.75, -113.4], look: [706.9, 2.78, -114.6], fov: 26 },
               do: [{ do: 'mood', set: { nate: 'pain' } }],
               lines: [{ at: 1.4, who: 'nate', text: 'c3.nate.theo', seconds: 2.6, mood: 'sad' }] },
             // Lena reads the driving code. She goes still. She looks down at her old badge. She does not say why.
-            { seconds: 7.4, cam: { from: [704.0, 2.1, -111.9], to: [704.1, 2.05, -112.1], look: [705.2, 1.6, -112.6], fov: 28 },
+            { seconds: 7.4, cam: { from: [704.0, 2.85, -111.9], to: [704.1, 2.8, -112.1], look: [705.2, 2.45, -112.6], fov: 28 },
               do: [{ do: 'actorSet', id: 'lena', pose: 'hold', look: { yaw: 0, pitch: 0.62 }, mood: 'worried' }, { do: 'flag', set: { lena_code_seen: true } }],
               lines: [{ at: 5.0, who: 'lena', text: 'c3.lena.minute', seconds: 1.8, mood: 'sad' }] },
           ],
@@ -392,18 +392,18 @@ export default {
         {
           do: 'cutscene',
           shots: [
-            { if: { flag: 'told_lena_theo' }, seconds: 7.8, cam: { from: [704.2, 1.8, -113.0], look: [706.9, 1.65, -114.6], fov: 30 },
+            { if: { flag: 'told_lena_theo' }, seconds: 7.8, cam: { from: [704.2, 2.8, -113.0], look: [706.9, 2.75, -114.6], fov: 30 },
               do: [{ do: 'actorSet', id: 'lena', pose: 'idle', look: 'player' }],
               lines: [{ at: 0.4, who: 'nate', text: 'c3.nate.tell', seconds: 4.4, mood: 'sad' }, { at: 5.2, who: 'lena', text: 'c3.lena.tell', seconds: 2.4, mood: 'sad' }] },
-            { if: { flag: 'told_lena_theo', is: false }, seconds: 5.2, cam: { from: [706.4, 1.8, -114.0], look: [705.2, 1.75, -112.4], fov: 30 },
+            { if: { flag: 'told_lena_theo', is: false }, seconds: 5.2, cam: { from: [706.4, 2.75, -114.0], look: [705.2, 2.7, -112.4], fov: 30 },
               do: [{ do: 'actorSet', id: 'lena', pose: 'idle', look: 'player' }],
               lines: [{ at: 0.3, who: 'lena', text: 'c3.lena.where', seconds: 1.8, mood: 'stern' }, { at: 2.4, who: 'nate', text: 'c3.nate.nothing', seconds: 1.2 }, { at: 3.9, who: 'lena', text: 'c3.lena.sure', seconds: 1.0, mood: 'neutral' }] },
             // she listens to WREN
-            { seconds: 10.4, cam: { from: [705.9, 1.85, -113.3], to: [705.7, 1.8, -113.6], look: [706.9, 1.66, -114.6], fov: 28 },
+            { seconds: 10.4, cam: { from: [705.9, 2.8, -113.3], to: [705.7, 2.75, -113.6], look: [706.9, 2.7, -114.6], fov: 28 },
               do: [{ do: 'actorSet', id: 'lena', look: 'player', pose: 'hold' }],
               lines: [{ at: 0.4, who: 'lena', text: 'c3.lena.scan', seconds: 2.4, mood: 'neutral' }, { at: 3.4, do: [{ do: 'sound', name: 'beep' }] },
                 { at: 4.0, who: 'lena', text: 'c3.lena.locked', seconds: 3.0, mood: 'worried' }, { at: 7.4, who: 'wren', text: 'c3.wren.notmine', seconds: 2.6 }] },
-            { seconds: 3.4, cam: { from: [704.2, 1.8, -113.0], look: [706.9, 1.65, -114.6], fov: 28 },
+            { seconds: 3.4, cam: { from: [704.2, 2.8, -113.0], look: [706.9, 2.75, -114.6], fov: 28 },
               do: [{ do: 'flag', set: { wren_locked_found: true } }],
               lines: [{ at: 0.6, who: 'nate', text: 'c3.nate.wren', seconds: 1.4, mood: 'worried' }] },
           ],
@@ -438,7 +438,7 @@ export default {
           do: 'cutscene',
           shots: [
             // a hum outside. White light moves across the windows.
-            { seconds: 5.6, cam: { from: [710.6, 2.4, -120.4], look: [704.4, 1.7, -113.6], fov: 40 },
+            { seconds: 5.6, cam: { from: [710.6, 3.0, -120.4], look: [704.4, 2.5, -113.6], fov: 40 },
               do: [{ do: 'player', stage: { at: [706.9, 1.2, -115], face: 330, pose: 'idle' }, mood: 'worried' }, { do: 'music', tension: 0.75 },
                 { do: 'light', at: [712, 3.6, -126], color: 0xdde8ff, power: 40, range: 16 }, { do: 'actorSet', id: 'lena', look: { x: 712, y: 3.2, z: -130 }, mood: 'afraid' }],
               lines: [{ at: 2.4, who: 'lena', text: 'c3.lena.track', seconds: 3.0, mood: 'afraid' }] },
@@ -456,11 +456,11 @@ export default {
               do: [{ do: 'spawn', id: 'harrowBoat', kind: 'patrol_boat', at: [703, -140.5], face: 90, tint: [0.24, 0.27, 0.34], npc: true, flash: true },
                 { do: 'actor', id: 'harrow', model: 'Sloane_Harrow', name: 'name.harrow', at: [704.2, PON, -134.2], face: 0, pose: 'hips', fixed: true, look: null, mood: 'stern' }],
               lines: [{ at: 1.0, who: 'harrow', text: 'c3.harrow.pa', seconds: 4.2, kind: 'thought', mood: 'stern' }] },
-            { seconds: 3.0, cam: { from: [703.6, 1.9, -114.4], look: [705.4, 1.55, -112.8], fov: 34 },
+            { seconds: 3.0, cam: { from: [703.6, 2.8, -114.4], look: [705.4, 2.65, -112.8], fov: 34 },
               do: [{ do: 'actorSet', id: 'lena', look: 'player', pose: 'idle' }],
               lines: [{ at: 0.4, who: 'lena', text: 'c3.lena.roof', seconds: 1.4, mood: 'stern' }] },
             // up the inner stairs to the roof
-            { seconds: 1.4, fade: 'out', fadeSeconds: 1.0, cam: { from: [703.6, 1.9, -114.4], look: [702.5, 2.4, -113.5], fov: 34 },
+            { seconds: 1.4, fade: 'out', fadeSeconds: 1.0, cam: { from: [703.6, 2.8, -114.4], look: [702.5, 3.3, -113.5], fov: 34 },
               end: [{ do: 'player', stage: null, at: LENA.roof, face: 270 }, { do: 'actorSet', id: 'lena', at: [705.5, -115.6], face: 270, pose: 'idle', look: null },
                 { do: 'light' }, { do: 'remove', ids: ['reveal'] }] },
           ],
