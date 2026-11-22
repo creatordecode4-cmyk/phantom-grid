@@ -105,7 +105,17 @@ export function sunkProps(H) {
       for (const s of [-1, 1]) { const c = box(0.006, 0.2, 0.003, cord); c.position.set(s * 0.022, -0.1, 0); c.rotation.z = s * 0.12; g.add(c); }
       const clip = box(0.012, 0.012, 0.004, std(0x9aa1a8, 0.4, 0.9)); clip.position.y = -0.155; g.add(clip);
       g.userData.swing = card;
-      g.userData.anim = (time) => { card.rotation.z = Math.sin(time * 1.7) * 0.08; card.rotation.y = Math.sin(time * 1.1) * 0.15; };
+      // the cord hangs straight down (gravity) whatever way the body leans: when Lena bends forward the card swings
+      // away from her chest. Only the turn of the body is kept, so the card faces the way she faces.
+      const qa = new THREE.Quaternion(), qb = new THREE.Quaternion(), e = new THREE.Euler(), up = new THREE.Vector3(0, 1, 0);
+      g.userData.anim = (time) => {
+        if (g.parent) {
+          g.parent.getWorldQuaternion(qa);
+          e.setFromQuaternion(qa, 'YXZ');
+          g.quaternion.copy(qa.invert()).multiply(qb.setFromAxisAngle(up, e.y));
+        }
+        card.rotation.z = Math.sin(time * 1.7) * 0.08; card.rotation.y = Math.sin(time * 1.1) * 0.15;
+      };
       return g;
     },
     // THE CHIP READER on Lena's desk: a block with a slot (the KEYSTONE chip sits in it), a status light, a cable

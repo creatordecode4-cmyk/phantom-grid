@@ -73,7 +73,7 @@ const onLoad = (list) => list.map((s) => ({ ...s, onLoad: true }));
 const MACE = (at, face, more = {}) => ({ do: 'actor', id: 'mace', model: 'Mace_Doyle', name: 'name.mace', at, face, pose: 'crossed', fixed: true, mood: 'stern', ...more });
 // LENA "STATIC" MARCHETTI (26). Guarded, dry. Her old KVI badge on a cord around her neck.
 const LENA_ACTOR = (at, face, more = {}) => ({ do: 'actor', id: 'lena', model: 'Lena_Marchetti', name: 'name.lena', at, face, pose: 'idle', fixed: true, mood: 'stern', ...more });
-const BADGE = { do: 'prop', id: 'badge', kind: 'kviBadge', on: 'lena', bone: 'chest', p: [0, 0.06, 0.13] };
+const BADGE = { do: 'prop', id: 'badge', kind: 'kviBadge', on: 'lena', bone: 'chest', p: [0, 0.07, 0.16] };
 // WICK, the old man of the Tidewalkers, at his table on the market platform
 const WICK = { do: 'actor', id: 'wick', extra: { pants: [0.08, 0.07, 0.06], coat: [0.22, 0.17, 0.11], patch: [0.12, 0.2, 0.24], scarf: [0.5, 0.36, 0.16], head: [0.36, 0.26, 0.2] },
   name: 'name.wick', at: MARKET.wick, face: 100, pose: 'sit', floorBelow: 0.45, fixed: true, look: 'player', scale: 0.97, mood: 'stern' };
