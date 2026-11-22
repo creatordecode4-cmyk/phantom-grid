@@ -951,13 +951,14 @@ export function buildSunk(ctx) {
       const set = k ? sunkenB : sunkenA;
       set.add(x, BED + 0.02, z, rot, 1, RUST[i % RUST.length], rng.range(-0.06, 0.06), rng.range(-0.1, 0.1));
     });
-    // the one by the market cut: nose down in the mud, its back out of the water
-    sunkenA.add(621.5, LEVEL - 1.55, -190, 0.1, 1, RUST[0], 0.62, 0.08);
-    boxes.push({ minX: 620.2, maxX: 622.8, minZ: -192.4, maxZ: -187.6, h: 0.5, boatOnly: true });
+    // the one by the market cut: nose down in the mud, its back out of the water - against the west wall,
+    // so the middle of the canal (where the GPS line and the Guard boats go) stays free
+    sunkenA.add(627.0, LEVEL - 1.55, -190, 0.1, 1, RUST[0], 0.62, 0.08);
+    boxes.push({ minX: 625.9, maxX: 628, minZ: -192.4, maxZ: -187.6, h: 0.5, boatOnly: true });
   }
 
   // a few boats that people live on, tied up in the ring (bigger, with a cabin)
-  for (const [x, z, rot] of [[534, -372, 0], [726, -168, Math.PI], [705, -403.6, Math.PI / 2], [560, -146, -Math.PI / 2]]) {
+  for (const [x, z, rot] of [[535.6, -372, 0], [724.2, -168, Math.PI], [705, -402.3, Math.PI / 2], [560, -147.6, -Math.PI / 2]]) {
     skiffSet.add(x, LEVEL - 0.15, z, rot, 1.9, [0.25, 0.22, 0.18], 0, 0.02);
     const ax = Math.abs(Math.sin(rot)) > 0.5;          // true: the boat lies along x
     const hx = ax ? 4.5 : 1.6, hz = ax ? 1.6 : 4.5;
