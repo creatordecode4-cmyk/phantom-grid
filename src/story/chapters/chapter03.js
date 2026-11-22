@@ -135,7 +135,8 @@ export default {
       setup: [
         NIGHT,
         { do: 'world', traffic: 14, people: 8, indoors: true, now: true },
-        ...VAN(GARAGE_IN, 90),
+        // (nose to the open door: he drives straight out; in Chapter 2 it was parked nose in)
+        ...VAN(GARAGE_IN, 270),
         { do: 'player', at: { garage: [-2.2, 0, 3.0] }, face: 280 },
         { do: 'allow', enter: ['van'] },
         { do: 'shutter', open: 1, seconds: 0 },
