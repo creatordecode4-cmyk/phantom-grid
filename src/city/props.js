@@ -197,9 +197,11 @@ function makeWetStreaks(lampGlow, lamps, groundAt) {
   const g0 = lampGlow.geometry, geo = new THREE.InstancedBufferGeometry();
   geo.index = g0.index;
   for (const k of ['position', 'uv', 'aOffset', 'aColor']) geo.setAttribute(k, g0.attributes[k]);
-  const ground = new Float32Array(lamps.length);
-  lamps.forEach((l, i) => { ground[i] = groundAt(l.x, l.z); });
+  const ground = new Float32Array(lamps.length), strength = new Float32Array(lamps.length);
+  // (small lamps - the lanterns and bulbs of The Sunk, many close together - make faint streaks; a lamp can say "no streak")
+  lamps.forEach((l, i) => { ground[i] = groundAt(l.x, l.z); const k = Math.min(1, Math.max(0.3, (l.size || 1.5) / 1.5)); strength[i] = (l.streak ?? 1) * k * k; });
   geo.setAttribute('aGround', new THREE.InstancedBufferAttribute(ground, 1));
+  geo.setAttribute('aStrength', new THREE.InstancedBufferAttribute(strength, 1));
   geo.instanceCount = lamps.length;
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {}]);
   uniforms.uPgNight = shared.uPgNight;
@@ -212,6 +214,7 @@ function makeWetStreaks(lampGlow, lamps, groundAt) {
       attribute vec3 aOffset;
       attribute vec3 aColor;
       attribute float aGround;
+      attribute float aStrength;
       uniform float uPgNight, uPgWet;
       varying vec2 vUv;
       varying vec3 vCol;
@@ -232,8 +235,9 @@ function makeWetStreaks(lampGlow, lamps, groundAt) {
         vec3 p = foot + vec3( dir.x * along + side.x * across, 0.0, dir.y * along + side.y * across );
         vec4 mvPosition = viewMatrix * vec4( p, 1.0 );
         gl_Position = projectionMatrix * mvPosition;
+        if ( aStrength < 0.001 ) gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );     // (no streak: off the screen)
         float near = 1.0 - smoothstep( 40.0, 95.0, d );
-        vCol = aColor * uPgNight * uPgWet * near * 0.95;
+        vCol = aColor * uPgNight * uPgWet * near * 0.95 * aStrength;
         vLen = len;
         #include <fog_vertex>
       }`,

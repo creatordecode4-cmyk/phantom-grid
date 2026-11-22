@@ -556,7 +556,8 @@ export function buildSunk(ctx) {
   // small: 0.02 to 0.04 - more than that and the market at night looks like a lit stage.)
   function addLamp(x, y, z, type, size, h, pool, power = 1) {
     // (pool: a number = how strong its light is on the map of lamp light; true = like a street lamp)
-    ctx.lamps.push({ x, y, z, type, size, h, noPool: !pool, pool: typeof pool === 'number' ? pool : 1, power, noLight: power <= 0 });
+    // (streak: the long shine on wet ground below it - not over the canals, the water mirrors the lamps itself)
+    ctx.lamps.push({ x, y, z, type, size, h, noPool: !pool, pool: typeof pool === 'number' ? pool : 1, power, noLight: power <= 0, streak: inWater(x, z) ? 0 : 1 });
   }
   {
     let k = 0;
