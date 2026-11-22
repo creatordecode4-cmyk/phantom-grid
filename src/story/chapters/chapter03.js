@@ -549,8 +549,8 @@ export default {
           do: 'cutscene', keep: true,
           shots: [
             // the loading door, the ceiling down inside, the screens dark. Grey light.
-            // (over Lena's shoulder: she sits on the side of the boat and looks at what is left of her home)
-            { seconds: 7, cam: { from: [702.2, 1.55, -139.3], to: [702.6, 1.7, -139.0], look: [705.6, 1.3, -124], fov: 40 },
+            // (from the water behind the boat: Lena small at the left, her back to us, the broken door ahead)
+            { seconds: 7, cam: { from: [699.6, 3.1, -142.8], to: [699.9, 3.2, -142.2], look: [705.2, 0.9, -128.2], fov: 42 },
               do: [{ do: 'vehicleSet', id: 'tideBoat', place: [706, -1.5, -139.5], face: 270, stop: true }, { do: 'music', calm: 0.6 }] },
             // Lena in the boat, soaked. She does not look at him.
             { seconds: 8.6, cam: { from: { of: 'tideBoat', p: [-3.8, 2.75, -1.2] }, look: { of: 'lena', p: [0, 0.6, 0.12] }, fov: 32 },
