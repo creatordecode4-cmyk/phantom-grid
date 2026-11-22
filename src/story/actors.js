@@ -82,7 +82,8 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     const geo = player.rig.mesh.geometry;
     if (!geo.boundingBox) geo.computeBoundingBox();
     const bb = geo.boundingBox;
-    const C = (c, d) => new THREE.Color(...(c || d));
+    // (the colors are written as they look on screen: turned into the light values the shader works with)
+    const C = (c, d) => new THREE.Color().setRGB(...(c || d), THREE.SRGBColorSpace);
     const u = {
       uMinY: { value: bb.min.y }, uSpanY: { value: Math.max(0.01, bb.max.y - bb.min.y) },
       uPants: { value: C(o.pants, [0.08, 0.08, 0.09]) }, uCoat: { value: C(o.coat, [0.18, 0.16, 0.13]) }, uPatch: { value: C(o.patch, [0.1, 0.16, 0.2]) },
