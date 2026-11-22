@@ -1031,7 +1031,9 @@ It reads Chapter 2's `limiter_off`, `van_color` and `van_plate` (the van keeps i
   plants in tubs, rusty balconies with laundry, boarded windows, car tires as fenders, rusty ladders,
   small boats tied up, boats people live on (with a little cabin and a lit window).
 - **Bridges:** rusty steel truss bridges and sagging rope walkways between the roofs; strings of
-  lanterns over the water (warm, some teal) - each is a light at night.
+  lanterns over the water (warm, some teal). Small lamps are small lights: every third lantern and
+  stall bulb is a weak real light at night, their halos in the mist and their shine on wet boards are
+  smaller and fainter than a street lamp's (a market full of them looked like a lit stage).
 - **Collision:** every building is a box; pontoons, ramps and moored boats only stop boats; people can
   only walk where there is a deck (pontoons, gangways, ramps, stairs, the roofs that are meant to be
   walked on, Lena's floor). Where two decks lie over each other (a ramp over a pontoon) the one
