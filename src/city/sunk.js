@@ -551,7 +551,9 @@ export function buildSunk(ctx) {
   // =========================================================================
   // 7. LANTERNS over the water
   // =========================================================================
-  // a lamp: its glow, its pool of light on the map (pool), and a real light near the player (power; 0 = none)
+  // a lamp: its glow, its pool of light on the map (pool), and a real light near the player (power; 0 = none).
+  // (power 1 = a street light of the city, about 250 at the bulb. The lanterns, bulbs and stalls of The Sunk are
+  // small: 0.02 to 0.04 - more than that and the market at night looks like a lit stage.)
   function addLamp(x, y, z, type, size, h, pool, power = 1) {
     // (pool: a number = how strong its light is on the map of lamp light; true = like a street lamp)
     ctx.lamps.push({ x, y, z, type, size, h, noPool: !pool, pool: typeof pool === 'number' ? pool : 1, power, noLight: power <= 0 });
@@ -573,7 +575,7 @@ export function buildSunk(ctx) {
         pbox(q[0] - 0.13, ly + 0.17, q[2] - 0.13, q[0] + 0.13, ly + 0.22, q[2] + 0.13);
         paint(warm ? [0.9, 0.42, 0.12] : [0.15, 0.6, 0.5], 0.6, 0, 0.9);
         ps.add(cylLow, q[0], ly, q[2], null, [0.12, 0.34, 0.12]);
-        addLamp(q[0], ly, q[2], warm ? 0 : 1, 0.6, ly - LEVEL, i % 2 === 0 ? 0.45 : false, i % 3 === 0 ? 0.18 : 0);
+        addLamp(q[0], ly, q[2], warm ? 0 : 1, 0.6, ly - LEVEL, i % 2 === 0 ? 0.25 : false, i % 3 === 0 ? 0.04 : 0);
         lanternList.push({ x: q[0], z: q[2] });
       }
     }
@@ -614,7 +616,7 @@ export function buildSunk(ctx) {
       const lx = (x0 + x1) / 2, lz = (z0 + z1) / 2;
       paint([1, 0.6, 0.25], 0.5, 0, 0.85);
       ps.add(cylLow, lx, y + 1.95, lz, null, [0.06, 0.12, 0.06]);
-      addLamp(lx, y + 1.95, lz, 0, 0.5, 1.95, 0.3, i % 3 === 0 ? 0.12 : 0);
+      addLamp(lx, y + 1.95, lz, 0, 0.5, 1.95, 0.2, i % 3 === 0 ? 0.02 : 0);
       spots.push({ ...R(Math.min(x0, x1), Math.max(x0, x1), Math.min(z0, z1), Math.max(z0, z1)), top: y + 2.1, kind: 'tarp' });
     }
     // on the big platform (the counter faces the water, to the east = smaller x)
@@ -640,7 +642,7 @@ export function buildSunk(ctx) {
     drum(651, y, -268, 0.32, 0.85);
     paint([1, 0.42, 0.1], 0.5, 0, 0.75);
     pbox(650.7, y + 0.6, -268.33, 651.3, y + 0.75, -268.31, 's');
-    addLamp(651, y + 1.0, -268, 0, 0.45, 1.0, 0.35, 0.15);
+    addLamp(651, y + 1.0, -268, 0, 0.45, 1.0, 0.2, 0.02);
     solid(R(650.6, 651.4, -268.4, -267.6), y + 0.9);
     paint(lin([0.22, 0.2, 0.15]), 0.95);
     for (let z = -300; z < -253; z += 9) { beam([648.4, y, z], [648.4, y + 2.2, z], 0.07, 0.07); beam([648.4, y, z + 3], [648.4, y + 2.2, z + 3], 0.07, 0.07); beam([648.4, y + 2.15, z], [648.4, y + 2.15, z + 3], 0.04, 0.04); pbox(648.38, y + 0.6, z + 0.1, 648.42, y + 2.1, z + 2.9, 'ew'); }
@@ -854,7 +856,7 @@ export function buildSunk(ctx) {
     for (let z = b.minZ + 4; z < b.maxZ; z += 9) {
       paint([0.5, 0.85, 0.8], 0.4, 0, 1.25);
       pbox(tx0 + 3.2, top - 0.06, z - 0.5, tx1 - 3.2, top - 0.01, z + 0.5, 'b');
-      addLamp((tx0 + tx1) / 2, top - 0.1, z, 1, 0.45, top - LEVEL, 0.4, 0.2);
+      addLamp((tx0 + tx1) / 2, top - 0.1, z, 1, 0.45, top - LEVEL, 0.3, 0.025);
     }
     // the old grate, half pulled up at the south end (the boat passes under it)
     paint(COL.rust, 0.7, 0.7);
