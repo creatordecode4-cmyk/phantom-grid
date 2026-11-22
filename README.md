@@ -1305,4 +1305,11 @@ give a geometry that can go into any room (see `bed()` in `src/interiors/furnitu
 - THE STREET BIKE drives with the car physics: the lean is only for the eye. It cannot do wheelies or
   stoppies and does not fall over in a crash; it is not used by traffic or the story (yet). The rider's
   pose is made by code and was only checked in pictures from a software renderer.
+- CHAPTER 3 / THE SUNK: nobody can swim - on foot you can only go where there is a deck, a roof that is
+  meant to be walked on, or a stair. The rooms of the old buildings are not inside (only Lena's flat is).
+  The Guard boats follow the canal map, so they can be slow in the narrow market cut. A passenger in a boat
+  always sits on the right side deck near the back, legs over the side. The Tidewalkers are copies of one
+  body with a shader outfit (clothes do not swing). On foot in The Sunk the GPS arrow points straight at the
+  goal (only boats get a line along the canals). The water, the mist and the stealth were tuned in a software
+  renderer only.
 - Shop names, signs and adverts are invented. No real brands are used.

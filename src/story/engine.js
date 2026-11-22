@@ -318,7 +318,8 @@ export function createStory(G) {
     if (held === id) { player.hold(null); held = false; player.setPose('idle'); }
     if (o.holder.parent) o.holder.parent.remove(o.holder);
     // (pictures are shared between props and stay; shapes and materials are freed)
-    o.inner.traverse((m) => { if (m.isMesh) { m.geometry.dispose(); m.material.dispose(); } });
+    // (a mesh can have a list of materials: one for each side of a box)
+    o.inner.traverse((m) => { if (m.isMesh) { m.geometry.dispose(); for (const q of Array.isArray(m.material) ? m.material : [m.material]) if (q && q.dispose) q.dispose(); } });
   }
   // a parcel in the player's arms. what: { kind, size } or null
   function carry(what) {

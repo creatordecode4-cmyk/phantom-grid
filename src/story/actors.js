@@ -193,7 +193,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
   function walkTo(a, x, z, speed = 1.4, face = null) { a.walk = { x, z, speed, face }; }
   function place(a, x, y, z, heading = null) { a.x = x; a.y = y; a.z = z; if (heading !== null) a.heading = heading; a.walk = null; if (a.anim) a.anim.reset(); }
   // sit in a car: seat = 'passenger'. null = get out (the story places the actor afterwards)
-  function sitIn(a, vehicle) { a.seat = vehicle; if (!vehicle && a.seated) { a.root.add(a.rig.root); a.rig.root.position.set(0, 0, 0); a.rig.root.scale.setScalar(1); a.seated = null; setPose(a, 'idle', 0); } }
+  function sitIn(a, vehicle) { a.seat = vehicle; if (!vehicle && a.seated) { a.root.add(a.rig.root); a.rig.root.position.set(0, 0, 0); a.rig.root.rotation.set(0, 0, 0); a.rig.root.scale.setScalar(1); a.anim.floorBelow = a.floorBelow; a.seated = null; setPose(a, 'idle', 0); } }
 
   // ------------------------------------------------------------------ every frame
   const tmp = new THREE.Vector3();
@@ -207,9 +207,13 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       if (a.seat) {
         const s = vehicles.passengerSeat(a.seat);
         if (!s || !a.anim) { a.root.visible = false; continue; }
-        if (a.seated !== s.node) { a.seated = s.node; s.node.add(a.rig.root); a.anim.setPose('sit', 0); }
-        a.rig.root.position.set(s.x, s.y, s.z); a.rig.root.scale.setScalar(s.scale * a.scale);
-        a.x = a.seat.x; a.z = a.seat.z; a.y = a.seat.y;
+        // (a car seat: 'sit', leaning back. A boat: 'sitEdge' on the edge of the deck, turned to the water)
+        if (a.seated !== s.node) { a.seated = s.node; s.node.add(a.rig.root); a.anim.setPose(s.pose || 'sit', 0); a.anim.floorBelow = s.floorBelow || a.floorBelow; }
+        else if (s.pose && a.anim.pose !== s.pose) a.anim.setPose(s.pose, 0.3);      // (a boat seat keeps its own pose)
+        a.rig.root.position.set(s.x, s.y, s.z); a.rig.root.rotation.set(0, s.yaw || 0, 0); a.rig.root.scale.setScalar(s.scale * a.scale);
+        // where the body really is (film cameras and markers look at it): the seat in the world, and the way it faces
+        a.rig.root.getWorldPosition(tmp); a.x = tmp.x; a.y = tmp.y; a.z = tmp.z;
+        a.heading = a.seat.heading + (s.yaw || 0);
         a.anim.talk = a.talking;
         a.anim.look = a.look && a.look !== 'auto' && typeof a.look === 'object' && 'yaw' in a.look ? a.look : null;
         a.anim.update(dt, {});

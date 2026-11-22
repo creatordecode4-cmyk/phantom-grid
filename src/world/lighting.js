@@ -537,7 +537,9 @@ export function createLighting(scene, renderer, city, materials) {
     let fogC = fogHDR, fogK = 1;
     if (zone && (zone.k > 0.001 || zone.tunnel > 0.001)) {
       const k = zone.k, tn = zone.tunnel;
-      const mistC = [fogHDR[0] * 0.92 + 0.004, fogHDR[1] * 0.98 + 0.006, fogHDR[2] * 0.96 + 0.006];
+      // (the old quarter has few lights: at night its mist is darker than the glowing haze over the city)
+      const dim = lerp(0.92, 0.42, night);
+      const mistC = [fogHDR[0] * dim * 0.97 + 0.003, fogHDR[1] * dim + 0.005, fogHDR[2] * dim * 0.99 + 0.005];
       const deep = [0.004 + 0.01 * day, 0.018 + 0.03 * day, 0.02 + 0.032 * day];
       fogC = [0, 1, 2].map((i) => lerp(lerp(fogHDR[i], mistC[i], k), deep[i], tn));
       fogK = lerp(1, 2.3, k) * lerp(1, 9, tn);

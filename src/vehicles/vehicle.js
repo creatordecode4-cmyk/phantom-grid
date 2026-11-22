@@ -30,7 +30,10 @@ import { clamp, damp } from '../utils/math.js';
 const KMH = 3.6;
 const STEP = 1 / 60;                   // the physics always runs in steps of this length
 const ENTER_RANGE = 3.3;               // how close the player has to stand to get in
-const BOAT_SEAT = [0, 1.05, -2.1];     // where a passenger sits in the patrol boat (on its deck, at the back)
+// where a passenger sits in the patrol boat: on the flat side deck on the RIGHT, near the back, facing out over
+// the water, legs over the side (measured from the model: the deck is 1.81 m above the keel, from 1.05 to 1.72 m
+// out from the middle; the cabin is in the middle)
+const BOAT_SEAT = { x: -1.42, y: 1.81, z: -3.0, yaw: -Math.PI / 2, floorBelow: 0.5 };
 
 // Soft light on the road in front of the car (white = light, see-through elsewhere).
 export function makeBeamTexture() {
@@ -493,8 +496,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // where the driver stands next to the vehicle (left side first)
   function doorSpot(v) {
     if (v.role === 'boat') {
-      // a dock of The Sunk next to the boat, else the beach
-      const d = SK && SK.dockNear(v.x, v.z, 6);
+      // a dock of The Sunk next to the boat (the story may take him out anywhere: then the nearest one), else the beach
+      const d = SK && SK.dockNear(v.x, v.z, SK.inZone(v.x, v.z, 30) ? 400 : 6);
       if (d) return { x: d.x, z: d.z };
       return { x: clamp(v.x, B.minX + 1, B.maxX - 1), z: B.minZ + 0.6 };     // step onto the beach
     }
@@ -1064,8 +1067,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     set enterFilter(fn) { enterFilter = fn; },
     // where the passenger sits (null until the inside of the car exists)
     passengerSeat(v) {
-      // a boat: somebody sits on the deck at the back (Lena in Chapter 3)
-      if (v && v.role === 'boat') return { node: v.tilt, x: -0.55, y: BOAT_SEAT[1], z: BOAT_SEAT[2], scale: 1, boat: true };
+      // a boat: somebody sits on the edge of the deck, legs over the side (Lena in Chapter 3)
+      if (v && v.role === 'boat') return { node: v.tilt, x: BOAT_SEAT.x, y: BOAT_SEAT.y, z: BOAT_SEAT.z, yaw: BOAT_SEAT.yaw, pose: 'sitEdge', floorBelow: BOAT_SEAT.floorBelow, scale: 1, boat: true };
       if (!v || !v.isCar || !v.driver) return null;
       const s = seatOf(v.info);
       return { node: v.tilt, x: -s.x, y: s.y + 0.02, z: s.z - 0.05, scale: clamp((v.info.roof - 0.1 - (s.y + 0.12)) / 0.93, 0.62, 1) };

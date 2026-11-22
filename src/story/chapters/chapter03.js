@@ -39,6 +39,10 @@ const LENA = { boat: [706, -139.5], dock: [706, PON, -134], door: [706, -130.6],
   lantern: [700.8, 1.2, -126.3], chair: [705, 1.2, -113.5], reader: [702.2, 2.0, -110.8], screen: [705.2, 2.0, -110.9], wrecked: [705, 1.2, -118],
   roof: [703, -117], w1: [725, -120], w2: [736, -122], escTop: [740, -132.8], escape: [737, -137.4], tideBoat: [737, -144] };
 const TUNNEL = { south: [623, -396], north: [623, -326], basin: [623, -300] };
+// the cameras at Wick's table: on him (from his right front), on Nate (over Wick's shoulder), both of them
+const WICK_CAM = { from: [653.55, 0.85, -288.05], look: [655.2, 0.58, -287.0], fov: 32 };
+const NATE_CAM = { from: [655.65, 0.78, -286.45], look: [652.6, 0.98, -285.4], fov: 30 };
+const TWO_SHOT = { from: [653.0, 1.7, -290.4], look: [654.1, 0.45, -286.3], fov: 40 };
 const GARAGE_IN = { garage: [-4.5, 0, 2.3] };              // the van inside Mace's garage (as in Chapter 2)
 
 // ---- the van (as in Chapter 2: its new color and plate stay; the limiter stays off when it was switched off) ----
@@ -170,7 +174,7 @@ export default {
         { do: 'checkpoint', id: 1, setup: [{ do: 'player', at: { garage: [-3.2, 0, 2.4] }, face: 180 }] },
         // ---- the drive to Rustwater ----
         { do: 'say', who: 'wren', text: 'c3.wren.route' },
-        { do: 'driveTo', text: 'c3.obj.dock', at: RUST.van, radius: 8, stop: true },
+        { do: 'driveTo', text: 'c3.obj.dock', vehicle: 'van', at: RUST.van, radius: 8, stop: true },
         // A QUIET MOMENT: Theo's tape. He takes it out of the deck, looks at it, and puts it away.
         {
           do: 'cutscene',
@@ -215,10 +219,12 @@ export default {
         {
           do: 'cutscene',
           shots: [
-            { seconds: 4.8, cam: { from: [652.4, 1.35, -289.2], look: [655.2, 0.55, -287], fov: 34 },
+            { seconds: 4.8, cam: TWO_SHOT,
               do: [{ do: 'player', stage: { at: MARKET.wickStand, face: 270, pose: 'idle' }, mood: 'stern' }, { do: 'actorSet', id: 'wick', look: 'player' }],
-              lines: [{ at: 0.6, who: 'wick', text: 'c3.wick.1', seconds: 1.8, mood: 'stern' }, { at: 2.6, who: 'nate', text: 'c3.nate.static', seconds: 1.8 }] },
-            { seconds: 9.2, cam: { from: [654.3, 1.0, -284.7], look: [655.4, 0.85, -287.2], fov: 30 },
+              lines: [{ at: 0.6, who: 'wick', text: 'c3.wick.1', seconds: 2.2, mood: 'stern' }] },
+            { seconds: 3.4, cam: NATE_CAM,
+              lines: [{ at: 0.2, who: 'nate', text: 'c3.nate.static', seconds: 1.8, mood: 'stern' }] },
+            { seconds: 9.2, cam: WICK_CAM,
               lines: [{ at: 0.4, who: 'wick', text: 'c3.wick.2', seconds: 2.4 }, { at: 3.0, who: 'wick', text: 'c3.wick.test', seconds: 4.2 }, { at: 7.4, who: 'wick', text: 'c3.wick.test2', seconds: 1.8 }] },
           ],
         },
@@ -248,7 +254,7 @@ export default {
         {
           do: 'cutscene', keep: true,
           shots: [
-            { seconds: 4.2, cam: { from: [654.3, 1.0, -284.7], look: [655.4, 0.85, -287.2], fov: 30 },
+            { seconds: 4.2, cam: WICK_CAM,
               do: [{ do: 'player', stage: { at: MARKET.wickStand, face: 270, pose: 'idle' } }],
               lines: [{ at: 0.4, who: 'wick', text: 'c3.wick.test', seconds: 3.6, mood: 'stern' }] },
           ],
@@ -261,7 +267,7 @@ export default {
         {
           do: 'cutscene',
           shots: [
-            { seconds: 4.6, cam: { from: [652.4, 1.35, -289.2], look: [655.2, 0.75, -287], fov: 34 },
+            { seconds: 4.6, cam: TWO_SHOT,
               lines: [
                 { at: 0.3, if: { flag: 'drone_distract', is: false }, who: 'wick', text: 'c3.wick.quiet', seconds: 3.8 },
                 { at: 0.3, if: { flag: 'drone_distract' }, who: 'wick', text: 'c3.wick.flares', seconds: 4.0 },
@@ -300,14 +306,14 @@ export default {
         {
           do: 'cutscene',
           shots: [
-            { seconds: 5.6, cam: { from: [652.4, 1.35, -289.2], look: [655.2, 0.75, -287], fov: 34 },
+            { seconds: 5.6, cam: TWO_SHOT,
               do: [{ do: 'player', stage: { at: MARKET.wickStand, face: 270, pose: 'idle' } }, { do: 'prop', id: 'droneOnTable', kind: 'surveyDrone', at: [653.8, 0.02, -287.2], face: 120 }],
               lines: [
                 { at: 0.5, if: { flag: 'test_chased' }, who: 'wick', text: 'c3.wick.end_chased', seconds: 3.6, mood: 'angry' },
                 { at: 0.5, if: { all: [{ flag: 'test_chased', is: false }, { flag: 'drone_distract' }] }, who: 'wick', text: 'c3.wick.end_distract', seconds: 4.0, mood: 'smile' },
                 { at: 0.5, if: { all: [{ flag: 'test_chased', is: false }, { flag: 'drone_distract', is: false }] }, who: 'wick', text: 'c3.wick.end_quiet', seconds: 3.6, mood: 'neutral' },
               ] },
-            { seconds: 5.2, cam: { from: [654.3, 1.0, -284.7], look: [655.4, 0.85, -287.2], fov: 30 },
+            { seconds: 5.2, cam: WICK_CAM,
               lines: [{ at: 0.3, who: 'wick', text: 'c3.wick.static', seconds: 4.4, mood: 'neutral' }] },
           ],
         },
@@ -508,7 +514,7 @@ export default {
           do: 'cutscene',
           shots: [
             // out into the quiet of the market basin. The lanterns. Nobody says a word.
-            { seconds: 6.4, fade: 'out', fadeSeconds: 2.4, cam: { from: [616, 2.0, -296], look: { of: 'tideBoat', p: [0, 1, 0] }, fov: 40 },
+            { seconds: 6.4, fade: 'out', fadeSeconds: 2.4, cam: { from: [616, 2.0, -296], look: { of: 'tideBoat', p: [0, 2.0, 0] }, fov: 40 },
               do: [{ do: 'music', tension: 0 }, { do: 'sound', name: 'clunk' }],
               lines: [{ at: 1.2, who: 'lena', text: 'c3.lena.wick', seconds: 3.0, mood: 'tired' }] },
           ],
@@ -543,10 +549,11 @@ export default {
           do: 'cutscene', keep: true,
           shots: [
             // the loading door, the ceiling down inside, the screens dark. Grey light.
-            { seconds: 7, cam: { from: [707, 0.4, -141.5], to: [706.6, 0.6, -140.6], look: [705.6, 1.8, -120], fov: 40 },
-              do: [{ do: 'vehicleSet', id: 'tideBoat', stop: true }, { do: 'music', calm: 0.6 }] },
+            // (over Lena's shoulder: she sits on the side of the boat and looks at what is left of her home)
+            { seconds: 7, cam: { from: [702.2, 1.55, -139.3], to: [702.6, 1.7, -139.0], look: [705.6, 1.3, -124], fov: 40 },
+              do: [{ do: 'vehicleSet', id: 'tideBoat', place: [706, -1.5, -139.5], face: 270, stop: true }, { do: 'music', calm: 0.6 }] },
             // Lena in the boat, soaked. She does not look at him.
-            { seconds: 8.6, cam: { from: { of: 'tideBoat', p: [1.6, 1.9, -0.6] }, look: { of: 'lena', p: [0, 0.75, 0] }, fov: 34 },
+            { seconds: 8.6, cam: { from: { of: 'tideBoat', p: [-3.8, 2.75, -1.2] }, look: { of: 'lena', p: [0, 0.6, 0.12] }, fov: 32 },
               lines: [{ at: 1.2, who: 'lena', text: 'c3.lena.cost', seconds: 2.4, mood: 'sad' }, { at: 5.0, who: 'lena', text: 'c3.lena.pay', seconds: 2.6, mood: 'stern' }] },
           ],
         },
@@ -555,9 +562,9 @@ export default {
         {
           do: 'cutscene',
           shots: [
-            { if: { flag: 'chip_to_lena' }, seconds: 5.6, cam: { from: { of: 'tideBoat', p: [-1.4, 1.8, 0.8] }, look: { of: 'lena', p: [0, 0.8, 0] }, fov: 32 },
+            { if: { flag: 'chip_to_lena' }, seconds: 5.6, cam: { from: { of: 'tideBoat', p: [-1.25, 3.3, -1.3] }, look: { of: 'lena', p: [0, 0.55, 0.15] }, fov: 32 },
               lines: [{ at: 0.4, who: 'nate', text: 'c3.nate.give', seconds: 2.4, mood: 'stern' }, { at: 3.3, who: 'lena', text: 'c3.lena.give', seconds: 1.8, mood: 'neutral' }] },
-            { if: { flag: 'chip_to_lena', is: false }, seconds: 5.8, cam: { from: { of: 'tideBoat', p: [-1.4, 1.8, 0.8] }, look: { of: 'lena', p: [0, 0.8, 0] }, fov: 32 },
+            { if: { flag: 'chip_to_lena', is: false }, seconds: 5.8, cam: { from: { of: 'tideBoat', p: [-1.25, 3.3, -1.3] }, look: { of: 'lena', p: [0, 0.55, 0.15] }, fov: 32 },
               lines: [{ at: 0.4, who: 'nate', text: 'c3.nate.keep', seconds: 2.4, mood: 'stern' }, { at: 3.3, who: 'lena', text: 'c3.lena.keep', seconds: 2.2, mood: 'smirk' }] },
           ],
         },
@@ -577,23 +584,24 @@ export default {
         { ...GUARD, stars: 0, cars: 0, drones: 0, boats: 0, stealth: false, sentries: [], patrol: null },
         { do: 'police', stars: 0 },
         { do: 'sunk', lena: 'wrecked' },
-        TIDE_BOAT(LENA.boat, 90, { replace: true }),
-        { do: 'actor', id: 'lena', replace: true, model: 'Lena_Marchetti', name: 'name.lena', at: [706, -139.5], face: 0, pose: 'sit', fixed: true, mood: 'tired', seat: 'tideBoat', look: { yaw: 0, pitch: 0.7 } },
+        TIDE_BOAT(LENA.boat, 270, { replace: true }),
+        { do: 'actor', id: 'lena', replace: true, model: 'Lena_Marchetti', name: 'name.lena', at: [706, -139.5], face: 0, pose: 'sit', fixed: true, mood: 'tired', seat: 'tideBoat', look: { yaw: 0, pitch: 0.5 } },
         BADGE,
         { do: 'prop', id: 'tablet', kind: 'tablet', on: 'lena', bone: 'hand_R', p: [0.02, 0.05, 0.08], rot: [0.5, 0, 0] },
         { do: 'player', hidden: true },
       ],
       steps: [
-        { do: 'drive', id: 'tideBoat', mode: 'boat', path: [[720, -143], [731, -150], [731, -260], [731, -400]], speed: 9, event: 'gone' },
+        { do: 'drive', id: 'tideBoat', mode: 'boat', path: [[720, -141], [731, -150], [731, -260], [731, -400]], speed: 12, event: 'gone' },
         {
           do: 'cutscene', skippable: true,
           shots: [
             // the glow of the tablet on her face; the old badge swinging on its cord
-            { seconds: 7, fade: 'in', fadeSeconds: 2, cam: { from: { of: 'tideBoat', p: [0.9, 1.75, -1.0] }, look: { of: 'lena', p: [0, 0.65, 0.1] }, fov: 30 },
+            { seconds: 7, fade: 'in', fadeSeconds: 2, cam: { from: { of: 'tideBoat', p: [-3.1, 2.3, -2.2] }, look: { of: 'lena', p: [0, 0.45, 0.25] }, fov: 30 },
               do: [{ do: 'music', calm: 0.9 }, { do: 'fill', power: 0.5 }] },
-            { seconds: 6.4, cam: { from: { of: 'tideBoat', p: [0.55, 1.9, -1.6] }, look: { of: 'lena', p: [0, 0.45, 0.3] }, fov: 24 } },
+            { seconds: 6.4, cam: { from: { of: 'tideBoat', p: [-2.55, 2.2, -2.75] }, look: { of: 'lena', p: [0, 0.38, 0.22] }, fov: 24 } },
             // and the boat goes away down the canal, into the mist
-            { seconds: 14, fade: 'out', fadeSeconds: 5, cam: { from: [729.5, 1.3, -168], to: [729.6, 1.6, -170], look: { of: 'tideBoat', p: [0, 0.8, 0] }, fov: 38 } },
+            // (from the corner of the canal, behind the boat: it is 30 m away when this starts, 75 m at the end)
+            { seconds: 14, fade: 'out', fadeSeconds: 5, cam: { from: [731.8, 1.25, -137.5], to: [731.6, 1.45, -139.5], look: { of: 'tideBoat', p: [0, 2.0, 0] }, fov: 30 } },
           ],
         },
         { do: 'wait', seconds: 1.2 },

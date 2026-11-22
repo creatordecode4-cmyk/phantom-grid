@@ -118,7 +118,7 @@ function makeLampLightMap(ctx) {
       const d = t * R;
       // light on the ground from a lamp at height h (inverse square + angle)
       let v = Math.pow(1 + (d * d) / (h * h), -1.5) * (1 - t * t);
-      v = Math.round(v * 150);
+      v = Math.round(v * 150 * (lamp.pool ?? 1));        // (a small lamp - a lantern, a bare bulb - lights less of the ground)
       grad.addColorStop(t, lamp.type === 0 ? `rgb(${v},0,0)` : `rgb(0,${Math.round(v * 0.8)},0)`);
     }
     g.fillStyle = grad;

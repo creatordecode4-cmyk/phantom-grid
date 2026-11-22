@@ -236,11 +236,28 @@ export const SPANS = [
 ];
 
 // strings of lanterns over the water: [ax, az, bx, bz, y]
+// (the lines below are drawn by hand; more lines across the ring are added further down)
 export const LANTERN_LINES = [
   [590, -248, 590, -320, 4.2], [656, -248, 656, -320, 4.2], [600, -262, 646, -262, 5.0], [600, -306, 646, -306, 5.0],
   [480, -192, 516, -192, 3.6], [700, -133, 718, -133, 3.8], [622, -160, 622, -238, 4.6],
   [534, -180, 534, -230, 4.0], [731, -260, 731, -300, 4.4],
 ];
+
+// more lanterns: a string across the ring canals every 40-50 m, hung between two facades, a little below
+// the lower of the two roofs (never lower than 5 m over the street: the boats' antennas pass under them)
+{
+  const top = (x, z) => { const b = BUILDINGS.find((q) => x >= q.minX && x <= q.maxX && z >= q.minZ && z <= q.maxZ); return b ? b.top : null; };
+  const across = [];
+  for (let x = 548; x < 716; x += 46) across.push([x, -150.6, x, -131.4], [x + 9, -418.6, x + 9, -399.4]);
+  for (let z = -372; z < -170; z += 48) across.push([519.4, z, 538.6, z], [721.4, z + 14, 740.6, z + 14]);
+  across.push([611.4, -432, 630.6, -432]);
+  for (const [ax, az, bx, bz] of across) {
+    const ta = top(ax, az), tb = top(bx, bz);
+    if (ta === null || tb === null) continue;
+    const y = Math.min(ta, tb) - 0.7;
+    if (y >= 5) LANTERN_LINES.push([ax, az, bx, bz, Math.min(y, 7.5)]);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // helpers for the rest of the game
