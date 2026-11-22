@@ -1161,9 +1161,11 @@ const PG_FRAGMENT_NORMAL = /* glsl */ `
 		// little waves break along the walls: a thin line of foam
 		float n = texture2D( uPgNoise, xz * vec2( 0.11, 0.13 ) + t * vec2( 0.01, 0.02 ) ).r;
 		pgFoam = max( pgFoam, smoothstep( 0.6, 0.97, pgMask.r ) * ( 0.2 + 0.8 * n ) * 0.65 );
-		// algae: a dark film near the walls by day; at night it glows green and teal (more where the water is stirred)
+		// algae: a dark film near the walls by day; at night it glows green and teal (more where the water is stirred).
+		// Patches (the mask's g) and a thin film along every wall (r), both broken up by slowly moving noise.
 		float n2 = texture2D( uPgNoise, xz * 0.045 - t * vec2( 0.003, 0.002 ) ).r;
-		float algae = pgMask.g * smoothstep( 0.3, 0.72, n2 + pgMask.g * 0.35 );
+		float pgAlg = min( 1.0, pgMask.g + 0.45 * smoothstep( 0.25, 0.85, pgMask.r ) );
+		float algae = pgAlg * smoothstep( 0.3, 0.72, n2 + pgAlg * 0.35 );
 		diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.025, 0.05, 0.03 ), algae * 0.55 );
 		diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.72, 0.78, 0.76 ), pgFoam * 0.8 );
 		diffuseColor.rgb *= 1.0 - 0.55 * pgMask.b;

@@ -1137,11 +1137,11 @@ function createSunkRuntime(ctx, { lenaRoom, spots, lanternList }) {
     const rng = new RNG(19);
     // algae: patches near the walls, a few out in the water
     const alg = new Float32Array(MASK * MASK);
-    for (let k = 0; k < 1500; k++) {
+    for (let k = 0; k < 4500; k++) {
       const i = rng.int(0, MASK - 1), j = rng.int(0, MASK - 1);
       const n = near[j * MASK + i];
-      if (land[j * MASK + i] > 0.5 || (n < 0.08 && !rng.chance(0.08))) continue;
-      const r = rng.range(2, 7), s = rng.range(0.5, 1);
+      if (land[j * MASK + i] > 0.5 || (n < 0.08 && !rng.chance(0.1))) continue;
+      const r = rng.range(3, 9), s = rng.range(0.55, 1);
       for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
         const ii = i + di, jj = j + dj;
         if (ii < 0 || jj < 0 || ii >= MASK || jj >= MASK) continue;
