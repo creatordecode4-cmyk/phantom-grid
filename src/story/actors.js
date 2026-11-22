@@ -204,7 +204,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
   function setMood(a, mood, seconds = 0.45) { a.mood = mood; if (a.anim) a.anim.setFace(mood, seconds); }
   // walk to a place (speed in m/s), then turn to "face" (radians) if given
   function walkTo(a, x, z, speed = 1.4, face = null) { a.walk = { x, z, speed, face }; }
-  function place(a, x, y, z, heading = null) { a.x = x; a.y = y; a.z = z; if (heading !== null) a.heading = heading; a.walk = null; if (a.anim) a.anim.reset(); }
+  function place(a, x, y, z, heading = null) { a.x = x; a.y = y; a.z = z; if (heading !== null) a.heading = heading; a.walk = null; a.dryY = undefined; a.wet = 0; a.swim = false; if (a.anim) a.anim.reset(); }
   // sit in a car: seat = 'passenger'. null = get out (the story places the actor afterwards)
   function sitIn(a, vehicle) { a.seat = vehicle; if (!vehicle && a.seated) { a.root.add(a.rig.root); a.rig.root.position.set(0, 0, 0); a.rig.root.rotation.set(0, 0, 0); a.rig.root.scale.setScalar(1); a.anim.floorBelow = a.floorBelow; a.seated = null; setPose(a, 'idle', 0); } }
 
@@ -255,10 +255,14 @@ export function createActors({ scene, city, materials, player, vehicles }) {
         walkTo(a, a.x + (ax / d) * 0.6 - (az / d) * 0.35, a.z + (az / d) * 0.6 + (ax / d) * 0.35, 1.2, a.heading);
       }
       a.speed = speed;
-      // ---- in deep water (no deck under him, nor a floor at his height): he swims, the root at the surface ----
+      // ---- deep water under him (no deck, nor a floor at his height): he swims, the root at the surface ----
+      // (who is put into the water swims at once; walking, a crack of a few centimeters between two decks is
+      //  stepped over: only after a moment over the water does he go in)
       const w = city.water ? city.water.at(a.x, a.z) : null;
-      a.swim = !!w && w.surface - w.bottom >= SWIM && a.y <= w.surface + 0.05;
-      if (a.swim) a.y = w.surface;
+      const deep = !!w && w.surface - w.bottom >= SWIM && a.y <= w.surface + 0.05;
+      a.wet = deep ? (a.wet || 0) + step : 0;
+      if (deep && (a.swim || a.wet > 0.3 || a.dryY === undefined)) { a.swim = true; a.y = w.surface; }
+      else { a.swim = false; if (deep) a.y = a.dryY; else a.dryY = a.y; }
       a.root.position.set(a.x, a.y - (a.swim && !a.anim ? 1.25 : 0), a.z);      // (a plain figure: in the water up to the chest)
       a.root.rotation.y = a.heading;
       if (!a.anim) continue;

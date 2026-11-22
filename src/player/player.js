@@ -140,9 +140,22 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   // over each other (a ramp over a pontoon) the one nearest to the feet counts
   const sunk = city.sunk || null;
   const inSunk = (x, z) => !!sunk && sunk.inZone(x, z);
+  // (a crack of a few centimeters between two decks - the end of a stair and a pontoon - does not swallow
+  //  him: with decks on two sides of it, the deck next to it carries him. The outer edge of a deck - a deck on
+  //  one side only - still ends where it ends.)
+  const CRACK = [[0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]];
+  function deckAt(x, z, y) {
+    // (off the side of a stair onto the pontoon or the roof just under it: a drop of up to two meters lands
+    //  on that deck - not in the water under it)
+    const h = sunk.walk(x, z, y) ?? sunk.walk(x, z, y - 1.0);
+    if (h !== null) return h;
+    let found = null, sides = 0;
+    for (const [dx, dz] of CRACK) { const g = sunk.walk(x + dx, z + dz, y); if (g !== null) { sides++; if (found === null) found = g; } }
+    return sides >= 2 ? found : null;
+  }
   const groundAt = (x, z) => {
     if (room) return room.floor;
-    if (inSunk(x, z)) { const h = sunk.walk(x, z, pos.y); if (h !== null) return h; }
+    if (inSunk(x, z)) { const h = deckAt(x, z, pos.y); if (h !== null) return h; }
     return city.groundHeight(x, z);
   };
   const NO_CIRCLES = [];
@@ -161,7 +174,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     if (room || !water) return null;
     const w = water.at(x, z);
     if (!w) return null;
-    if (inSunk(x, z) && sunk.walk(x, z, y) !== null) return null;
+    if (inSunk(x, z) && deckAt(x, z, y) !== null) return null;
     return w;
   }
   // after he was put somewhere (or moved): is he swimming now?
@@ -250,7 +263,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     // The Sunk: no deck there = water or a drop. From a low deck he steps into the water; swimming, he goes on
     // in the water or climbs onto a deck that is low enough. Anything else (a roof edge, a quay wall): slide along it.
     if (!room && (inSunk(p.x, p.z) || inSunk(pos.x, pos.z))) {
-      const ok = (x, z) => !inSunk(x, z) || sunk.walk(x, z, pos.y) !== null ||
+      const ok = (x, z) => !inSunk(x, z) || deckAt(x, z, pos.y) !== null ||
         (!!water && water.at(x, z) !== null && (swimming || pos.y < water.level + DIVE));
       if (!ok(p.x, p.z)) {
         if (ok(p.x, pos.z)) p.z = pos.z;

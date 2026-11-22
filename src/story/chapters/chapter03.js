@@ -484,7 +484,8 @@ export default {
         {
           do: 'cutscene', skippable: false,
           shots: [
-            { seconds: 4.2, cam: { from: [721.6, 12.9, -129.4], to: [721.4, 12.85, -129.8], look: [712.5, 0.2, -133.6], fov: 34 },
+            // (seen from the fire escape, over the water: from the roofs Lena's house stands in the way)
+            { seconds: 4.2, cam: { from: [728.2, 6.1, -133.1], to: [727.8, 5.95, -133.15], look: [713.9, 0.35, -133.55], fov: 28 },
               do: [{ do: 'actorSet', id: 'girl', hidden: false }, { do: 'actorSet', id: 'harrow', at: [710.6, PON, -134.0], face: 270, pose: 'idle', look: { x: 716.6, y: 0.3, z: -133 } },
                 { do: 'light', at: [711, 1.6, -134.2], color: 0xe8f0ff, power: 18, range: 7 }, { do: 'flag', set: { harrow_let_girl_go: true } }],
               lines: [{ at: 2.3, do: [{ do: 'actorSet', id: 'harrow', faceAway: { of: 'girl' }, look: null }] }, { at: 2.6, who: 'harrow', text: 'c3.harrow.clear', seconds: 1.4, mood: 'stern' }],
@@ -509,7 +510,8 @@ export default {
         { do: 'actorSet', id: 'lena', seat: 'tideBoat', pose: 'sit' },
         // ---- the chase on the canals, to the drain tunnel under the pump hall ----
         { do: 'driveTo', text: 'c3.obj.tunnel', vehicle: 'tideBoat', at: TUNNEL.south, radius: 9 },
-        { do: 'waitFor', text: 'c3.obj.tunnel', until: { tunnel: true } },
+        // (into the dark: the marker leads in, ten meters past the mouth - a step that only waited had no marker)
+        { do: 'driveTo', text: 'c3.obj.tunnel', vehicle: 'tideBoat', at: [623, -377], radius: 6 },
         { do: 'say', who: 'wren', text: 'c3.wren.dark' },
         { do: 'driveTo', text: 'c3.obj.through', vehicle: 'tideBoat', at: TUNNEL.north, radius: 6,
           on: [{ tunnel: true, hold: 2.5, do: [{ do: 'police', stars: 0 }, { do: 'music', tension: 0.2 }] }] },

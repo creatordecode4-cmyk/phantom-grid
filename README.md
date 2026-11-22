@@ -1285,6 +1285,9 @@ other character.
 - **Going in:** walk off a pontoon or the foot of a ramp. A roof edge, a stair or a bridge still stops him
   (nobody jumps off a roof).
 - **Getting out:** swim into a pontoon (or into a low step) and he climbs onto it. Walls of houses stop him.
+- **No accidents at the cracks:** where two decks meet with a gap of a few centimeters (the end of a stair and a
+  pontoon) he walks over it; stepping off the side of a stair onto the pontoon or the roof just under it (up to
+  about two meters) he lands on that deck, not in the water under it.
 - **How it looks** (`swimPose` in `src/characters/proceduralAnim.js`): standing still he **treads water** -
   upright, the head and the top of the shoulders out of the water, the hands sculling under the surface, the
   legs turning slowly like an egg beater. Moving, he does a **front crawl with the head up**: the body almost
@@ -1303,9 +1306,13 @@ other character.
 - `src/world/water.js` answers "how deep is the water here?" for everybody: `city.water.at(x, z)` gives the
   surface and the bottom, `city.water.depth(x, z)` the depth. `SWIM` (1.3 m) and `WADE` (0.45 m) are at its top.
 
-The roof route of the raid (mission 3.3) also got its markers back where they belong: they now lead stair by
-stair (Lena's roof, the next roof, the fire escape landing, the pontoon); before, the marker pointed past a
-roof edge, into a 5 m drop.
+Mission 3.3 (the raid) got three fixes on the way:
+- the markers over the roofs lead stair by stair (Lena's roof, the next roof, the fire escape landing, the
+  pontoon); before, the marker pointed past a roof edge, into a 5 m drop;
+- the film shot where Harrow sees the girl behind the crates was black: its camera looked into the wall of
+  Lena's house. It now looks from the fire escape, over the water, down the pontoon: the girl, the crates, Harrow;
+- the step "lose them in the old drain tunnel" had no marker once you reached the mouth of the tunnel; the
+  marker now leads ten meters into it.
 
 ---
 
