@@ -302,8 +302,11 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     for (const m of fadeMats) m.opacity = k;
     root.visible = !hidden && k > 0.02;
   }
-  function place(x, z, angle) {
+  // y (optional): about how high the place is. In The Sunk a roof and the room under it share x and z:
+  // the deck nearest to this height is the one he stands on (without it: the one nearest to where he is now).
+  function place(x, z, angle, y) {
     if (mover && Math.hypot(pos.x - x, pos.z - z) > 0.5) mover.reset();
+    if (typeof y === 'number' && isFinite(y)) pos.y = y;
     pos.set(x, groundAt(x, z), z);
     vel.set(0, 0); speed = 0;
     heading = angle;

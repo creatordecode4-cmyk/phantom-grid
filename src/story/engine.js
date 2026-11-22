@@ -607,9 +607,10 @@ export function createStory(G) {
       if (v && vehicles.active !== v) { if (vehicles.state !== 'none') vehicles.leaveNow(player); player.unstage(); vehicles.enterNow(v, player); }
     }
     if (s.at) {
+      // (the height of the place goes along: in The Sunk a roof and the room under it share x and z)
       const p = pt(s.at), h = s.face === undefined ? player.heading : angle(s.face);
       player.unstage();
-      if (vehicles.state !== 'none') vehicles.leaveNow(player, p[0], p[2], h); else player.place(p[0], p[2], h);
+      if (vehicles.state !== 'none') vehicles.leaveNow(player, p[0], p[2], h, p[1]); else player.place(p[0], p[2], h, p[1]);
       rig.set(h, 0.1);
     }
     if (s.pose) player.setPose(s.pose);

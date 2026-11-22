@@ -520,13 +520,13 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     sound.setTone(v.type.tone);
   }
   // ... and take the player out again at once (x, z: where to stand; left out = next to the door)
-  function leaveNow(player, x = null, z = null, heading = null) {
+  function leaveNow(player, x = null, z = null, heading = null, y = undefined) {
     const v = active;
     if (!v) return;
     v.vx = v.vz = 0; v.forward = 0; v.siren = false; v.doorOpen = 0;
     const s = x === null ? doorSpot(v) : { x, z };
     active = null; state = 'none'; exitWanted = false;
-    player.place(s.x, s.z, heading === null ? v.heading : heading);
+    player.place(s.x, s.z, heading === null ? v.heading : heading, y);
     player.setHidden(false);
     sound.quiet();
   }
