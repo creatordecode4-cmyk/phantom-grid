@@ -454,7 +454,7 @@ export default {
           shots: [
             // the Guard at her door: a boat with its lights, Harrow on the pontoon
             { seconds: 6.4, cam: { from: [699, 0.9, -146], look: [707, 0.8, -134.5], fov: 40 },
-              do: [{ do: 'spawn', id: 'harrowBoat', kind: 'patrol_boat', at: [703, -140.5], face: 90, tint: [0.24, 0.27, 0.34], npc: true, flash: true },
+              do: [{ do: 'spawn', id: 'harrowBoat', kind: 'patrol_boat', at: [703, -137.9], face: 90, tint: [0.24, 0.27, 0.34], npc: true, flash: true },
                 { do: 'actor', id: 'harrow', model: 'Sloane_Harrow', name: 'name.harrow', at: [704.2, PON, -134.2], face: 0, pose: 'hips', fixed: true, look: null, mood: 'stern' }],
               lines: [{ at: 1.0, who: 'harrow', text: 'c3.harrow.pa', seconds: 4.2, kind: 'thought', mood: 'stern' }] },
             { seconds: 3.0, cam: { from: [703.6, 2.8, -114.4], look: [705.4, 2.65, -112.8], fov: 34 },
@@ -509,6 +509,9 @@ export default {
         { do: 'enter', text: 'c3.obj.tide_boat', vehicle: 'tideBoat' },
         { do: 'actorSet', id: 'lena', seat: 'tideBoat', pose: 'sit' },
         // ---- the chase on the canals, to the drain tunnel under the pump hall ----
+        // (first south down the west ring, away from Harrow's boat: the shortest way on the map led past him,
+        //  and into the tunnel from the wrong end)
+        { do: 'driveTo', text: 'c3.obj.tunnel', vehicle: 'tideBoat', at: [731, -330], radius: 12 },
         { do: 'driveTo', text: 'c3.obj.tunnel', vehicle: 'tideBoat', at: TUNNEL.south, radius: 9 },
         // (into the dark: the marker leads in, ten meters past the mouth - a step that only waited had no marker)
         { do: 'driveTo', text: 'c3.obj.tunnel', vehicle: 'tideBoat', at: [623, -377], radius: 6 },
