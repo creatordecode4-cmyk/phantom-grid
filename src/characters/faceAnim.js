@@ -6,8 +6,10 @@
 //      for the eyebrows, the eyelids, the corners of the mouth and the jaw.
 //      Changing the expression blends softly from the old one to the new one.
 //   2. it BLINKS on its own every few seconds (not while asleep)
-//   3. it TALKS: while the character speaks, the jaw opens and closes in small
-//      uneven steps, like syllables
+//   3. it TALKS: while the character speaks, the mouth opens and closes in
+//      syllables, with short pauses between words; the lips go round ("oo")
+//      or wide ("ee") now and then. (characterLook.js draws the inside of
+//      the open mouth.)
 //
 // To add an expression: add a line to FACES below. The numbers are
 //   jaw            how far the mouth opens (millimeters at the lips)
@@ -36,6 +38,14 @@ export const FACES = {
   shout: { jaw: 14, brow: -3.2, tilt: -11, lid: -0.12, out: 2 },
 };
 
+// Some models were made with an expression of their own. These numbers are added to EVERY face of that model,
+// so its "neutral" is calm. (jaw below 0 closes a mouth that was made open.) Keyed by the model file name.
+export const FIXES = {
+  // Model_File_Name: { jaw: -2, up: -1.5 },     (an example: a little calmer mouth)
+  // (Tried for Theo_Calloway, whose model laughs with open teeth: closing his jaw tears the lips, and his eyes and
+  //  cheeks laugh too. His face needs a new model - see README, "Replacing a character model".)
+};
+
 // the numbers of a face, written out for both sides
 const CH = ['jaw', 'lidL', 'lidR', 'browL', 'browR', 'tiltL', 'tiltR', 'upL', 'upR', 'outL', 'outR'];
 function channels(f) {
@@ -61,6 +71,9 @@ export function createFaceAnimator(THREE, rig) {
   const now = channels({});
   let blinkIn = 0.8 + Math.random() * 3, blinkT = -1;       // seconds until the next blink / how far the running blink is
   let syllable = 0, syllableTo = 0, syllableIn = 0, talkNow = 0, blinks = true;
+  let wordLeft = 0, vowel = 0, vowelTo = 0;                // syllables left in the word, lips: -1 round ... +1 wide
+  // a model that was made with an expression of its own (FIXES above): its numbers are added to every face
+  const fix = channels(FIXES[F.name] || {}), hasFix = !!FIXES[F.name];
 
   function set(next, seconds = 0.35) {
     if (!FACES[next]) next = 'neutral';
@@ -91,16 +104,21 @@ export function createFaceAnimator(THREE, rig) {
       blink = blinkT < 0.07 ? blinkT / 0.07 : blinkT < 0.11 ? 1 : 1 - (blinkT - 0.11) / 0.14;
       if (blinkT >= 0.25) { blinkT = -1; blink = 0; blinkIn = 1.8 + Math.random() * 4.2; if (Math.random() < 0.15) blinkIn = 0.25; }
     } else if (blinks && (blinkIn -= dt) <= 0) blinkT = 0;
-    // ---- talking: the jaw follows uneven "syllables" ----
+    // ---- talking: the mouth opens and closes in syllables, words have a short pause between them ----
     talkNow += (talk - talkNow) * Math.min(1, dt * 10);
     if (talkNow > 0.02) {
-      if ((syllableIn -= dt) <= 0) { syllableIn = 0.09 + Math.random() * 0.11; syllableTo = Math.random() < 0.22 ? 0.05 : 0.3 + Math.random() * 0.7; }
-      syllable += (syllableTo - syllable) * Math.min(1, dt * 24);
-    } else syllable *= Math.max(0, 1 - dt * 12);
-    const speak = talkNow * syllable;
+      if ((syllableIn -= dt) <= 0) {
+        if (wordLeft <= 0) { wordLeft = 1 + Math.floor(Math.random() * 4); syllableIn = 0.07 + Math.random() * 0.12; syllableTo = 0.04; vowelTo = 0; }
+        else { wordLeft--; syllableIn = 0.085 + Math.random() * 0.1; syllableTo = Math.random() < 0.15 ? 0.2 : 0.42 + Math.random() * 0.58; vowelTo = Math.random() * 2 - 1; }
+      }
+      syllable += (syllableTo - syllable) * Math.min(1, dt * 26);
+      vowel += (vowelTo - vowel) * Math.min(1, dt * 14);
+    } else { syllable *= Math.max(0, 1 - dt * 12); vowel *= Math.max(0, 1 - dt * 8); wordLeft = 0; }
+    const speak = talkNow * syllable, lips = talkNow * vowel;
 
     // ---- the bones ----
-    const jaw = Math.max(0, now.jaw + speak * 5.2);
+    // (a fix may close the jaw further than the model was made: then speaking opens it from there)
+    const jaw = Math.max(hasFix ? fix.jaw : 0, now.jaw + fix.jaw + speak * 12);
     place('jaw', 0, 0, 0, q.setFromAxisAngle(X, (jaw * mm) / F.jawArm));
     const lidL = Math.max(-0.35, Math.min(1, Math.max(now.lidL, 0) + blink * (1 - Math.max(now.lidL, 0)) + Math.min(now.lidL, 0) * (1 - blink)));
     const lidR = Math.max(-0.35, Math.min(1, Math.max(now.lidR, 0) + blink * (1 - Math.max(now.lidR, 0)) + Math.min(now.lidR, 0) * (1 - blink)));
@@ -109,9 +127,10 @@ export function createFaceAnimator(THREE, rig) {
     // (an eyebrow comes down a little with a closing eye)
     place('brow_L', 0, now.browL - 0.6 * blink, 0, q.setFromAxisAngle(Z, (-now.tiltL * Math.PI) / 180));
     place('brow_R', 0, now.browR - 0.6 * blink, 0, q.setFromAxisAngle(Z, (now.tiltR * Math.PI) / 180));
-    // (speaking pulls the corners of the mouth in a little when the mouth is open)
-    place('mouth_L', now.outL - speak * 0.7, now.upL - speak * 0.5, -0.3 * now.outL, null);
-    place('mouth_R', -(now.outR - speak * 0.7), now.upR - speak * 0.5, -0.3 * now.outR, null);
+    // (speaking: the corners come in for a round "oo", go out for a wide "ee", and sink a little with an open mouth)
+    const outL = now.outL + fix.outL + lips * 1.8 - speak * 0.6, outR = now.outR + fix.outR + lips * 1.8 - speak * 0.6;
+    place('mouth_L', outL, now.upL + fix.upL - speak * 0.8, -0.3 * outL, null);
+    place('mouth_R', -outR, now.upR + fix.upR - speak * 0.8, -0.3 * outR, null);
   }
   return {
     set, update,

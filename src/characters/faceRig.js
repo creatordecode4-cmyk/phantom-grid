@@ -22,7 +22,7 @@
 // faceAnim.js moves these bones. Nothing here imports three.js.
 // ---------------------------------------------------------------------------
 
-import { bareAt } from './faceClean.js';
+import { bareAt, lipAt } from './faceClean.js';
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const smooth = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -55,6 +55,8 @@ export function addFaceBones(A, face) {
 
   // ---- which points follow which bone ----
   const pos = A.positions, si = A.skinIndex, sw = A.skinWeight, count = pos.length / 3;
+  // for the picture of an open mouth (characterLook.js): per point [which side of the lips (0 above, 1 below), how much it is the mouth]
+  const lip = new Float32Array(count * 2);
   const lowBrow = Math.min(eyeY + 0.0075, browY - 0.006);       // where the eyebrow's pull ends, above the eye
   const names = ['jaw', 'lid', 'brow', 'mouth'], w = [0, 0, 0, 0];
   let moved = 0;
@@ -68,9 +70,16 @@ export function addFaceBones(A, face) {
     const skin = 1 - smooth(0.002, 0.0045, z - bareAt(face, pos[v * 3] / k, y));
     if (skin < 0.01) continue;
 
-    // the jaw: everything under a line that runs from the mouth back and up to the hinge
-    const t = smooth(0.03, 0.095, back), edge = mouthY + (hingeY - mouthY) * t, soft = 0.004 + 0.012 * t;
-    w[0] = smooth(edge + soft * 0.5, edge - soft * 1.5, y) * (1 - smooth(0.1, 0.13, back));
+    // the jaw: everything under a line that runs from the mouth back and up to the hinge. In the mouth that line is
+    // where the lips meet, and it is sharp: the lower lip goes with the jaw, the upper lip stays - the mouth opens.
+    // (in the mouth = beside the middle no further than the corners, and on the front skin: the lips are 2 cm behind
+    //  the tip of the nose, so "front" is measured from the bare face at that place, not from the nose)
+    const front = bareAt(face, pos[v * 3] / k, y) - z;
+    const t = smooth(0.03, 0.095, back), inMouth = (1 - smooth(mouthHalf - 0.004, mouthHalf + 0.003, u)) * (1 - smooth(0.006, 0.016, front));
+    const lineY = lipAt(face, pos[v * 3] / k), edge = mouthY + (hingeY - mouthY) * t + (lineY - mouthY) * inMouth;
+    const softUp = (0.002 + 0.006 * t) * (1 - inMouth) + 0.0008 * inMouth, softDown = (0.006 + 0.018 * t) * (1 - inMouth) + 0.0008 * inMouth;
+    w[0] = smooth(edge + softUp, edge - softDown, y) * (1 - smooth(0.1, 0.13, back));
+    if (inMouth > 0.01) { lip[v * 2] = smooth(lineY + 0.0008, lineY - 0.0008, y); lip[v * 2 + 1] = inMouth * (1 - smooth(0.006, 0.011, Math.abs(y - lineY))); }
     // an eyelid: nothing at the lower lid, everything at the upper lid, fading out toward the eyebrow
     const dv = y - eyeY, du = u - eyeX;
     const lid = dv <= LID_LOW ? 0 : dv < LID_HIGH ? (dv - LID_LOW) / (LID_HIGH - LID_LOW) : clamp01(1 - (dv - LID_HIGH) / 0.011);
@@ -103,7 +112,12 @@ export function addFaceBones(A, face) {
     bones: bones.map((b) => b[0]), points: moved, eyesFound: face.eyesFound,
     lidTravel: LID_TRAVEL * k,
     jawArm: Math.hypot(hingeZ + 0.015, hingeY - mouthY) * k,       // from the hinge to the lips
+    // the model was made smiling: millimeters the corners of the mouth are higher than its middle
+    restSmile: face.restSmile,
+    // for the picture of an open mouth: the middle of the lower lip (model space), and the two bones
+    lipPoint: at(noseX, lipAt(face, noseX) - 0.004, -0.004), jawBone: index.jaw, headBone: headBone,
     at: { noseX, eyeX, eyeY, mouthY, mouthHalf, browY, tipY: face.tipY },
   };
+  A.lip = lip;
   return true;
 }

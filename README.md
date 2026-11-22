@@ -698,8 +698,14 @@ stand out in front of the face follow only the head.
   `FACES` (eyebrows up / tilted, eyelids, corners of the mouth, jaw): add your own there. A face
   changes softly from one mood to the next.
 - **Blinking** every 2 to 6 seconds, sometimes twice.
-- **Speaking:** while a line is on screen the jaw of the speaker opens and closes in small,
-  uneven steps, like syllables.
+- **Speaking (version 4.3):** while a line is on screen the mouth of the speaker opens and closes
+  in syllables, with a short pause between words, and the lips go round ("oo") or wide ("ee")
+  now and then. The models have no inside of a mouth (the lips are one closed skin), so:
+  the face reader finds the line where the lips meet, column by column; the jaw is cut sharply
+  along that line (the lower lip goes with the jaw, the upper lip stays); and the shader in
+  `characterLook.js` draws the stretched skin between the lips dark, like an open mouth. How far
+  a mouth is open is worked out from the bones in the shader, so every person has their own
+  mouth while all copies of a model share one material.
 - **Sleeping** (the `lie` pose) closes the eyes by itself.
 
 In the story data (`src/story/chapters/*.js`) a mood is one more word:
@@ -717,14 +723,32 @@ The prologue and Chapter 1 now use moods in all their scenes (Theo tired and wor
 Mace stern and caring, Nate's pain at the voicemail, fear after the shot ...). The people of the
 street moments in free roam have a mood too (the two who argue, the Guard ...).
 
-Rig test screen: the buttons `FACE SMILE SAD ANGRY AFRAID SURPRISED TIRED DOUBT` and `TALK`.
+Rig test screen: the buttons `FACE SMILE SAD ANGRY AFRAID SURPRISED TIRED DOUBT` and `TALK`
+(the mouth speaks until you tap it again).
 `rigtest.html?facerig=0` shows a stiff face as before.
 
-What is not perfect: the expressions are small on purpose - these models are scans with few
-points in the face, and bigger moves tear the painted picture. Beards hide most of a mouth.
-There is no lip sync to real words (there are no voices), the eyes do not look around (they
-are painted on), and the extras (dark copies of one body) have no picture, so their faces are
-hard to read.
+What is not perfect: these models are scans with only 200 to 500 points in the whole face, so
+the expressions are kept moderate - bigger moves tear the painted picture. Beards hide most of a
+mouth. There is no lip sync to real words (there are no voices), the eyes do not look around
+(they are painted on), and the extras (dark copies of one body) have no picture, so their faces
+are hard to read. **Theo's model was made laughing, with open teeth**: his eyes and cheeks laugh
+too. Closing his mouth with the jaw was tried and tears his lips (`FIXES` in `faceAnim.js`), so
+his calm and sad faces still smile a little. The real fix is a new model (see below).
+
+### Replacing a character model
+
+Every character is one file in `assets/characters/` (for example `Theo_Calloway.glb`). Put a new
+file with the same name there and the game uses it: the skeleton, the face bones, the cleaning of
+the face and the expressions are all made automatically when it loads. A new model should be:
+- one person in the **A-pose** (arms out and down, legs straight), standing, looking forward;
+- a **calm face with the mouth closed** (the game makes the expressions);
+- one mesh with its colors in a picture (GLB with a base color texture); about 20 000 to 40 000
+  triangles; any size (it is scaled to 1.8 m).
+
+Generators that make such files from a picture (Tripo, Meshy and similar) are the quickest way;
+give them a front picture of the old character and ask for the same person, same clothes, calm
+face, mouth closed, A-pose. After the swap, open `rigtest.html?char=Theo_Calloway` and look at
+the PASS / WARN table and the face buttons.
 
 ### Faces that looked thin or fat (version 4.2)
 

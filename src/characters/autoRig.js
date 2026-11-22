@@ -1047,15 +1047,18 @@ export async function autoRig(THREE, model, opts = {}) {
   try { face = readFace(geo, material, A); } catch (e) { console.warn('[autoRig] the face could not be read:', e); }
   // small bones for the jaw, the eyelids, the eyebrows and the corners of the mouth (faceRig.js). opts.faceRig: false = off
   if (face && opts.faceRig !== false && !A.face) { try { addFaceBones(A, face); } catch (e) { console.warn('[autoRig] no face bones:', e); } }
+  if (A.face) A.face.name = opts.name || '';                 // (faceAnim.js: some models get a fix of their own)
   geo.setAttribute('skinIndex', new THREE.BufferAttribute(A.skinIndex, 4));
   geo.setAttribute('skinWeight', new THREE.BufferAttribute(A.skinWeight, 4));
+  // (where the lips meet: the shader draws the inside of an open mouth there)
+  if (A.lip) geo.setAttribute('pgLip', new THREE.BufferAttribute(A.lip, 2));
   geo.computeBoundingBox();
   // (a generous sphere: the pose changes, the sphere is not recomputed)
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, A.height / 2, 0), A.height * 0.95);
 
   const rig = assemble(THREE, A, geo, material);
   // the light on a character: a soft fill light from the camera, a matt head (characterLook.js). opts.look: false = off
-  if (opts.look !== false) applyCharacterLook(material, A.info.chinY);
+  if (opts.look !== false) applyCharacterLook(material, A.info.chinY, A.face && A.lip ? { jaw: A.face.jawBone, head: A.face.headBone, p: A.face.lipPoint, ref: 0.007 * (A.height / 1.8) } : null);
   // the face: painted shadows and smudges are cleaned in the character's picture (faceClean.js). opts.faceClean: 0 = off
   try { rig.faceCleaned = cleanFace(THREE, face, material, opts.faceClean === undefined ? 1 : opts.faceClean, opts.faceDebug || null); } catch (e) { rig.faceCleaned = false; console.warn('[autoRig] the face could not be cleaned:', e); }
   rig.faceMs = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0;

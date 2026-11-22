@@ -101,6 +101,11 @@ function boxMean(f, x, y, hw, hh) {
 }
 // the depth of the bare face at a place (x beside the middle of the model, y above the chin; meters at 1.8 m)
 export function bareAt(face, x, y) { return sample(face.bare, (x - X0) / CELL, (y - Y0) / CELL); }
+// the height of the line where the lips meet, at x beside the middle of the model (meters at 1.8 m, above the chin)
+export function lipAt(face, x) {
+  const f = Math.max(0, Math.min(GX - 1.001, (x - X0) / CELL - 0.5)), i = f | 0, t = f - i;
+  return face.lipLine[i] * (1 - t) + face.lipLine[i + 1] * t;
+}
 
 // ===========================================================================
 // READ A FACE: lay it out flat and find the nose, the eyes, the mouth and the eyebrows.
@@ -319,6 +324,36 @@ export function readFace(geo, material, A) {
     mouthHalf += w / 2;
   }
   mouthHalf = Math.max(0.018, Math.min(0.034, mouthHalf));
+  // the line where the lips meet, column by column (it curves up in a smile): the darkest row near the mouth line
+  const lipLine = new Float32Array(GX).fill(mouthY), raw = new Float32Array(GX).fill(mouthY);
+  const i0 = colOf(noseX - mouthHalf - 0.006), i1 = colOf(noseX + mouthHalf + 0.006);
+  for (let i = i0; i <= i1; i++) {
+    let best = 1e9, bj = mj;
+    for (let j = Math.max(1, rowOf(mouthY - 0.006)); j <= Math.min(GY - 2, rowOf(mouthY + 0.007)); j++) {
+      const v = soft[j * GX + i] * 2 + soft[j * GX + Math.max(0, i - 1)] + soft[j * GX + Math.min(GX - 1, i + 1)];
+      const prefer = 1 + 0.25 * Math.abs(cellY(j) - mouthY) / 0.006;        // (closer to the middle line wins a tie)
+      if (v * prefer < best) { best = v * prefer; bj = j; }
+    }
+    // (between two rows: the bottom of a parabola through three of them)
+    const a = soft[(bj - 1) * GX + i], b = soft[bj * GX + i], c = soft[(bj + 1) * GX + i], den = a - 2 * b + c;
+    raw[i] = cellY(bj) + (den > 1e-3 ? Math.max(-0.5, Math.min(0.5, (0.5 * (a - c)) / den)) : 0) * CELL;
+  }
+  // smoothed along the mouth (the middle of five neighbors, then their average), a mouth is no zig-zag
+  const med = new Float32Array(GX).fill(mouthY);
+  for (let i = i0; i <= i1; i++) {
+    const w = [];
+    for (let d = -2; d <= 2; d++) w.push(raw[Math.max(i0, Math.min(i1, i + d))]);
+    w.sort((p, q) => p - q);
+    med[i] = w[2];
+  }
+  for (let i = i0; i <= i1; i++) {
+    let sum = 0, n = 0;
+    for (let d = -2; d <= 2; d++) { const q = i + d; if (q >= i0 && q <= i1) { sum += med[q]; n++; } }
+    lipLine[i] = Math.max(mouthY - 0.006, Math.min(mouthY + 0.007, sum / n));
+  }
+  // how much higher the corners are than the middle (a model that was made smiling)
+  const lipAt = (x) => lipLine[colOf(x)];
+  const restSmile = ((lipAt(noseX - mouthHalf + 0.002) + lipAt(noseX + mouthHalf - 0.002)) / 2 - lipAt(noseX)) / 0.001;   // millimeters
 
   // ---- the eyebrows: the dark band above the eyes ----
   let browY = eyeY + 0.016, browScore = 0;
@@ -340,7 +375,7 @@ export function readFace(geo, material, A) {
   const bare = grow2(shrink2(cz, 4), 4);
 
   return {
-    k, chin, zFace, noseX, tipY, eyeX, eyeY, eyesFound, mouthY, mouthHalf, browY,
+    k, chin, zFace, noseX, tipY, eyeX, eyeY, eyesFound, mouthY, mouthHalf, browY, lipLine, restSmile,
     cr, cg, cb, cl, cn, cz, bare,                              // the flat face: colors, brightness, how many points, depth
     map, cv, g2, data, px, W, H, gxOf, gyOf, list, any,        // the picture (for cleanFace)
   };
@@ -476,7 +511,7 @@ export function cleanFace(THREE, face, material, strength = 1, debug = null) {
     gain[c] = Math.min(maxGain + (6 - maxGain) * deepS[c], Math.max(1, Math.pow(target / Math.max(base[c], 4), power + (full - power) * deepS[c])));
   }
 
-  if (debug) Object.assign(debug, { GX, GY, cr, cg, cb, cn, cz, cl, low, base, gain, bare, may: mayS, deep: deepS, tipY, noseX, eyeX, eyeY, eyesFound, rings, under, Lref, ref: [refR, refG, refB], refS, texels: any });
+  if (debug) Object.assign(debug, { lipLine: face.lipLine, mouthY: face.mouthY, mouthHalf: face.mouthHalf, restSmile: face.restSmile, GX, GY, cr, cg, cb, cn, cz, cl, low, base, gain, bare, may: mayS, deep: deepS, tipY, noseX, eyeX, eyeY, eyesFound, rings, under, Lref, ref: [refR, refG, refB], refS, texels: any });
 
   // ---- 3. lift the dark parts ----
   let changed = 0;
