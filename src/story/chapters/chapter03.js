@@ -37,7 +37,8 @@ const MARKET = { boat: [638, -257], pier: [640, PON, -249], wick: [655.2, PON + 
 const POST = { boat: [672, -408.5], dock: [672, PON, -415], rampTop: [665.5, 4.5, -417], pad: [706, 4.5, -437], gate: [621, -449] };
 const LENA = { boat: [706, -139.5], dock: [706, PON, -134], door: [706, -130.6], room: [705, 1.2, -122], desk: [705, 1.2, -112.4],
   lantern: [700.8, 1.2, -126.3], chair: [705, 1.2, -113.5], reader: [702.2, 2.0, -110.8], screen: [705.2, 2.0, -110.9], wrecked: [705, 1.2, -118],
-  roof: [703, -117], w1: [725, -120], w2: [736, -122], escTop: [740, -132.8], escape: [737, -137.4], tideBoat: [737, -144] };
+  roof: [703, -117], stair1: [718.6, -123.8], stair2: [729.0, -126.8], w2: [736, -122], escTop: [739.8, -132.8], escMid: [728.0, -133.1],
+  escape: [737, -137.4], tideBoat: [737, -144] };
 const TUNNEL = { south: [623, -396], north: [623, -326], basin: [623, -300] };
 // the cameras at Wick's table: on him (from his right front), on Nate (over Wick's shoulder), both of them
 const WICK_CAM = { from: [653.55, 0.85, -288.05], look: [655.2, 0.58, -287.0], fov: 32 };
@@ -472,9 +473,11 @@ export default {
         { do: 'checkpoint', id: 1, setup: [{ do: 'player', at: LENA.roof, face: 270 }, { do: 'actor', id: 'lena', replace: true, model: 'Lena_Marchetti', name: 'name.lena', at: [705.5, -115.6], face: 270, pose: 'idle', fixed: true, mood: 'stern' }, BADGE,
           { do: 'police', stars: 2, search: LENA.door, radius: 40 }] },
         // ---- over the roofs: Lena leads ----
+        // (the marker goes stair by stair: each roof ends in a drop, and a marker past the edge would only lead into the wall)
         { do: 'actorSet', id: 'lena', walk: [721.5, -123.8], speed: 3.0 },
-        { do: 'goto', text: 'c3.obj.roof', at: LENA.w1, radius: 3.2, tip: 'c3.tip.tunnel', tipSeconds: 8,
-          on: [{ near: [719, -123.8], radius: 3, do: [{ do: 'actorSet', id: 'lena', walk: [734.5, -126.8], speed: 3.0 }] }] },
+        { do: 'goto', text: 'c3.obj.roof', at: LENA.stair1, radius: 2.0, tip: 'c3.tip.tunnel', tipSeconds: 8 },
+        { do: 'actorSet', id: 'lena', walk: [734.5, -126.8], speed: 3.0 },
+        { do: 'goto', text: 'c3.obj.roof', at: LENA.stair2, radius: 2.0 },
         { do: 'actorSet', id: 'lena', walk: [739.6, -129.5], speed: 3.0 },
         { do: 'goto', text: 'c3.obj.roof', at: LENA.w2, radius: 3.2 },
         // THE GIRL: Harrow sees her behind the crates, and looks away. (Four seconds. Nobody can do anything.)
@@ -497,6 +500,8 @@ export default {
           { do: 'actorSet', id: 'lena', walk: [735.4, -134.9], speed: 2.4 }, { do: 'wait', seconds: 3.4 },
           { do: 'actorSet', id: 'lena', walk: [738.4, -137.2], speed: 2.4, then: 180 },
         ] },
+        { do: 'goto', text: 'c3.obj.fire_escape', at: LENA.escTop, radius: 1.6 },
+        { do: 'goto', text: 'c3.obj.fire_escape', at: LENA.escMid, radius: 1.5 },
         { do: 'goto', text: 'c3.obj.fire_escape', at: LENA.escape, radius: 2.4 },
         { do: 'checkpoint', id: 2, setup: [{ do: 'player', at: LENA.escape, face: 180 }, { do: 'actor', id: 'lena', replace: true, model: 'Lena_Marchetti', name: 'name.lena', at: [738.5, -136.8], face: 180, pose: 'idle', fixed: true, mood: 'stern' }, BADGE,
           { do: 'police', stars: 2, search: LENA.door, radius: 40 }] },
