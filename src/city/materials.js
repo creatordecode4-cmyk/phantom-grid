@@ -1174,7 +1174,7 @@ const PG_FRAGMENT_NORMAL = /* glsl */ `
 		float facing = clamp( normalize( cameraPosition - vPgWorld ).y, 0.0, 1.0 );
 		diffuseColor.a = max( mix( 0.97, 0.78, facing ), pgFoam );
 		float pulse = 0.72 + 0.28 * sin( uPgTime * 0.6 + n2 * 9.0 );
-		pgCanalGlow = vec3( 0.03, 0.62, 0.46 ) * ( algae * pulse + pgStir * 0.9 * ( 0.3 + algae ) ) * ( 0.03 + 0.97 * uPgNight );
+		pgCanalGlow = vec3( 0.03, 0.62, 0.46 ) * ( algae * pulse + pgStir * 0.5 * ( 0.15 + algae ) ) * ( 0.03 + 0.97 * uPgNight );
 		// the lanterns mirrored on the water, broken up by the waves (night)
 		pgCanalGlow += pgLampColor( pgLampTexel( xz + slope * 2.0 ), xz ) * ( 0.18 + 0.6 * length( slope ) ) * 0.5 * ( 1.0 - 0.5 * pgMask.b );
 	}

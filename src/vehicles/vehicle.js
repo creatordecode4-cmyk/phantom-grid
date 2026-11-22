@@ -845,12 +845,14 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       // (the QUIET motor: a low murmur)
       sound.setEngine(true, clamp(0.15 + Math.abs(v.forward) / top * 0.6 + fx.throttle * 0.25, 0, 1) * (v.quiet ? 0.6 : 1), fx.throttle * (v.quiet ? 0.3 : 1), v.quiet ? 0.32 : 1);
       sound.setWind(speed / 40); sound.setRoad(fx.wake * 0.8, 'wet');
-      // wake: foam at the stern and two white trails on the water
+      // wake: foam at the stern and two white trails on the water. (In the canals of The Sunk the water itself
+      // draws the V of the wake and the churned water: no trails there, and less spray between the walls.)
+      const canal = !!(SK && SK.inZone(v.x, v.z));
       if (fx.wake > 0.08) {
         const bx = v.x - sx * v.info.frontZ * 0.9, bz = v.z - sz * v.info.frontZ * 0.9;
-        if (Math.random() < fx.wake * 0.9) effects.emit('foam', bx + (Math.random() - 0.5) * 2, seaWorld.waterLevel + 0.2, bz + (Math.random() - 0.5) * 2, -v.vx * 0.2, 1.2 + fx.wake * 2, -v.vz * 0.2, 1 + fx.wake);
+        if (Math.random() < fx.wake * (canal ? 0.4 : 0.9)) effects.emit('foam', bx + (Math.random() - 0.5) * 2, seaWorld.waterLevel + 0.2, bz + (Math.random() - 0.5) * 2, -v.vx * 0.2, (canal ? 0.6 : 1.2) + fx.wake * (canal ? 1 : 2), -v.vz * 0.2, canal ? 0.7 + fx.wake * 0.6 : 1 + fx.wake);
         const p = [[bx + lx * 1.5, bz + lz * 1.5], [bx - lx * 1.5, bz - lz * 1.5]];
-        if (v.wheelPrev) for (let i = 0; i < 2; i++) effects.addStrip(v.wheelPrev[i][0], v.wheelPrev[i][1], p[i][0], p[i][1], seaWorld.waterLevel + 0.07, 0.35 + fx.wake * 0.5, [0.9, 0.95, 0.96], 0.34 * fx.wake, 4);
+        if (v.wheelPrev && !canal) for (let i = 0; i < 2; i++) effects.addStrip(v.wheelPrev[i][0], v.wheelPrev[i][1], p[i][0], p[i][1], seaWorld.waterLevel + 0.07, 0.35 + fx.wake * 0.5, [0.9, 0.95, 0.96], 0.34 * fx.wake, 4);
         v.wheelPrev = p;
       } else v.wheelPrev = null;
       if (fx.impact > 1 && impactCool < 0) { impactCool = 0.4; sound.thump(Math.min(1, fx.impact / 6)); if (fx.impact > 3) sound.crash('scrape', fx.impact / 10); shake = Math.min(1, shake + fx.impact * 0.03); haptic = 40; }
