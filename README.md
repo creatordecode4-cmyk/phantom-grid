@@ -1089,7 +1089,8 @@ Story step: `{ do: 'hack', title, sub, seconds, length, optional, ok: [steps], f
 - **Lena "Static" Marchetti** (`Lena_Marchetti.glb`) with her old KVI badge on a cord;
   **Captain Sloane Harrow** (`Sloane_Harrow.glb`); Mace.
 - **The Tidewalkers:** quiet people in salvaged clothes (a new look for extras: trousers, a coat with
-  patches of other cloth, a scarf, a hood - one shader for all of them) on the pontoons and the roofs.
+  patches of other cloth, a scarf, a hood - one shader for all of them; the face keeps the body's own
+  picture, and they get the same soft night light as the story people) on the pontoons and the roofs.
   They watch Nate go by, and the murmur of the market goes quiet when he comes close. Wick, their old
   man, at his table. A little girl draws a boat on a wall with chalk. A market boat drifts slowly
   through the basin.

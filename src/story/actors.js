@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { autoRig, cloneRig, analyzeCharacter } from '../characters/autoRig.js';
 import { createAnimator } from '../characters/proceduralAnim.js';
+import { applyCharacterLook } from '../characters/characterLook.js';
 import { makeMannequin } from '../city/models.js';
 import { CONFIG } from '../config.js';
 
@@ -73,7 +74,8 @@ export function createActors({ scene, city, materials, player, vehicles }) {
 
   // SALVAGED CLOTHES (the Tidewalkers of Chapter 3): extra = { pants, coat, patch, scarf, head } colors [r, g, b].
   // One material colors the body by height (trousers, a coat with patches of other cloth, a scarf, a hood);
-  // all of them share one shader program.
+  // all of them share one shader program. The face (the front of the head, above the chin) keeps the body's
+  // own picture, so they have faces; and they get the same soft night light as the story people.
   function outfit(o) {
     const key = 'o:' + JSON.stringify(o);
     if (shadeMats.has(key)) return shadeMats.get(key);
@@ -86,12 +88,16 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       uPants: { value: C(o.pants, [0.08, 0.08, 0.09]) }, uCoat: { value: C(o.coat, [0.18, 0.16, 0.13]) }, uPatch: { value: C(o.patch, [0.1, 0.16, 0.2]) },
       uScarf: { value: C(o.scarf, [0.35, 0.12, 0.08]) }, uHead: { value: C(o.head, [0.12, 0.11, 0.1]) },
     };
-    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0.02 });
+    const src = player.rig.mesh.material, chin = player.rig.def && player.rig.def.info ? player.rig.def.info.chinY || 0 : 0;
+    const pic = chin > 0 && src && src.map ? src.map : null;          // (no picture or no chin: no face, all cloth)
+    u.uChin = { value: pic ? chin : 1e6 };
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0.02, map: pic });
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, u);
-      sh.vertexShader = 'varying vec3 vTideP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvTideP = position;');
-      sh.fragmentShader = 'uniform float uMinY, uSpanY;\nuniform vec3 uPants, uCoat, uPatch, uScarf, uHead;\nvarying vec3 vTideP;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      sh.vertexShader = 'varying vec3 vTideP;\nvarying vec3 vTideN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvTideP = position;\n\tvTideN = normal;');
+      sh.fragmentShader = 'uniform float uMinY, uSpanY, uChin;\nuniform vec3 uPants, uCoat, uPatch, uScarf, uHead;\nvarying vec3 vTideP;\nvarying vec3 vTideN;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
 	{
+		vec3 pic = diffuseColor.rgb;          // (the body's own picture: only the face keeps it)
 		float h = ( vTideP.y - uMinY ) / uSpanY;
 		vec3 c = mix( uPants, uCoat, smoothstep( 0.44, 0.47, h ) );
 		// patches of other cloth on the coat (squares a hand wide), seams in between
@@ -100,10 +106,14 @@ export function createActors({ scene, city, materials, player, vehicles }) {
 		c = mix( c, uPatch, step( 0.72, r ) * smoothstep( 0.46, 0.5, h ) * ( 1.0 - smoothstep( 0.8, 0.82, h ) ) );
 		c = mix( c, uScarf, smoothstep( 0.79, 0.81, h ) * ( 1.0 - smoothstep( 0.85, 0.87, h ) ) );
 		c = mix( c, uHead, smoothstep( 0.86, 0.88, h ) );
-		diffuseColor.rgb *= c;
+		// the face: above the chin, below the forehead, on the front of the head
+		float face = smoothstep( uChin - 0.005, uChin + 0.015, vTideP.y ) * ( 1.0 - smoothstep( uChin + 0.16, uChin + 0.185, vTideP.y ) ) * smoothstep( 0.3, 0.55, normalize( vTideN ).z );
+		diffuseColor.rgb = mix( c, pic, face );
 	}`);
     };
     m.customProgramCacheKey = () => 'tideOutfit';
+    // the soft fill light from the camera (faces are not black at night), a matt head
+    applyCharacterLook(m, chin);
     shadeMats.set(key, m);
     return m;
   }
