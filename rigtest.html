@@ -25,6 +25,7 @@
     .bar { position: fixed; left: 0; right: 0; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px calc(8px + env(safe-area-inset-right)) 8px calc(8px + env(safe-area-inset-left)); justify-content: center; }
     #top { top: env(safe-area-inset-top); }
     #bottom { bottom: env(safe-area-inset-bottom); }
+    #faces { bottom: calc(52px + env(safe-area-inset-bottom)); }
     button, select { font: inherit; font-size: 10px; letter-spacing: 0.14em; color: #fff; background: rgba(10, 12, 14, 0.6);
       border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; height: 36px; padding: 0 11px; }
     button.on { background: rgba(255, 255, 255, 0.88); color: #0b0d10; }
@@ -60,6 +61,18 @@
     <button data-story="aim">AIM</button>
   </div>
   <div id="result" class="small"></div>
+  <!-- the face: the expressions of the story (the same code the game uses), and speaking -->
+  <div class="bar" id="faces">
+    <button data-face="neutral">FACE</button>
+    <button data-face="smile">SMILE</button>
+    <button data-face="sad">SAD</button>
+    <button data-face="angry">ANGRY</button>
+    <button data-face="afraid">AFRAID</button>
+    <button data-face="surprised">SURPRISED</button>
+    <button data-face="tired">TIRED</button>
+    <button data-face="doubt">DOUBT</button>
+    <button id="b-talk">TALK</button>
+  </div>
   <div class="bar" id="bottom">
     <button id="b-skeleton">SKELETON</button>
     <button id="b-weights">WEIGHTS</button>
@@ -82,7 +95,8 @@
     const url = new URLSearchParams(location.search);
     // ?clean=0 shows the faces as they are in the model file, ?clean=1.4 cleans them harder (the game uses CONFIG.player.faceClean)
     const faceClean = url.has('clean') ? parseFloat(url.get('clean')) || 0 : CONFIG.player.faceClean;
-    // ?fill=0.1 shows the fill light of the game's night (the test screen has its own lamps, so it is off here), ?look=0 switches the matt head off
+    // ?fill=0.1 shows the fill light of the game's night (the test screen has its own lamps, so it is off here), ?look=0 switches the matt head off,
+    // ?facerig=0 builds no face bones (a stiff face, as before version 4.2)
     setCharacterFill(parseFloat(url.get('fill')) || 0);
     const faceDebug = url.has('facedebug') ? (window.FACE_DEBUG = {}) : null;      // (for tests: what the face cleaner found)
     const $ = (id) => document.getElementById(id);
@@ -150,7 +164,7 @@
       if (rig) { scene.remove(rig.root); if (helper) scene.remove(helper); rig.mesh.geometry.dispose(); }
       const gltf = await loader.loadAsync(`assets/characters/${name}.glb`);
       const t0 = performance.now();
-      rig = await autoRig(THREE, gltf.scene, { height: 1.8, name, faceClean, faceDebug, look: url.get('look') !== '0', onProgress: (f, t) => progress(0.1 + f * 0.9, t) });
+      rig = await autoRig(THREE, gltf.scene, { height: 1.8, name, faceClean, faceDebug, look: url.get('look') !== '0', faceRig: url.get('facerig') !== '0', onProgress: (f, t) => progress(0.1 + f * 0.9, t) });
       const ms = Math.round(performance.now() - t0);
       anim = createAnimator(THREE, rig);
       scene.add(rig.root);
@@ -218,6 +232,16 @@
       for (const b of document.querySelectorAll('[data-story]')) b.classList.toggle('on', b.dataset.story === name);
     }
     for (const b of document.querySelectorAll('[data-story]')) b.addEventListener('click', () => setStory(b.dataset.story));
+    // ---- the face ----
+    let faceName = 'neutral', talking = false;
+    function setFace(name, seconds = 0.35) {
+      faceName = name;
+      if (anim) anim.setFace(name, seconds);
+      for (const b of document.querySelectorAll('[data-face]')) b.classList.toggle('on', b.dataset.face === name);
+    }
+    function setTalk(on) { talking = on; if (anim) anim.talk = on ? 1 : 0; $('b-talk').classList.toggle('on', on); }
+    for (const b of document.querySelectorAll('[data-face]')) b.addEventListener('click', () => setFace(b.dataset.face));
+    $('b-talk').addEventListener('click', () => setTalk(!talking));
     $('b-skeleton').addEventListener('click', () => { state.skeleton = !state.skeleton; applyToggles(); });
     $('b-weights').addEventListener('click', () => { state.weights = !state.weights; applyToggles(); });
     $('b-wire').addEventListener('click', () => { state.wire = !state.wire; applyToggles(); });
@@ -259,7 +283,7 @@
       draw();
     }
     // for tests from the console: RIG.step(seconds) moves time by hand when the page was opened with ?manual=1
-    window.RIG = { THREE, scene, camera, cam, renderer, setPose, setStory, step: (sec) => { for (let t = 0; t < sec - 1e-6; t += 1 / 60) step(1 / 60); draw(); }, state, applyToggles, load, ready: false };
+    window.RIG = { THREE, scene, camera, cam, renderer, setPose, setStory, setFace, setTalk, step: (sec) => { for (let t = 0; t < sec - 1e-6; t += 1 / 60) step(1 / 60); draw(); }, state, applyToggles, load, ready: false };
     const first = CHARACTERS.includes(url.get('char')) ? url.get('char') : CHARACTERS[0];
     select.value = first;
     if (url.get('pose')) pose = url.get('pose');

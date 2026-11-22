@@ -73,7 +73,8 @@ export function createActors({ scene, city, materials, player, vehicles }) {
 
   // ------------------------------------------------------------------ spawn
   // spec: { model: 'Mace_Doyle' | null, extra: [r, g, b] (a dark copy of the player's body), name: text for the tag,
-  //         at: [x, y, z], heading (radians), pose, scale, tag: always show the name, fixed: never steps aside }
+  //         at: [x, y, z], heading (radians), pose, scale, tag: always show the name, fixed: never steps aside,
+  //         mood: the expression of the face }
   function spawn(id, spec) {
     const old = get(id);
     if (old) remove(id);
@@ -85,6 +86,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       pose: spec.pose || 'idle', look: spec.look === undefined ? 'auto' : spec.look, talking: 0, tag: !!spec.tag, fixed: !!spec.fixed,
       hidden: !!spec.hidden, seat: null, seated: null, walk: null, speed: 0, attached: [], floorBelow: spec.floorBelow || 0.45, far: 0,
       keepY: !!spec.keepY,       // true: stands on a floor inside a building (the height is not taken from the street)
+      mood: spec.mood || 'neutral', // the expression of the face (faceAnim.js)
       ghost: !!spec.ghost,       // true: the player can walk through (far away figures)
     };
     root.position.set(a.x, a.y, a.z);
@@ -96,7 +98,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     const finish = (rig) => {
       if (!list.includes(a)) return;                    // (removed again before the model arrived)
       a.rig = rig; a.anim = createAnimator(THREE, rig);
-      a.anim.setPose(a.pose, 0); a.anim.floorBelow = a.floorBelow;
+      a.anim.setPose(a.pose, 0); a.anim.floorBelow = a.floorBelow; a.anim.setFace(a.mood, 0);
       root.add(rig.root);
       for (const at of a.attached) rig.bones[at.bone].add(at.object);
       a.ready = true;
@@ -147,6 +149,8 @@ export function createActors({ scene, city, materials, player, vehicles }) {
   // put something into a hand or on the body: bone name ('hand_R' ...), object with its own position
   function attach(a, bone, object) { a.attached.push({ bone, object }); if (a.rig) a.rig.bones[bone].add(object); }
   function setPose(a, pose, seconds = 0.4) { a.pose = pose; if (a.anim) a.anim.setPose(pose, seconds); }
+  // the expression of the face: 'smile', 'sad', 'angry' ... (FACES in src/characters/faceAnim.js)
+  function setMood(a, mood, seconds = 0.45) { a.mood = mood; if (a.anim) a.anim.setFace(mood, seconds); }
   // walk to a place (speed in m/s), then turn to "face" (radians) if given
   function walkTo(a, x, z, speed = 1.4, face = null) { a.walk = { x, z, speed, face }; }
   function place(a, x, y, z, heading = null) { a.x = x; a.y = y; a.z = z; if (heading !== null) a.heading = heading; a.walk = null; if (a.anim) a.anim.reset(); }
@@ -223,5 +227,5 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     }
   }
 
-  return { list, spawn, get, remove, clear, unload, preload, update, tags, attach, setPose, walkTo, place, sitIn };
+  return { list, spawn, get, remove, clear, unload, preload, update, tags, attach, setPose, setMood, walkTo, place, sitIn };
 }

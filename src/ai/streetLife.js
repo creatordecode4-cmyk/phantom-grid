@@ -19,29 +19,29 @@ import { compassToAngle } from '../story/actors.js';
 import { makePath, pointOn } from '../story/drivers.js';
 import { lin } from '../city/models.js';
 
-// people: [x, z, face (compass degrees), pose, name key, shade, size]
+// people: [x, z, face (compass degrees), pose, name key, shade, size, mood (the expression: FACES in src/characters/faceAnim.js)]
 // lines:  [index of the speaker, text key]
 const MOMENTS = [
   {
     id: 'argue', at: [-238, 135.4],
     props: [{ kind: 'awning', at: [-238, 134.1], face: 0 }],
-    people: [[-238.75, 135.25, 270, 'hips', 'name.stranger1', [0.1, 0.11, 0.14], 1.02], [-237.35, 135.45, 90, 'crossed', 'name.stranger2', [0.16, 0.1, 0.1], 0.93]],
+    people: [[-238.75, 135.25, 270, 'hips', 'name.stranger1', [0.1, 0.11, 0.14], 1.02, 'angry'], [-237.35, 135.45, 90, 'crossed', 'name.stranger2', [0.16, 0.1, 0.1], 0.93, 'doubt']],
     lines: [[0, 'c1.argue.1'], [1, 'c1.argue.2'], [0, 'c1.argue.3']],
   },
   {
     id: 'stop', at: [-294.3, 203.5],
     cars: [{ kind: 'police_coupe', or: 'sedan', at: [-294.3, 199.5], face: 0, color: [0.85, 0.86, 0.9], flash: true }, { kind: 'sedan', at: [-294.3, 207.6], face: 0, color: [0.25, 0.12, 0.1], simple: true, dark: true }],
-    people: [[-292.75, 206.9, 90, 'hips', 'name.guard', [0.05, 0.06, 0.09], 1.04]],
+    people: [[-292.75, 206.9, 90, 'hips', 'name.guard', [0.05, 0.06, 0.09], 1.04, 'stern']],
     lines: [[0, 'life.stop.1'], [0, 'life.stop.2']],
   },
   {
     id: 'phone', at: [-262, -376.3],
-    people: [[-263.4, -376.2, 200, 'phone', 'name.stranger2', [0.12, 0.1, 0.16], 0.95]],
+    people: [[-263.4, -376.2, 200, 'phone', 'name.stranger2', [0.12, 0.1, 0.16], 0.95, 'worried']],
     lines: [[0, 'life.phone.1'], [0, 'life.phone.2']],
   },
   {
     id: 'wall', at: [150, -376.3],
-    people: [[149.2, -376.1, 250, 'crossed', 'name.stranger1', [0.13, 0.12, 0.1], 1.0], [150.7, -376.5, 110, 'hips', 'name.stranger2', [0.08, 0.11, 0.13], 0.96]],
+    people: [[149.2, -376.1, 250, 'crossed', 'name.stranger1', [0.13, 0.12, 0.1], 1.0, 'smirk'], [150.7, -376.5, 110, 'hips', 'name.stranger2', [0.08, 0.11, 0.13], 0.96, 'smile']],
     lines: [[0, 'life.wall.1'], [1, 'life.wall.2'], [0, 'life.wall.3']],
   },
   {
@@ -65,9 +65,9 @@ export function createStreetLife({ actors, props, vehicles, ui, scene, player, c
       if (c.flash) v.siren = true;                 // the lights turn, without the siren
       made.cars.push(v);
     }
-    (m.people || []).forEach(([x, z, face, pose, name, shade, size], i) => {
+    (m.people || []).forEach(([x, z, face, pose, name, shade, size, mood], i) => {
       const id = `life:${m.id}:${i}`;
-      actors.spawn(id, { extra: shade, name: t(name), at: [x, city.groundHeight(x, z), z], heading: compassToAngle(face), pose, scale: size });
+      actors.spawn(id, { extra: shade, name: t(name), at: [x, city.groundHeight(x, z), z], heading: compassToAngle(face), pose, scale: size, mood });
       made.people.push(id);
     });
     for (const p of m.props || []) {

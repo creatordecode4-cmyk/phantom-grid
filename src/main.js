@@ -206,7 +206,8 @@ async function boot() {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     // tall screens (phone held upright) get a taller view, so you still see enough to the sides
-    if (camera.aspect >= 1) camera.fov = CONFIG.camera.fov;
+    // (a very wide phone: the view left-right is capped, or everything near the edges of the picture looks fat)
+    if (camera.aspect >= 1) camera.fov = Math.min(CONFIG.camera.fov, (2 * Math.atan(Math.tan((CONFIG.camera.maxHFov * DEG) / 2) / camera.aspect)) / DEG);
     else camera.fov = clamp((2 * Math.atan(Math.tan((CONFIG.camera.portraitHFov * DEG) / 2) / camera.aspect)) / DEG, CONFIG.camera.fov, 84);
     baseFov = fovNow = camera.fov;
     pixelH = h * pr;

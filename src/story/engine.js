@@ -237,16 +237,30 @@ export function createStory(G) {
   }
   const timer = (seconds) => { let left = seconds; return { update(dt) { left -= dt; return left <= 0; } }; };
 
+  // ------------------------------------------------------------------ faces
+  // who: 'nate' (the player) or the id of an actor. mood: a name from FACES in src/characters/faceAnim.js
+  // ('smile', 'sad', 'angry', 'afraid', 'tired' ...). A face keeps its mood until the story changes it.
+  function setMood(who, mood, seconds = 0.45) {
+    if (!who || !mood) return;
+    if (who === 'nate' || who === 'player') player.mood = mood;
+    else { const a = actors.get(who); if (a) actors.setMood(a, mood, seconds); }
+  }
+  // a line changes the face of its speaker (mood) and of the others in the scene (moods: { theo: 'sad', nate: 'tired' })
+  function lineMoods(l) {
+    if (l.mood) setMood(l.who === 'nate' ? 'nate' : l.actor || l.who, l.mood);
+    if (l.moods) for (const id in l.moods) setMood(id, l.moods[id]);
+  }
+
   // ------------------------------------------------------------------ speaking
   function quietTalk() { for (const a of actors.list) a.talking = 0; player.talk = 0; }
-  // l: { who: 'nate' | 'theo' | 'wren' ..., text: key, seconds, kind }. Returns how long the line stays.
+  // l: { who: 'nate' | 'theo' | 'wren' ..., text: key, seconds, kind, mood, moods }. Returns how long the line stays.
   function speak(l, now = false) {
     const who = l.who || '', kind = l.kind || (who === 'wren' ? 'wren' : '');
     const a = who && who !== 'nate' ? actors.get(l.actor || who) : null;
     return ui.say(who ? t('name.' + who) : '', t(l.text), {
       seconds: l.seconds, kind, now,
       // the speaker moves a hand with the words; WREN has her own soft sound
-      onShow: () => { quietTalk(); if (kind === 'wren') sound.wren(); if (a) a.talking = 1; else if (who === 'nate') player.talk = 1; },
+      onShow: () => { quietTalk(); lineMoods(l); if (kind === 'wren') sound.wren(); if (a) a.talking = 1; else if (who === 'nate') player.talk = 1; },
       onDone: () => { if (a) a.talking = 0; else if (who === 'nate') player.talk = 0; },
     });
   }
@@ -438,7 +452,7 @@ export function createStory(G) {
     const p = s.at ? pt(s.at) : seat ? [seat.x, seat.y, seat.z] : [0, 0, 0];
     const a = actors.spawn(s.id, {
       model: s.model || null, extra: s.extra || null, name: s.name ? t(s.name) : '', at: p, heading: angle(s.face || 0), pose: s.pose || 'idle', scale: s.scale || 1,
-      tag: !!s.tag, fixed: !!s.fixed, hidden: !!s.hidden, ghost: !!s.ghost, floorBelow: s.floorBelow, look: s.look === undefined ? 'auto' : lookOf(s.look),
+      tag: !!s.tag, fixed: !!s.fixed, hidden: !!s.hidden, ghost: !!s.ghost, floorBelow: s.floorBelow, look: s.look === undefined ? 'auto' : lookOf(s.look), mood: s.mood,
       // (only a plain [x, z] place follows the street; a point with a height is a floor, a roof, the highway)
       keepY: !(Array.isArray(s.at) && s.at.length === 2),
     });
@@ -456,7 +470,10 @@ export function createStory(G) {
     if ('hidden' in s) a.hidden = !!s.hidden;
     if ('seat' in s) actors.sitIn(a, s.seat ? car(s.seat) : null);
     if ('fixed' in s) a.fixed = !!s.fixed;
+    if (s.mood) actors.setMood(a, s.mood, s.moodSeconds === undefined ? 0.45 : s.moodSeconds);
   };
+  // the faces of several people at once: { do: 'mood', set: { theo: 'sad', nate: 'tired' }, seconds }
+  STEP.mood = (s) => { for (const id in s.set || {}) setMood(id, s.set[id], s.seconds === undefined ? 0.45 : s.seconds); };
 
   // ---------------------------------------------------------------- things
   // where: at (a place) + face, or in: 'car' with at: { cabinAt, p }, or on: 'person' with bone + p + rot (in the hand)
@@ -519,6 +536,7 @@ export function createStory(G) {
     if ('carry' in s) carry(s.carry);
     if ('hidden' in s) player.setHidden(!!s.hidden);
     if ('look' in s) player.look = s.look;
+    if (s.mood) player.mood = s.mood;
   };
   // what the player may do: enter: 'none' | [vehicle names], drive, move
   STEP.allow = (s) => {
@@ -587,6 +605,7 @@ export function createStory(G) {
           const l = s.lines[i++];
           if (l.if && !test(l.if)) continue;
           run(l.do);
+          if (!l.text) lineMoods(l);
           if (l.wait) left += l.wait;
           else if (l.text) left = speak(l, true) + (l.gap === undefined ? 0.25 : l.gap);
         }
@@ -650,7 +669,7 @@ export function createStory(G) {
       return true;
     };
     // what a shot would still have done (when the scene is skipped, the world must end up the same)
-    const rest = (sh, all) => { (sh.lines || []).forEach((l, i) => { if ((all || !fired[i]) && l.do && (!l.if || test(l.if))) run(l.do); }); run(sh.end); };
+    const rest = (sh, all) => { (sh.lines || []).forEach((l, i) => { if ((all || !fired[i]) && (!l.if || test(l.if))) { lineMoods(l); if (l.do) run(l.do); } }); run(sh.end); };
     return {
       update(dt) {
         if (skipped) {
@@ -663,7 +682,7 @@ export function createStory(G) {
         if (k < 0) { k = 0; if (!open()) return true; }
         time += dt;
         const sh = shots[k];
-        (sh.lines || []).forEach((l, i) => { if (!fired[i] && time >= l.at) { fired[i] = true; if (l.if && !test(l.if)) return; if (l.text) speak(l, true); run(l.do); } });
+        (sh.lines || []).forEach((l, i) => { if (!fired[i] && time >= l.at) { fired[i] = true; if (l.if && !test(l.if)) return; if (l.text) speak(l, true); else lineMoods(l); run(l.do); } });
         let end = sh.seconds;
         if (sh.hold) {
           if (events.has(sh.hold.event)) { if (holdAt === null) holdAt = time; end = Math.max(end, holdAt + sh.hold.seconds); }
@@ -884,6 +903,7 @@ export function createStory(G) {
     police.setScripted({ stars: 0 });
     city.traffic.setCap(Infinity); city.people.setCap(Infinity);
     allowDrive = allowMove = true; light = null; mirrorOn = false; tapeShown = false; indoors = false; fovWant = 0; limitedFor = 0;
+    player.mood = 'neutral';
     objective.text = ''; objective.info = ''; marker = null; beam.visible = false;
     hudState.active = false; hudState.marker = null;
     player.setHidden(false);

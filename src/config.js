@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 4.1',
+  version: 'Phase 4.2',
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {
@@ -54,6 +54,7 @@ export const CONFIG = {
   camera: {
     fov: 55,           // vertical field of view on a wide (landscape) screen
     portraitHFov: 46,  // on a tall (portrait) screen we keep this horizontal view
+    maxHFov: 90,       // on a very wide phone the view left-right never gets wider than this (wider = fat people at the edges)
     near: 0.2,
     far: 9000,
     distance: 3.6,     // meters behind the player

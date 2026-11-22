@@ -11,6 +11,9 @@
 
 import * as THREE from 'three';
 
+const TALL_MAX = 86;      // the widest view up-down on an upright screen (degrees)
+const TALL_PART = 0.86;   // how much of the middle square of a shot must fit across an upright screen
+
 export function createDirector(camera, resolve) {
   let shot = null, t = 0, baseFov = 50, baseNear = 0.2;
   const a = new THREE.Vector3(), b = new THREE.Vector3(), la = new THREE.Vector3(), lb = new THREE.Vector3();
@@ -39,7 +42,12 @@ export function createDirector(camera, resolve) {
     camera.position.copy(a);
     camera.lookAt(la);
     if (shot.roll) camera.rotateZ(shot.roll);
-    const fov = shot.fov ? shot.fov + ((shot.fovTo || shot.fov) - shot.fov) * k : baseFov;
+    let fov = shot.fov ? shot.fov + ((shot.fovTo || shot.fov) - shot.fov) * k : baseFov;
+    // A shot is designed for a wide picture. On an upright phone the same view would show only a thin slice of
+    // it: faces fill the whole screen or are cut off. So there the view opens up until the middle SQUARE of the
+    // designed picture (a little less: TALL_PART) fits across the screen again. The film bars of the page hide
+    // what is above and below it.
+    if (shot.fov && camera.aspect < 1) fov = Math.min(TALL_MAX, (2 * Math.atan((TALL_PART * Math.tan((fov * Math.PI) / 360)) / camera.aspect) * 180) / Math.PI);
     // (near: how close things may come to the lens before they are cut away - small inside a car)
     const near = shot.near || baseNear;
     if (Math.abs(camera.fov - fov) > 0.02 || camera.near !== near) { camera.fov = fov; camera.near = near; camera.updateProjectionMatrix(); }

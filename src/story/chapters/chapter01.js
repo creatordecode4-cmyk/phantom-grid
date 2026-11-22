@@ -42,16 +42,17 @@ const VAN_THINGS = [
 ];
 // MACE (Marcus Doyle, 54). What he wants: that Nate eats, sleeps, stops punishing himself. What he fears: the car
 // under the tarp. His object: a sandwich in paper that he pretends is nothing.
-const MACE = { do: 'actor', id: 'mace', model: 'Mace_Doyle', name: 'name.mace', at: { garage: [-2.5, 0, 5.6] }, face: 290, pose: 'crossed', fixed: true };
+// (mood: the face of a person - see FACES in src/characters/faceAnim.js)
+const MACE = { do: 'actor', id: 'mace', model: 'Mace_Doyle', name: 'name.mace', at: { garage: [-2.5, 0, 5.6] }, face: 290, pose: 'crossed', fixed: true, mood: 'stern' };
 // ZERO: the black Phantom. No name tag, no siren. A thin bar of cold light.
 const ZERO = (at, face) => ({ do: 'spawn', id: 'zero', kind: 'tech_patrol_car', or: 'sedan', color: [0.02, 0.02, 0.025], at, face, tint: DARK, lights: 'bar', npc: true, noDetail: true, mirror: 'zero' });
 const GUARD = (id, at, face) => ({ do: 'spawn', id, kind: 'police_coupe', or: 'sedan', color: [0.85, 0.86, 0.9], at, face, npc: true, noDetail: true, flash: true, mirror: 'guard' });
 // DR. INGRID SOLBERG. What she wants: to put something right. What she fears: the roofs. Her object: a race ticket
 // she has kept for four years.
-const SOLBERG = { do: 'actor', id: 'solberg', model: 'Ingrid_Solberg', name: 'name.solberg', at: [132, -253.4], face: 270, fixed: true, look: 'player' };
+const SOLBERG = { do: 'actor', id: 'solberg', model: 'Ingrid_Solberg', name: 'name.solberg', at: [132, -253.4], face: 270, fixed: true, look: 'player', mood: 'worried' };
 const CASE = { do: 'prop', id: 'case', kind: 'case', on: 'solberg', bone: 'hand_R', p: [0, 0.24, 0.02], rot: [0, Math.PI / 2, Math.PI] };
 // JUNO KADE: only ever a shape on a roof.
-const JUNO = { do: 'actor', id: 'juno', model: 'Juno_Kade', at: { roof: [73.4, -257.4] }, face: 270, pose: 'aim', hidden: true, ghost: true, fixed: true, look: null };
+const JUNO = { do: 'actor', id: 'juno', model: 'Juno_Kade', at: { roof: [73.4, -257.4] }, face: 270, pose: 'aim', hidden: true, ghost: true, fixed: true, look: null, mood: 'stern' };
 const RIFLE = { do: 'prop', id: 'rifle', kind: 'rifle', on: 'juno', bone: 'hand_R', p: [0.02, 0.1, 0.1], rot: [0, 0, 0] };
 
 // an impatient car that comes up behind the van on Neon Mile, passes it and is gone
@@ -112,10 +113,10 @@ export default {
               lines: [{ at: 1.2, who: 'wren', text: 'c1.wren.wake' }] },
             // sitting on the edge of the bed, head down
             { seconds: 8, cam: { from: { flat: [4.3, 1.15, 3.7] }, to: { flat: [4.5, 1.15, 3.5] }, look: { flat: [6.5, 1.05, 2.0] }, fov: 34, near: NEAR },
-              do: [{ do: 'player', stage: { at: { flat: [6.62, 0.555, 2.0] }, face: 0, pose: 'sitEdge', floorBelow: 0.555 } }],
-              lines: [{ at: 0.9, who: 'wren', text: 'c1.wren.jobs' }, { at: 4.4, who: 'nate', text: 'c1.always_rain' }] },
+              do: [{ do: 'player', stage: { at: { flat: [6.62, 0.555, 2.0] }, face: 0, pose: 'sitEdge', floorBelow: 0.555 }, mood: 'tired' }],
+              lines: [{ at: 0.9, who: 'wren', text: 'c1.wren.jobs' }, { at: 4.4, who: 'nate', text: 'c1.always_rain', mood: 'tired' }] },
             { seconds: 5, cam: { from: { flat: [4.9, 1.28, 2.95] }, look: { flat: [6.55, 1.18, 2.0] }, fov: 30, near: NEAR },
-              lines: [{ at: 0.6, who: 'wren', text: 'c1.wren.message', seconds: 4.2 }] },
+              lines: [{ at: 0.6, who: 'wren', text: 'c1.wren.message', seconds: 4.2, moods: { nate: 'sad' } }] },
           ],
         },
         // CHOICE (it is remembered): listen to the start of Theo's last message, or not today
@@ -127,13 +128,13 @@ export default {
             { if: { flag: 'voicemail_played' }, seconds: 11, cam: { from: { flat: [4.7, 0.7, 2.85] }, to: { flat: [4.95, 0.72, 2.7] }, look: { flat: [6.5, 1.12, 2.0] }, fov: 30, near: NEAR },
               lines: [
                 { at: 0.4, do: [{ do: 'sound', name: 'beep' }] },
-                { at: 1.0, who: 'voicemail', kind: 'thought', text: 'c1.voicemail', seconds: 4.3 },
-                { at: 5.3, who: 'nate', text: 'c1.stop', seconds: 1.5 },
+                { at: 1.0, who: 'voicemail', kind: 'thought', text: 'c1.voicemail', seconds: 4.3, moods: { nate: 'sad' } },
+                { at: 5.3, who: 'nate', text: 'c1.stop', seconds: 1.5, mood: 'pain' },
                 { at: 5.4, do: [{ do: 'sound', name: 'tick' }] },
-                { at: 7.6, who: 'wren', text: 'c1.wren.stopped' },
+                { at: 7.6, who: 'wren', text: 'c1.wren.stopped', moods: { nate: 'sad' } },
               ] },
             { if: { flag: 'voicemail_played', is: false }, seconds: 4.2, cam: { from: { flat: [4.7, 0.7, 2.85] }, look: { flat: [6.5, 1.06, 2.0] }, fov: 30, near: NEAR },
-              lines: [{ at: 0.7, who: 'wren', text: 'c1.wren.saved' }] },
+              lines: [{ at: 0.7, who: 'wren', text: 'c1.wren.saved', moods: { nate: 'tired' } }] },
           ],
         },
         {
@@ -141,7 +142,7 @@ export default {
           shots: [
             // the courier jacket on its hook. He takes it, and the night starts.
             { seconds: 4.6, fade: 'out', fadeSeconds: 1.4, cam: { from: { flat: [4.4, 1.5, 4.2] }, to: { flat: [4.1, 1.5, 3.9] }, look: { flat: [2.1, 1.25, 2.82] }, fov: 32, near: NEAR },
-              do: [{ do: 'player', stage: { at: { flat: [2.95, 0, 2.86] }, face: 0, pose: 'idle' } }],
+              do: [{ do: 'player', stage: { at: { flat: [2.95, 0, 2.86] }, face: 0, pose: 'idle' }, mood: 'stern' }],
               end: [{ do: 'remove', ids: ['jacket'] }, { do: 'sound', name: 'cloth' }] },
           ],
         },
@@ -161,11 +162,11 @@ export default {
                 { do: 'player', stage: { at: { garage: [-3.95, 0, 5.5] }, face: 180, pose: 'idle' } },
                 { do: 'actorSet', id: 'mace', at: { garage: [-2.5, 0, 5.6] }, face: 0, look: 'player' },
               ],
-              lines: [{ at: 0.7, who: 'mace', text: 'c1.mace.van' }, { at: 4.4, who: 'nate', text: 'c1.thanks', seconds: 1.4 }, { at: 6.0, who: 'mace', text: 'c1.mace.eat', seconds: 1.5 }, { at: 7.7, who: 'nate', text: 'c1.later', seconds: 1.5 }] },
+              lines: [{ at: 0.7, who: 'mace', text: 'c1.mace.van', mood: 'neutral', moods: { nate: 'tired' } }, { at: 4.4, who: 'nate', text: 'c1.thanks', seconds: 1.4 }, { at: 6.0, who: 'mace', text: 'c1.mace.eat', seconds: 1.5, mood: 'worried' }, { at: 7.7, who: 'nate', text: 'c1.later', seconds: 1.5 }] },
             // Mace holds out a sandwich wrapped in paper
             { seconds: 3.6, cam: { from: { garage: [-4.5, 1.62, 4.9] }, look: { garage: [-2.5, 1.42, 5.6] }, fov: 32 },
               do: [{ do: 'actorSet', id: 'mace', pose: 'hold' }, { do: 'prop', id: 'sandwich', kind: 'sandwich', on: 'mace', bone: 'hand_R', p: [0, 0.11, 0.05] }],
-              lines: [{ at: 0.6, who: 'mace', text: 'c1.mace.eat2', seconds: 2.4 }] },
+              lines: [{ at: 0.6, who: 'mace', text: 'c1.mace.eat2', seconds: 2.4, mood: 'stern' }] },
           ],
         },
         // CHOICE (it is remembered): be kind to Mace, or say nothing
@@ -175,17 +176,17 @@ export default {
           shots: [
             { seconds: 3.6, cam: { from: { garage: [-4.5, 1.62, 4.9] }, look: { garage: [-2.5, 1.42, 5.6] }, fov: 32 },
               lines: [
-                { at: 0.4, if: { flag: 'mace_kind' }, who: 'mace', text: 'c1.mace.kind' },
-                { at: 0.4, if: { flag: 'mace_kind', is: false }, who: 'mace', text: 'c1.mace.ignored', seconds: 1.6 },
+                { at: 0.4, if: { flag: 'mace_kind' }, who: 'mace', text: 'c1.mace.kind', mood: 'smile', moods: { nate: 'smile' } },
+                { at: 0.4, if: { flag: 'mace_kind', is: false }, who: 'mace', text: 'c1.mace.ignored', seconds: 1.6, mood: 'sad' },
               ],
               // (kind: Nate takes it. Not kind: Mace keeps holding it, then puts his arms down.)
               end: [{ do: 'remove', ids: ['sandwich'] }, { do: 'actorSet', id: 'mace', pose: 'crossed' }] },
             // QUIET MOMENT (an object): Theo's car under the tarp
             { seconds: 8.2, cam: { from: { garage: [-3.2, 1.35, 0.9] }, to: { garage: [-3.7, 1.3, 0.2] }, look: { garage: [-6.9, 0.75, -3.9] }, fov: 40 },
-              lines: [{ at: 1.3, who: 'mace', text: 'c1.mace.tarp' }, { at: 5.2, who: 'nate', text: 'c1.leave_it', seconds: 2 }] },
+              lines: [{ at: 1.3, who: 'mace', text: 'c1.mace.tarp', mood: 'worried', moods: { nate: 'sad' } }, { at: 5.2, who: 'nate', text: 'c1.leave_it', seconds: 2, mood: 'stern' }] },
             // from the sidewalk, in the rain: two men in a lit doorway
             { seconds: 8.2, cam: { from: { garage: [-3.2, 1.5, 9.2] }, to: { garage: [-3.2, 1.5, 8.7] }, look: { garage: [-3.2, 1.35, 5.5] }, fov: 38 },
-              lines: [{ at: 0.6, who: 'mace', text: 'c1.mace.careful', seconds: 1.8 }, { at: 2.8, who: 'nate', text: 'c1.only_eighty', seconds: 2 }, { at: 5.3, who: 'mace', text: 'c1.mace.not_said' }],
+              lines: [{ at: 0.6, who: 'mace', text: 'c1.mace.careful', seconds: 1.8, mood: 'worried' }, { at: 2.8, who: 'nate', text: 'c1.only_eighty', seconds: 2, mood: 'smirk' }, { at: 5.3, who: 'mace', text: 'c1.mace.not_said', mood: 'stern' }],
               end: [{ do: 'player', stage: null, at: { garage: [-3.95, 0, 5.5] }, face: 270 }, { do: 'actorSet', id: 'mace', look: 'auto' }] },
           ],
         },
@@ -234,7 +235,7 @@ export default {
         { do: 'actor', id: 'customer', extra: [0.2, 0.17, 0.12], name: 'name.customer', at: [-297.7, 292.4], face: 270, pose: 'crossed', scale: 0.97, look: 'player' },
       ],
       // the limiter has been holding the van back for a while: WREN says the thing that Nate will not do
-      on: [{ limited: 10, do: [{ do: 'say', who: 'wren', text: 'c1.wren.turn_off' }, { do: 'say', who: 'nate', text: 'c1.i_could' }] }],
+      on: [{ limited: 10, do: [{ do: 'say', who: 'wren', text: 'c1.wren.turn_off' }, { do: 'say', who: 'nate', text: 'c1.i_could', mood: 'smirk' }] }],
       steps: [
         { do: 'say', who: 'wren', text: 'c1.wren.route' },
         // ---- 1 of 3 ----
@@ -244,7 +245,7 @@ export default {
           do: 'goto', text: 'c1.obj.door', at: D1.door, radius: 1.5,
           // the two under the awning: everyone in this city is lying to somebody
           on: [{ near: [-238, 135.4], radius: 9, do: [
-            { do: 'say', who: 'stranger1', actor: 'argA', text: 'c1.argue.1' }, { do: 'say', who: 'stranger2', actor: 'argB', text: 'c1.argue.2' }, { do: 'say', who: 'stranger1', actor: 'argA', text: 'c1.argue.3' },
+            { do: 'say', who: 'stranger1', actor: 'argA', text: 'c1.argue.1', mood: 'angry' }, { do: 'say', who: 'stranger2', actor: 'argB', text: 'c1.argue.2', mood: 'doubt' }, { do: 'say', who: 'stranger1', actor: 'argA', text: 'c1.argue.3', mood: 'angry' },
           ] }],
         },
         { do: 'player', carry: null }, { do: 'sound', name: 'chime' },
@@ -255,7 +256,7 @@ export default {
         ...HAND_OVER({ actor: 'customer' }),
         { do: 'talk', actor: 'customer', text: 'c1.obj.door', label: 'ui.drop', radius: 2.6 },
         { do: 'player', carry: null }, { do: 'sound', name: 'chime' },
-        { do: 'lines', lines: [{ who: 'customer', text: 'c1.cust.late' }, { who: 'nate', text: 'c1.on_time', seconds: 1.8 }, { who: 'customer', text: 'c1.cust.other' }] },
+        { do: 'lines', lines: [{ who: 'customer', text: 'c1.cust.late', mood: 'smirk' }, { who: 'nate', text: 'c1.on_time', seconds: 1.8, mood: 'stern' }, { who: 'customer', text: 'c1.cust.other', mood: 'doubt' }] },
         { do: 'say', who: 'wren', text: 'c1.wren.two' },
         { do: 'enter', vehicle: 'van', text: 'c1.obj.back' },
         // ---- 3 of 3: a late pick-up, then a straight run down the Mile against the clock ----
@@ -302,7 +303,7 @@ export default {
       steps: [
         { do: 'lines', lines: [
           { who: 'wren', text: 'c1.wren.priority' }, { who: 'wren', text: 'c1.wren.name' },
-          { who: 'nate', text: 'c1.nobody', seconds: 2.2 }, { who: 'wren', text: 'c1.wren.somebody', seconds: 1.8 }, { who: 'wren', text: 'c1.wren.where' },
+          { who: 'nate', text: 'c1.nobody', seconds: 2.2, mood: 'doubt' }, { who: 'wren', text: 'c1.wren.somebody', seconds: 1.8 }, { who: 'wren', text: 'c1.wren.where' },
         ] },
         { do: 'flag', set: { nate_name_known: true } },
         { do: 'enter', vehicle: 'van', text: 'c1.obj.back' },
@@ -339,10 +340,10 @@ export default {
             // she looks at him for a long moment before she says it
             { seconds: 7, cam: { from: { of: 'solberg', p: [-0.6, 1.62, 2.5] }, to: { of: 'solberg', p: [-0.5, 1.62, 2.2] }, look: { of: 'solberg', p: [0, 1.56, 0] }, fov: 30 },
               do: [{ do: 'player', stage: { at: [134.7, -254.0], face: 90, pose: 'idle' } }, { do: 'music', silence: 0.4 }],
-              lines: [{ at: 2.2, who: 'solberg', text: 'c1.solberg.look', seconds: 2.6 }, { at: 5.2, who: 'nate', text: 'c1.like_who', seconds: 1.7 }] },
+              lines: [{ at: 2.2, who: 'solberg', text: 'c1.solberg.look', seconds: 2.6, mood: 'sad' }, { at: 5.2, who: 'nate', text: 'c1.like_who', seconds: 1.7, mood: 'doubt' }] },
             // Nate. He does not get his answer.
             { seconds: 2.4, cam: { from: { of: 'solberg', p: [0.55, 1.6, 0.5] }, look: [134.7, 1.62, -254.0], fov: 28 },
-              end: [{ do: 'sound', name: 'shot', buzz: [200] }] },
+              end: [{ do: 'sound', name: 'shot', buzz: [200] }, { do: 'mood', set: { nate: 'surprised' }, seconds: 0.1 }] },
             // the roof at the end of the street: a flash, and for a second somebody is there
             { seconds: 2.3, cam: { from: [135.5, 1.75, -254.4], look: { of: 'juno', p: [0, 1.25, 0.2] }, fov: 8.5 },
               do: [
@@ -354,7 +355,7 @@ export default {
             // she is on the ground. The rain does not stop. In her open hand: a small worn card.
             { seconds: 5.5, cam: { from: [134.3, 0.55, -255.6], to: [134.0, 0.6, -255.4], look: { of: 'solberg', p: [0.2, 0.25, 0] }, fov: 40 },
               do: [
-                { do: 'actorSet', id: 'solberg', pose: 'fallen', seconds: 0.3, look: null },
+                { do: 'actorSet', id: 'solberg', pose: 'fallen', seconds: 0.3, look: null, mood: 'asleep' },
                 { do: 'actorSet', id: 'juno', hidden: true }, { do: 'light', at: null },
                 { do: 'remove', ids: ['case'] },
                 { do: 'prop', id: 'case2', kind: 'case', at: { of: 'solberg', p: [-0.75, 0.06, 0.55] }, rot: [0.6, 1.57, 0] },
@@ -373,7 +374,7 @@ export default {
           ],
         },
         { do: 'cine', on: false },
-        { do: 'player', stage: null, at: [134.7, -254.0], face: 270 },
+        { do: 'player', stage: null, at: [134.7, -254.0], face: 270, mood: 'afraid' },
         { do: 'say', who: 'wren', text: 'c1.wren.leave_now' },
         { do: 'enter', vehicle: 'van', text: 'c1.obj.backvan' },
       ],
@@ -534,7 +535,7 @@ export default {
             // the end of the street is empty
             { seconds: 3.4, cam: { from: [-45, 1.25, 313.6], look: [-12, 0.9, 315], fov: 30 } },
             { seconds: 7, cam: { from: { cabin: 'van', at: 'pass', p: [0.12, 0.0, 0.3] }, look: { cabin: 'van', at: 'eye', p: [0, -0.04, 0] }, fov: 42, near: NEAR },
-              lines: [{ at: 1.0, who: 'wren', text: 'c1.wren.let_go', seconds: 2.4 }, { at: 4.2, who: 'nate', text: 'c1.why', seconds: 2.2 }] },
+              lines: [{ at: 1.0, who: 'wren', text: 'c1.wren.let_go', seconds: 2.4, moods: { nate: 'afraid' } }, { at: 4.2, who: 'nate', text: 'c1.why', seconds: 2.2, mood: 'doubt' }] },
           ],
         },
         // CHOICE (it is remembered): does WREN keep looking for it?
@@ -544,8 +545,8 @@ export default {
           shots: [
             { seconds: 3.6, cam: { from: { cabin: 'van', at: 'pass', p: [0.12, 0.0, 0.3] }, look: { cabin: 'van', at: 'eye', p: [0, -0.04, 0] }, fov: 42, near: NEAR },
               lines: [
-                { at: 0.5, if: { flag: 'wren_tracks_zero', is: false }, who: 'wren', text: 'c1.wren.understood', seconds: 2 },
-                { at: 0.5, if: { flag: 'wren_tracks_zero' }, who: 'wren', text: 'c1.wren.watch', seconds: 2 },
+                { at: 0.5, if: { flag: 'wren_tracks_zero', is: false }, who: 'wren', text: 'c1.wren.understood', seconds: 2, moods: { nate: 'tired' } },
+                { at: 0.5, if: { flag: 'wren_tracks_zero' }, who: 'wren', text: 'c1.wren.watch', seconds: 2, moods: { nate: 'stern' } },
               ] },
             // he left the ticket with her: the news finds it for him
             { if: { flag: 'ticket_taken', is: false }, seconds: 8.4, pov: true, cam: { from: { cabin: 'van', at: 'eye', p: [0, 0.02, 0.02] }, look: { cabin: 'van', at: 'dash', p: [0.05, -0.05, 0.1] }, lookTo: { cabin: 'van', at: 'dash', p: [0, -0.2, -0.13] }, fov: 40, near: NEAR },

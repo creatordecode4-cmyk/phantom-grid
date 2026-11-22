@@ -137,7 +137,9 @@ src/
     proceduralAnim.js      moves the skeleton: walk, run, idle, driving, foot placement, joint limits,
                            and the poses of the story (sitting, lying, arms crossed, aiming ...)
     rigWorker.js           works out a skeleton in the background, so the game does not stop meanwhile
-    faceClean.js           cleans painted dark rings and smudges on a face (once, when a character loads)
+    faceClean.js           reads a face (nose, eyes, mouth, eyebrows) and cleans painted dark rings and smudges
+    faceRig.js             adds small face bones: jaw, eyelids, eyebrows, corners of the mouth
+    faceAnim.js            moods (smile, sad, angry ...), blinking, the jaw while speaking
     characterLook.js       the characters' own soft light, a matt head, softer bumps on the face
   story/
     engine.js              THE STORY ENGINE: reads a chapter file and makes it happen (steps, objectives,
@@ -677,8 +679,61 @@ file, `&fill=0.3` for the night light of the game, `&look=0` for the shiny head 
 
 What is not perfect: the cleaning is a careful guess from the shape of the face, it cannot
 repaint a face. Thin dark lines that were painted in stay (for example where a strand of hair
-falls on the forehead). Faces still do not move: no lip movement, no blinking. Nothing of this
-was seen on a real phone yet.
+falls on the forehead). Nothing of this was seen on a real phone yet.
+
+### Expressions (version 4.2)
+
+The faces now change with the story. Because the models have no bones in the face,
+`src/characters/faceRig.js` adds seven small ones under the head when a character loads:
+`jaw`, `lid_L` / `lid_R` (upper eyelids), `brow_L` / `brow_R` and `mouth_L` / `mouth_R`
+(the corners of the mouth). Where they go comes from the face reader in `faceClean.js`: the nose
+(the narrow ridge in the depth of the face), the eyes, the line of the mouth and the eyebrows.
+How much a point of the skin follows a bone depends only on where it is (soft hills around each
+place), so the skin moves softly on every model; the frames of glasses and strands of hair that
+stand out in front of the face follow only the head.
+
+`src/characters/faceAnim.js` moves them:
+- **Moods:** `neutral`, `smile`, `grin`, `smirk`, `sad`, `worried`, `afraid`, `surprised`,
+  `angry`, `stern`, `doubt`, `tired`, `pain`, `asleep`, `shout`. Each is one line of numbers in
+  `FACES` (eyebrows up / tilted, eyelids, corners of the mouth, jaw): add your own there. A face
+  changes softly from one mood to the next.
+- **Blinking** every 2 to 6 seconds, sometimes twice.
+- **Speaking:** while a line is on screen the jaw of the speaker opens and closes in small,
+  uneven steps, like syllables.
+- **Sleeping** (the `lie` pose) closes the eyes by itself.
+
+In the story data (`src/story/chapters/*.js`) a mood is one more word:
+
+| Where | Example |
+|---|---|
+| a line: the face of the speaker | `{ who: 'theo', text: 'p.tired', mood: 'tired' }` |
+| a line: the faces of the others | `{ who: 'wren', text: '...', moods: { nate: 'sad' } }` |
+| a person appears / changes | `{ do: 'actor', id: 'mace', ..., mood: 'stern' }`, `{ do: 'actorSet', id: 'mace', mood: 'smile' }` |
+| Nate | `{ do: 'player', mood: 'afraid' }` |
+| several at once | `{ do: 'mood', set: { nate: 'surprised', mace: 'afraid' }, seconds: 0.1 }` |
+
+A face keeps its mood until the story changes it; every mission starts with a calm face for Nate.
+The prologue and Chapter 1 now use moods in all their scenes (Theo tired and worried in the car,
+Mace stern and caring, Nate's pain at the voicemail, fear after the shot ...). The people of the
+street moments in free roam have a mood too (the two who argue, the Guard ...).
+
+Rig test screen: the buttons `FACE SMILE SAD ANGRY AFRAID SURPRISED TIRED DOUBT` and `TALK`.
+`rigtest.html?facerig=0` shows a stiff face as before.
+
+What is not perfect: the expressions are small on purpose - these models are scans with few
+points in the face, and bigger moves tear the painted picture. Beards hide most of a mouth.
+There is no lip sync to real words (there are no voices), the eyes do not look around (they
+are painted on), and the extras (dark copies of one body) have no picture, so their faces are
+hard to read.
+
+### Faces that looked thin or fat (version 4.2)
+
+That was the camera, not the faces. A wide lens stretches everything near the edges of the
+picture: people at the sides of a very wide phone looked fat, and on an upright phone the film
+scenes showed only a thin slice of the picture, so faces filled the whole screen. Now:
+- the view left-right is never wider than 90 degrees (`camera.maxHFov` in `config.js`);
+- on an upright phone a film scene opens its view until the middle of the designed picture fits
+  across the screen, and the black film bars get taller (`src/story/director.js`, `index.html`).
 
 ---
 
@@ -734,6 +789,7 @@ hide the objective on purpose).
 2. In it set `id: 'chapter02'`, `number: 2`, and write your missions (`setup` = what is in the world,
    `steps` = what happens). The top of `src/story/engine.js` lists every step, place and condition.
 3. Put the new texts into `src/story/strings.js`.
+4. Give the lines their moods (`mood: 'sad'` ..., see "Expressions" above): faces then follow the scene.
 
 That is all: the engine looks for `chapter02.js` by itself. When it exists, the end card of
 Chapter 1 shows `NEXT CHAPTER` instead of "CHAPTER 2 IS LOCKED", `CONTINUE` goes on with it and

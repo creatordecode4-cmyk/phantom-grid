@@ -53,6 +53,8 @@ export const LIMITS = {
 };
 const lim = (name, deg) => clamp(deg, LIMITS[name][0], LIMITS[name][1]);
 
+import { createFaceAnimator } from './faceAnim.js';
+
 export function createAnimator(THREE, rig, opts = {}) {
   const V = () => new THREE.Vector3(), Q = () => new THREE.Quaternion();
   const B = rig.bones, R = rig.rest, names = rig.list.map((b) => b.name);
@@ -473,6 +475,8 @@ export function createAnimator(THREE, rig, opts = {}) {
   // pose: what the arms (or the whole body) do. talk: 0..1 = speaking (a hand moves with the words).
   // lookAt: { yaw, pitch } in radians relative to the body, or null = look around freely.
   let pose = 'idle', talk = 0, talkNow = 0, lookAt = null, floorBelow = 0.45;
+  const face = createFaceAnimator(THREE, rig);
+  let asleep = false, awake = 'neutral';
   // put a hand at a place (character space); the elbow points along (px, py, pz). The arm is then solved like
   // a real one, so a hand that should rest ON something really is there - it does not hang in the air.
   function handAt(q, x, y, z, px, py, pz) { const A = hand[q]; A.on = true; A.hasPole = true; A.p.set(x, y, z); A.pole.set(px, py, pz); }
@@ -646,6 +650,7 @@ export function createAnimator(THREE, rig, opts = {}) {
     if (mode === 'apose') {
       restPose();
       if (blendT < 1) { const t = smooth(blendT); for (const n of names) B[n].quaternion.slerpQuaternions(snapshot[n], B[n].quaternion, t); B.hips.position.lerpVectors(snapPos, B.hips.position, t); }
+      if (face) face.update(dt, 0, false);
       return;
     }
     const speed = s.speed || 0;
@@ -661,6 +666,8 @@ export function createAnimator(THREE, rig, opts = {}) {
     else if (pose === 'fallen') fallenPose();
     else { locomotion(dt, speed, 0); bodyAndArms(dt, speed); if (pose !== 'idle' || talk > 0 || talkNow > 0.02) standingPose(dt); }
     apply();
+    // the face (faceAnim.js): its expression, blinking, the jaw while speaking; asleep = eyes shut
+    if (face) { if (pose === 'lie' && !asleep) { asleep = true; awake = face.name; face.set('asleep', 0.6); } else if (pose !== 'lie' && asleep) { asleep = false; face.set(awake, 0.5); } face.update(dt, talk, asleep); }
   }
   function setMode(next, seconds = 0.2) {
     if (next === mode) return;
@@ -685,6 +692,12 @@ export function createAnimator(THREE, rig, opts = {}) {
     update, setMode, reset, LIMITS, setPose,
     get pose() { return pose; },
     set talk(v) { talk = v; },
+    // the expression of the face: a name from FACES in faceAnim.js ('smile', 'sad', 'angry' ...). seconds: how softly it changes.
+    setFace(name, seconds = 0.35) { if (!face) return; if (asleep) awake = name; else face.set(name, seconds); },
+    set face(name) { this.setFace(name); },
+    get face() { return face ? (asleep ? awake : face.name) : null; },
+    get faces() { return face ? face.names : []; },
+    set blinks(on) { if (face) face.blinks = on; },
     set look(v) { lookAt = v; },
     // 'sitEdge': how far the floor is below the character's root (meters)
     set floorBelow(v) { floorBelow = v; },

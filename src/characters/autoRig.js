@@ -35,7 +35,8 @@
 // spine bows).
 // ---------------------------------------------------------------------------
 
-import { cleanFace } from './faceClean.js';
+import { readFace, cleanFace } from './faceClean.js';
+import { addFaceBones } from './faceRig.js';
 import { applyCharacterLook } from './characterLook.js';
 
 // ----------------------------------------------------------- small vector helpers
@@ -1039,20 +1040,26 @@ export async function autoRig(THREE, model, opts = {}) {
     for (let i = 0; i < count; i++) { v.fromBufferAttribute(nr, i).applyMatrix3(nm).normalize(); arr[i * 3] = A.flip ? -v.x : v.x; arr[i * 3 + 1] = v.y; arr[i * 3 + 2] = A.flip ? -v.z : v.z; }
     geo.setAttribute('normal', new THREE.BufferAttribute(arr, 3));
   } else geo.computeVertexNormals();
+  // ---- the face: where the nose, the eyes, the mouth and the eyebrows are (faceClean.js) ----
+  const material = Array.isArray(src.material) ? src.material[0] : src.material;
+  let face = null;
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  try { face = readFace(geo, material, A); } catch (e) { console.warn('[autoRig] the face could not be read:', e); }
+  // small bones for the jaw, the eyelids, the eyebrows and the corners of the mouth (faceRig.js). opts.faceRig: false = off
+  if (face && opts.faceRig !== false && !A.face) { try { addFaceBones(A, face); } catch (e) { console.warn('[autoRig] no face bones:', e); } }
   geo.setAttribute('skinIndex', new THREE.BufferAttribute(A.skinIndex, 4));
   geo.setAttribute('skinWeight', new THREE.BufferAttribute(A.skinWeight, 4));
   geo.computeBoundingBox();
   // (a generous sphere: the pose changes, the sphere is not recomputed)
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, A.height / 2, 0), A.height * 0.95);
 
-  const material = Array.isArray(src.material) ? src.material[0] : src.material;
   const rig = assemble(THREE, A, geo, material);
   // the light on a character: a soft fill light from the camera, a matt head (characterLook.js). opts.look: false = off
   if (opts.look !== false) applyCharacterLook(material, A.info.chinY);
   // the face: painted shadows and smudges are cleaned in the character's picture (faceClean.js). opts.faceClean: 0 = off
-  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-  try { rig.faceCleaned = cleanFace(THREE, geo, material, A, opts.faceClean === undefined ? 1 : opts.faceClean, opts.faceDebug || null); } catch (e) { rig.faceCleaned = false; console.warn('[autoRig] the face could not be cleaned:', e); }
-  rig.faceCleanMs = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0;
+  try { rig.faceCleaned = cleanFace(THREE, face, material, opts.faceClean === undefined ? 1 : opts.faceClean, opts.faceDebug || null); } catch (e) { rig.faceCleaned = false; console.warn('[autoRig] the face could not be cleaned:', e); }
+  rig.faceMs = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0;
+  face = null;                                             // (its big tables are not needed any more)
   progress(1, 'Character ready');
   if (opts.log !== false && A.report) {
     console.groupCollapsed(`[autoRig] ${opts.name || 'character'}: ${A.report.table.filter((r) => r.status === 'PASS').length} PASS, ${A.report.table.filter((r) => r.status === 'WARN').length} WARN (${A.report.ms} ms) - open for the full report`);

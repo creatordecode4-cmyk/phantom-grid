@@ -23,7 +23,8 @@ const NEAR = 0.05;                     // a lens that can sit inside a car
 
 // Nate's car, with Theo in the seat next to him
 const RIDE = (at, face) => ({ do: 'spawn', id: 'ride', kind: 'chrome_supercar', or: 'coupe', color: [0.6, 0.62, 0.66], at, face, arena: 'highway', lockExit: true });
-const THEO = { do: 'actor', id: 'theo', model: 'Theo_Calloway', name: 'name.theo', seat: 'ride' };
+// (mood: the face of a person - see FACES in src/characters/faceAnim.js. Theo has been quiet all night.)
+const THEO = { do: 'actor', id: 'theo', model: 'Theo_Calloway', name: 'name.theo', seat: 'ride', mood: 'worried' };
 // the tape deck in the dashboard, with the mixtape "DON'T SKIP" in it
 const DECK_PROP = { do: 'prop', id: 'deck', kind: 'deck', in: 'ride', at: { cabinAt: 'dash', p: [0, 0.03, -0.06] } };
 
@@ -37,7 +38,7 @@ const GRID = [
   { do: 'spawn', id: 'sp2', kind: 'sedan', at: [-494.6, 724], face: 160, color: [0.42, 0.52, 0.6], arena: 'highway', simple: true, npc: true },
   { do: 'spawn', id: 'sp3', kind: 'coupe', at: [-474.7, 735], face: 185, color: [0.05, 0.05, 0.055], arena: 'highway', simple: true, npc: true },
   // DANTE RIOS, the host. What he wants: a clean race and no Guard. In his hand: a scanner he keeps checking.
-  { do: 'actor', id: 'dante', model: 'Dante_Rios', name: 'name.dante', at: [-473.5, DECK, 696.5], face: 90, fixed: true },
+  { do: 'actor', id: 'dante', model: 'Dante_Rios', name: 'name.dante', at: [-473.5, DECK, 696.5], face: 90, fixed: true, mood: 'smirk' },
   { do: 'prop', id: 'line', kind: 'startLine', at: [-479, DECK, 689.5], width: 13 },
   { do: 'prop', id: 'fl1', kind: 'flare', at: [-486, DECK, 689.5] },
   { do: 'prop', id: 'fl2', kind: 'flare', at: [-472.9, DECK, 689.5] },
@@ -90,10 +91,10 @@ export default {
               do: [{ do: 'actorSet', id: 'theo', look: { yaw: 0.45, pitch: 0.3 } }],
               lines: [
                 { at: 1.6, do: [{ do: 'music', tape: 3 }] },
-                { at: 2.9, who: 'nate', text: 'p.leave_it' },
-                { at: 4.9, who: 'theo', text: 'p.bad_song' },
-                { at: 6.7, who: 'nate', text: 'p.your_tape' },
-                { at: 8.6, who: 'theo', text: 'p.yeah' },
+                { at: 2.9, who: 'nate', text: 'p.leave_it', mood: 'tired' },
+                { at: 4.9, who: 'theo', text: 'p.bad_song', mood: 'smile' },
+                { at: 6.7, who: 'nate', text: 'p.your_tape', mood: 'smirk' },
+                { at: 8.6, who: 'theo', text: 'p.yeah', mood: 'worried' },
               ],
             },
             // Theo looks at the mirror again. His phone lights up; he turns it over.
@@ -101,16 +102,16 @@ export default {
               seconds: 8, pov: true, cam: { from: { cabin: 'ride', at: 'eye', p: [-0.02, 0, 0.5] }, look: { cabin: 'ride', at: 'pass', p: [0, -0.04, 0] }, fov: 44, near: NEAR },
               do: [{ do: 'actorSet', id: 'theo', look: { yaw: 0.6, pitch: -0.12 } }, { do: 'prop', id: 'phone', kind: 'phone', in: 'ride', at: { cabinAt: 'passSeat', p: [0.0, 0.3, 0.32] }, rot: [0.9, 0, 0] }],
               lines: [
-                { at: 1.0, who: 'nate', text: 'p.quiet' },
+                { at: 1.0, who: 'nate', text: 'p.quiet', mood: 'doubt', moods: { theo: 'worried' } },
                 { at: 3.3, do: [{ do: 'remove', ids: ['phone'] }, { do: 'actorSet', id: 'theo', look: { yaw: -0.5, pitch: 0.15 } }] },
-                { at: 3.9, who: 'theo', text: 'p.tired' },
+                { at: 3.9, who: 'theo', text: 'p.tired', mood: 'tired' },
               ],
             },
             // Dante, the host: he checks his scanner, then waves them on
             {
               seconds: 5.2, cam: { from: { of: 'dante', p: [-1.3, 1.5, 3.5] }, to: { of: 'dante', p: [-1.0, 1.55, 2.7] }, look: { of: 'dante', p: [0, 1.5, 0] }, fov: 36 },
               do: [{ do: 'actorSet', id: 'dante', pose: 'phone', look: null }],
-              lines: [{ at: 1.1, do: [{ do: 'actorSet', id: 'dante', pose: 'idle', look: 'player' }] }, { at: 1.4, who: 'dante', text: 'p.dante.grid' }],
+              lines: [{ at: 1.1, do: [{ do: 'actorSet', id: 'dante', pose: 'idle', look: 'player' }] }, { at: 1.4, who: 'dante', text: 'p.dante.grid', mood: 'smirk' }],
             },
           ],
         },
@@ -118,7 +119,7 @@ export default {
         { do: 'driveTo', text: 'p.obj.grid', at: [-478.7, 700.5], radius: 3.4, stop: true, tip: 'p.tip.steer' },
         // Theo reaches over and honks twice. He always does that when they arrive.
         { do: 'sound', name: 'honkTwice' },
-        { do: 'lines', lines: [{ wait: 1.0 }, { who: 'nate', text: 'p.every_time' }, { who: 'theo', text: 'p.know_its_us' }] },
+        { do: 'lines', lines: [{ wait: 1.0 }, { who: 'nate', text: 'p.every_time', mood: 'smile' }, { who: 'theo', text: 'p.know_its_us', mood: 'smile' }] },
       ],
     },
 
@@ -143,7 +144,7 @@ export default {
           shots: [
             { seconds: 5, cam: { from: [-485.5, DECK + 1.5, 681], to: [-484.6, DECK + 1.5, 683], look: [-478.6, DECK + 0.9, 698], fov: 38 },
               do: [{ do: 'actorSet', id: 'dante', pose: 'flag', look: null }],
-              lines: [{ at: 0.4, who: 'dante', text: 'p.dante.rules' }, { at: 2.9, who: 'dante', text: 'p.dante.guard' }] },
+              lines: [{ at: 0.4, who: 'dante', text: 'p.dante.rules', mood: 'smirk' }, { at: 2.9, who: 'dante', text: 'p.dante.guard', mood: 'grin' }] },
             { seconds: 2.4, cam: { from: { of: 'dante', p: [0.4, 1.3, 2.4] }, look: { of: 'dante', p: [0, 1.85, 0] }, fov: 34 },
               lines: [{ at: 1.7, do: [{ do: 'actorSet', id: 'dante', pose: 'idle' }, { do: 'sound', name: 'go' }] }] },
           ],
@@ -153,7 +154,7 @@ export default {
         { do: 'drive', id: 'r2', mode: 'race', path: 'race', lead: 32, min: 100, max: 195 },
         { do: 'drive', id: 'r3', mode: 'race', path: 'race', lead: 10, min: 95, max: 188, offset: 4.2 },
         {
-          do: 'follow', vehicle: 'r2', text: 'p.obj.pack', tip: 'p.tip.gas', far: 95, farLine: { who: 'theo', text: 'p.falling_back' },
+          do: 'follow', vehicle: 'r2', text: 'p.obj.pack', tip: 'p.tip.gas', far: 95, farLine: { who: 'theo', text: 'p.falling_back', mood: 'stern' },
           until: { zone: { z: [-1e9, 380] } },
           on: [
             // two slow trucks in the way: steer around them
@@ -164,7 +165,7 @@ export default {
               { do: 'drive', id: 't2', mode: 'path', path: 'race', speed: 55, offset: -4.1, end: 'remove' },
               { do: 'tip', text: 'p.tip.traffic', seconds: 5 },
             ] },
-            { zone: { z: [-1e9, 480] }, do: [{ do: 'say', who: 'nate', text: 'p.looking' }, { do: 'say', who: 'theo', text: 'p.headlights' }] },
+            { zone: { z: [-1e9, 480] }, do: [{ do: 'say', who: 'nate', text: 'p.looking', mood: 'doubt' }, { do: 'say', who: 'theo', text: 'p.headlights', mood: 'afraid' }] },
           ],
         },
         // the leader lets himself be caught (he now wants to be a little behind the player)
@@ -172,13 +173,13 @@ export default {
         { do: 'chase', vehicle: 'r1', text: 'p.obj.leader', tip: 'p.tip.nitro', catch: 10, until: { zone: { z: [-1e9, -170] } } },
         {
           do: 'driveTo', text: 'p.obj.ramp', at: [-450, -388], radius: 16,
-          on: [{ zone: { z: [-1e9, -40] }, do: [{ do: 'say', who: 'theo', text: 'p.late_brakes' }, { do: 'tip', text: 'p.tip.drift', seconds: 8 }] }],
+          on: [{ zone: { z: [-1e9, -40] }, do: [{ do: 'say', who: 'theo', text: 'p.late_brakes', mood: 'stern' }, { do: 'tip', text: 'p.tip.drift', seconds: 8 }] }],
         },
         {
           do: 'driveTo', text: 'p.obj.mile', at: [-72, -388], radius: 18,
           on: [
             { zone: { x: [-350, 1e9] }, do: [{ do: 'tip', text: 'p.tip.nitro', seconds: 4 }] },
-            { zone: { x: [-170, 1e9] }, do: [{ do: 'say', who: 'theo', text: 'p.dont_slow', seconds: 3.4 }] },
+            { zone: { x: [-170, 1e9] }, do: [{ do: 'say', who: 'theo', text: 'p.dont_slow', seconds: 3.4, mood: 'afraid' }] },
           ],
         },
         // THE LAST TURN: a black Phantom comes down the street. Whatever the player does, it hits.

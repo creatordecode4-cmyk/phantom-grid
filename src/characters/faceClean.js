@@ -90,20 +90,36 @@ function sample(f, gx, gy) {
   return (f[i] * (1 - tx) + f[i + 1] * tx) * (1 - ty) + (f[i + GX] * (1 - tx) + f[i + GX + 1] * tx) * ty;
 }
 
-// geo: the character's geometry in rig space (position, uv, index). A: the analysis of autoRig.js (chin height ...).
-// strength: 0 = off, 1 = normal. debug: an empty object that is filled with what was found (for tests).
-// Returns true when the picture was changed.
-export function cleanFace(THREE, geo, material, A, strength = 1, debug = null) {
+// the middle of a cell of the flat face (meters at a body height of 1.8 m), and the cell of a place
+const cellX = (x) => X0 + (x + 0.5) * CELL, cellY = (y) => Y0 + (y + 0.5) * CELL;
+const colOf = (x) => Math.max(0, Math.min(GX - 1, Math.floor((x - X0) / CELL))), rowOf = (y) => Math.max(0, Math.min(GY - 1, Math.floor((y - Y0) / CELL)));
+// the average of a field over a small box around a place
+function boxMean(f, x, y, hw, hh) {
+  let s = 0, n = 0;
+  for (let j = rowOf(y - hh); j <= rowOf(y + hh); j++) for (let i = colOf(x - hw); i <= colOf(x + hw); i++) { s += f[j * GX + i]; n++; }
+  return s / n;
+}
+// the depth of the bare face at a place (x beside the middle of the model, y above the chin; meters at 1.8 m)
+export function bareAt(face, x, y) { return sample(face.bare, (x - X0) / CELL, (y - Y0) / CELL); }
+
+// ===========================================================================
+// READ A FACE: lay it out flat and find the nose, the eyes, the mouth and the eyebrows.
+//   geo: the character's geometry in rig space (position, uv, index). A: the analysis of autoRig.js (chin height ...).
+// Returns null when the model has no bare face (no picture, a mask, a helmet), else what was found.
+// All places are in meters at a body height of 1.8 m: x beside the middle of the model (the character's left is +),
+// y above the chin, z in front of (+) or behind (-) the foremost point of the face.
+// ===========================================================================
+export function readFace(geo, material, A) {
   const map = material && material.map, img = map && map.image;
-  if (!(strength > 0) || !img || !geo.attributes.uv || !geo.index || !A || !A.info || !A.info.chinY) return false;
-  if (map.userData && map.userData.faceCleaned) return false;
+  if (!img || !geo.attributes.uv || !geo.index || !A || !A.info || !A.info.chinY) return null;
+  if (map.userData && map.userData.faceCleaned) return null;
   const W = img.width, H = img.height;
-  if (!W || !H || W * H > 4200000 || typeof document === 'undefined') return false;
+  if (!W || !H || W * H > 4200000 || typeof document === 'undefined') return null;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const g2 = cv.getContext('2d', { willReadFrequently: true });
   let data;
-  try { g2.drawImage(img, 0, 0, W, H); data = g2.getImageData(0, 0, W, H); } catch (e) { return false; }   // (a picture that may not be read: leave it)
+  try { g2.drawImage(img, 0, 0, W, H); data = g2.getImageData(0, 0, W, H); } catch (e) { return null; }   // (a picture that may not be read: leave it)
   const px = data.data;
   const pos = geo.attributes.position.array, uv = geo.attributes.uv.array, idx = geo.index.array;
   const k = A.height / 1.8, chin = A.info.chinY;
@@ -116,7 +132,7 @@ export function cleanFace(THREE, geo, material, A, strength = 1, debug = null) {
   // ---- the front of the face: the frontmost point of the head near the middle line ----
   let zFace = -1e9;
   for (let i = 0; i < pos.length; i += 3) if (pos[i + 1] > chin + 0.03 * k && pos[i + 1] < chin + 0.2 * k && Math.abs(pos[i]) < 0.04 * k && pos[i + 2] > zFace) zFace = pos[i + 2];
-  if (zFace < -1e8) return false;
+  if (zFace < -1e8) return null;
   const zBack = zFace - 0.105 * k;            // the face is the front 10 cm of the head
 
   // ---- 1. the points of the picture that belong to the face, and where on the face each one is ----
@@ -154,7 +170,7 @@ export function cleanFace(THREE, geo, material, A, strength = 1, debug = null) {
       }
     }
   }
-  if (any < 400) return false;
+  if (any < 400) return null;
   // (the border around every patch of the picture belongs to it too: grow by two points)
   let rim = list;
   for (let pass = 0; pass < 2; pass++) {
@@ -198,16 +214,8 @@ export function cleanFace(THREE, geo, material, A, strength = 1, debug = null) {
   }
   const cl = new Float32Array(N);
   for (let c = 0; c < N; c++) cl[c] = lum(cr[c], cg[c], cb[c]);
-  const cellX = (x) => (X0 + (x + 0.5) * CELL), cellY = (y) => (Y0 + (y + 0.5) * CELL);     // the middle of a cell, in meters at 1.8 m
 
   for (let c = 0; c < N; c++) if (!(cz[c] > -0.08)) cz[c] = -0.08;
-  const colOf = (x) => Math.max(0, Math.min(GX - 1, Math.floor((x - X0) / CELL))), rowOf = (y) => Math.max(0, Math.min(GY - 1, Math.floor((y - Y0) / CELL)));
-  // the average of a field over a small box around a place
-  const boxMean = (f, x, y, hw, hh) => {
-    let s = 0, n = 0;
-    for (let j = rowOf(y - hh); j <= rowOf(y + hh); j++) for (let i = colOf(x - hw); i <= colOf(x + hw); i++) { s += f[j * GX + i]; n++; }
-    return s / n;
-  };
 
   // ---- the nose: the only narrow ridge of a face. Its tip and its line are the anchors for everything else. ----
   const zNear = blur(cz, 1, 1), zFar = blur(cz, 9);
@@ -223,7 +231,7 @@ export function cleanFace(THREE, geo, material, A, strength = 1, debug = null) {
       prof.push([y, mid, ridge]);
       if (ridge > ridgeMax) ridgeMax = ridge;
     }
-    if (ridgeMax < 0.008) return false;                     // no nose: this is not a bare face (a mask, a helmet)
+    if (ridgeMax < 0.008) return null;                     // no nose: this is not a bare face (a mask, a helmet)
     for (const [y, mid, ridge] of prof) if (ridge > 0.6 * ridgeMax && mid > tipZ) { tipZ = mid; tipY = y; }
     if (round) break;
     // the line of the nose: where the ridge is highest, row by row from the tip up (a head is not always exactly in the middle)
@@ -286,6 +294,67 @@ export function cleanFace(THREE, geo, material, A, strength = 1, debug = null) {
   }
   // (a face has its eyes 2 - 5 cm above the tip of the nose; anything else was a wrong guess)
   if (!eyesFound || eyeY - tipY < 0.02 || eyeY - tipY > 0.05 || eyeX < 0.024 || eyeX > 0.046) { eyesFound = 0; eyeY = tipY + 0.035; eyeX = 0.034; }
+
+  // ---- the mouth: the darkest line across the middle, 2 - 5 cm under the tip of the nose ----
+  const rowMean = (j, x0, x1) => { let sum = 0; const i0 = colOf(x0), i1 = colOf(x1); for (let i = i0; i <= i1; i++) sum += soft[j * GX + i]; return sum / (i1 - i0 + 1); };
+  let mouthY = tipY - 0.036, mouthScore = 0;
+  for (let j = rowOf(tipY - 0.052); j <= rowOf(tipY - 0.02); j++) {
+    const y = cellY(j), here = rowMean(j, noseX - 0.016, noseX + 0.016);
+    const around = (rowMean(rowOf(y + 0.007), noseX - 0.016, noseX + 0.016) + rowMean(rowOf(y - 0.007), noseX - 0.016, noseX + 0.016)) / 2;
+    const score = ((around - here) / Math.max(around, 20)) * (1 - 0.5 * Math.min(1, Math.abs(y - (tipY - 0.036)) / 0.022));     // (close to where a mouth normally is counts more)
+    if (score > mouthScore) { mouthScore = score; mouthY = y; }
+  }
+  // its corners: how far the dark line goes out on each side
+  const mj = rowOf(mouthY);
+  const lineDark = (i) => {
+    const here = Math.min(soft[(mj - 1) * GX + i], soft[mj * GX + i], soft[(mj + 1) * GX + i]), around = (soft[rowOf(mouthY + 0.008) * GX + i] + soft[rowOf(mouthY - 0.008) * GX + i]) / 2;
+    return (around - here) / Math.max(around, 20);
+  };
+  let midDark = 0;
+  for (let d = -2; d <= 2; d++) midDark += lineDark(colOf(noseX + d * 0.004)) / 5;
+  let mouthHalf = 0;
+  for (let side = -1; side <= 1; side += 2) {
+    let w = 0.014;
+    for (let step = 10; step < 28; step++) { const u = step * CELL; if (lineDark(colOf(noseX + side * u)) > 0.4 * midDark) w = u; else if (u > w + 0.0045) break; }
+    mouthHalf += w / 2;
+  }
+  mouthHalf = Math.max(0.018, Math.min(0.034, mouthHalf));
+
+  // ---- the eyebrows: the dark band above the eyes ----
+  let browY = eyeY + 0.016, browScore = 0;
+  for (let j = rowOf(eyeY + 0.009); j <= rowOf(eyeY + 0.026); j++) {
+    const y = cellY(j);
+    let score = 0;
+    for (let side = -1; side <= 1; side += 2) {
+      const x0 = noseX + side * eyeX - 0.018, x1 = noseX + side * eyeX + 0.018, here = rowMean(j, x0, x1);
+      const around = (rowMean(rowOf(y + 0.008), x0, x1) + rowMean(rowOf(y - 0.007), x0, x1)) / 2;
+      score += (around - here) / Math.max(around, 20);
+    }
+    score *= 1 - 0.5 * Math.min(1, Math.abs(y - (eyeY + 0.016)) / 0.012);
+    if (score > browScore) { browScore = score; browY = y; }
+  }
+  browY = Math.max(eyeY + 0.011, Math.min(eyeY + 0.022, browY));
+
+  // thin things that stand out in front of the face are not skin: the frame of glasses, a strand of hair, a ring.
+  // (the face without them: every cell takes the lowest depth within 6 mm, then the highest of those again)
+  const bare = grow2(shrink2(cz, 4), 4);
+
+  return {
+    k, chin, zFace, noseX, tipY, eyeX, eyeY, eyesFound, mouthY, mouthHalf, browY,
+    cr, cg, cb, cl, cn, cz, bare,                              // the flat face: colors, brightness, how many points, depth
+    map, cv, g2, data, px, W, H, gxOf, gyOf, list, any,        // the picture (for cleanFace)
+  };
+}
+
+// ===========================================================================
+// CLEAN A FACE (see the top of the file).
+//   face: from readFace. strength: 0 = off, 1 = normal. debug: an empty object that is filled with what was found (tests).
+// Returns true when the picture was changed.
+// ===========================================================================
+export function cleanFace(THREE, face, material, strength = 1, debug = null) {
+  if (!face || !(strength > 0) || material.map !== face.map) return false;
+  const { noseX, tipY, eyeX, eyeY, eyesFound, cr, cg, cb, cl, cn, cz, bare, map, cv, g2, data, px, gxOf, gyOf, list, any } = face;
+  const N = GX * GY;
   const grow = eyesFound ? 1 : 1.4;
   // how far a place is beside the line of the nose
   const beside = (fx) => Math.abs(fx - noseX);
@@ -317,7 +386,18 @@ export function cleanFace(THREE, geo, material, A, strength = 1, debug = null) {
     sr += cr[c]; sg += cg[c]; sb += cb[c]; sn++;
   }
   if (sn < 30 || Lref < 40) return false;
-  const refR = sr / sn, refG = sg / sn, refB = sb / sn, refL = lum(refR, refG, refB), refS = sat(refR, refG, refB);
+  const refR = sr / sn, refG = sg / sn, refB = sb / sn, refS = sat(refR, refG, refB);
+  // the normal skin color NEAR every place (cheeks are pinker than a forehead): a wide blur of the skin that is in the light
+  const lit = new Float32Array(N), litR = new Float32Array(N), litG = new Float32Array(N), litB = new Float32Array(N);
+  for (let c = 0; c < N; c++) {
+    if (!skinHue(cr[c], cg[c], cb[c]) || cl[c] < Lref * 0.78 || cl[c] > Lref * 1.3 || cz[c] - bare[c] > 0.002) continue;
+    lit[c] = 1; litR[c] = cr[c]; litG[c] = cg[c]; litB[c] = cb[c];
+  }
+  const nearN = blur(lit, 8), nearR = blur(litR, 8), nearG = blur(litG, 8), nearB = blur(litB, 8);
+  for (let c = 0; c < N; c++) {
+    const f = Math.min(1, nearN[c] / 0.08);             // (little lit skin around: mix with the color of the whole face)
+    nearR[c] = refR + (nearR[c] / Math.max(nearN[c], 1e-4) - refR) * f; nearG[c] = refG + (nearG[c] / Math.max(nearN[c], 1e-4) - refG) * f; nearB[c] = refB + (nearB[c] / Math.max(nearN[c], 1e-4) - refB) * f;
+  }
 
   // ---- painted rings around the eyes? ----
   // On a normal face the skin right under an eye is a little darker than the cheek below it. Where it is MUCH darker
@@ -368,9 +448,6 @@ export function cleanFace(THREE, geo, material, A, strength = 1, debug = null) {
   //   gain: how much brighter the surroundings have to become
   const target = Lref * 0.93, power = Math.min(1, 0.45 * strength), full = Math.min(1, strength), maxGain = 2.6 + 1.2 * Math.min(strength, 1.5);
   const gain = new Float32Array(N), may = new Float32Array(N), deep = new Float32Array(N), base = new Float32Array(N);
-  // thin things that stand out in front of the face are not skin: the frame of glasses, a strand of hair, a ring.
-  // (the face without them: every cell takes the lowest depth within 6 mm, then the highest of those again)
-  const bare = grow2(shrink2(cz, 4), 4);
   // (a big dark patch: where the wide look says "much darker than normal skin". Its edge belongs to it, so it is grown by 6 mm.)
   const dark = new Float32Array(N);
   for (let c = 0; c < N; c++) dark[c] = smooth(1.3, 1.8, Math.pow(target / Math.max(low[c], 4), 0.85));
@@ -389,7 +466,7 @@ export function cleanFace(THREE, geo, material, A, strength = 1, debug = null) {
     m *= 0.25 + 0.75 * smooth(refS * 0.45, refS * 0.85, lowSat[c]);
     // a big place that is almost black is hair (eyebrows that have grown together with the shade), not skin
     m *= 0.2 + 0.8 * smooth(0.17, 0.33, low[c] / target);
-    m *= 1 - smooth(0.002, 0.0045, cz[c] - bare[c]);
+    m *= 1 - smooth(0.002, 0.0045, cz[c] - bare[c]);                     // (the frame of glasses, a strand of hair: not skin)
     may[c] = Math.max(m, deep[c] * (1 - smooth(0.08, 0.094, ax)));
   }
   const mayS = blur(may, 2), deepS = blur(deep, 2);
@@ -432,8 +509,9 @@ export function cleanFace(THREE, geo, material, A, strength = 1, debug = null) {
     // skin that was in deep shade is too red: it takes the normal skin color (in a deep patch everything does, also the darkest points)
     const skin = r > gg && gg >= b * 0.9 && r - b > 6 ? 1 : dp;       // (also the darkest red-brown points: lifted, they would glow red)
     if (skin > 0.02) {
-      const cm = Math.min(1, a * skin * (0.9 + 0.1 * smooth(2.2, 3.2, g)) * smooth(1.15, 2.1, g)), q = L2 / refL;
-      nr += (refR * q - nr) * cm; ng += (refG * q - ng) * cm; nb += (refB * q - nb) * cm;
+      const cm = Math.min(1, a * skin * (0.9 + 0.1 * smooth(2.2, 3.2, g)) * smooth(1.15, 2.1, g));
+      const wr = sample(nearR, gx, gy), wg = sample(nearG, gx, gy), wb = sample(nearB, gx, gy), q = L2 / Math.max(lum(wr, wg, wb), 1);
+      nr += (wr * q - nr) * cm; ng += (wg * q - ng) * cm; nb += (wb * q - nb) * cm;
     }
     px[i * 4] = nr > 255 ? 255 : nr; px[i * 4 + 1] = ng > 255 ? 255 : ng; px[i * 4 + 2] = nb > 255 ? 255 : nb;
     changed++;

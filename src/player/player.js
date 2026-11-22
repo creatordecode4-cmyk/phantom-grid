@@ -347,6 +347,9 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     get staged() { return staged; },
     set talk(v) { if (mover) mover.talk = v; },
     set look(v) { if (mover) mover.look = v; },
+    // the expression of the face ('smile', 'sad' ... see src/characters/faceAnim.js)
+    set mood(v) { if (mover) mover.setFace(v || 'neutral'); },
+    get mood() { return mover ? mover.face : null; },
     get hidden() { return hidden; },
     get steps() { return steps; },   // goes up by one with every footstep
     get heading() { return heading; },
