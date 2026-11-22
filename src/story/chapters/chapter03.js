@@ -160,10 +160,10 @@ export default {
             { seconds: 5.2, cam: { from: { garage: [-2.85, 1.62, 4.55] }, look: { garage: [-2.2, 1.55, 3.0] }, fov: 32 },
               lines: [{ at: 0.3, who: 'nate', text: 'c3.nate.where', seconds: 1.6, mood: 'stern' }, { at: 2.1, who: 'mace', text: 'c3.mace.sunk', seconds: 3.0, mood: 'stern' }] },
             // the key on a cork float, in Mace's open hand
-            { seconds: 5.4, cam: { from: { garage: [-1.6, 1.4, 3.6] }, look: { garage: [-2.45, 1.1, 4.3] }, fov: 28 },
-              do: [{ do: 'actorSet', id: 'mace', pose: 'hold', look: 'player' }, { do: 'prop', id: 'key', kind: 'boatKey', on: 'mace', bone: 'hand_R', p: [0, -0.06, 0.03] }],
+            { seconds: 5.4, cam: { from: { garage: [-1.6, 1.4, 3.6] }, look: { of: 'mace', p: [-0.1, 1.05, 0.32] }, fov: 28 },
+              do: [{ do: 'actorSet', id: 'mace', pose: 'hold', look: 'player' }, { do: 'prop', id: 'key', kind: 'boatKey', on: 'mace', bone: 'hand_R', p: [0.01, -0.07, 0.04], scale: 1.5 }],
               lines: [{ at: 0.4, who: 'mace', text: 'c3.mace.key', seconds: 3.6, mood: 'smile' }],
-              end: [{ do: 'remove', ids: ['key'] }, { do: 'prop', id: 'key', kind: 'boatKey', on: 'player', bone: 'hand_R', p: [0, -0.06, 0.03] }, { do: 'actorSet', id: 'mace', pose: 'crossed' }] },
+              end: [{ do: 'remove', ids: ['key'] }, { do: 'prop', id: 'key', kind: 'boatKey', on: 'player', bone: 'hand_R', p: [0.01, -0.07, 0.04], scale: 1.5 }, { do: 'actorSet', id: 'mace', pose: 'crossed' }] },
             { seconds: 3.8, cam: { from: { garage: [-0.6, 1.55, 2.0] }, look: { garage: [-2.4, 1.5, 4.1] }, fov: 36 },
               lines: [{ at: 0.3, who: 'nate', text: 'c3.nate.thanks', seconds: 1.2, mood: 'tired' }, { at: 1.7, who: 'mace', text: 'c3.mace.go', seconds: 1.8, mood: 'stern' }] },
           ],
