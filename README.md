@@ -1303,6 +1303,8 @@ other character.
 - **Story people and other characters** (`src/story/actors.js`): an actor whose place is in deep water - put
   there by the story, or walking there - swims at the surface with the same animation; the name tag and the
   eyes go down with him.
+- **On the RIG TEST screen** two new buttons, `TREAD` and `SWIM`, show both strokes on any character (with a
+  see-through sheet of water at the surface).
 - `src/world/water.js` answers "how deep is the water here?" for everybody: `city.water.at(x, z)` gives the
   surface and the bottom, `city.water.depth(x, z)` the depth. `SWIM` (1.3 m) and `WADE` (0.45 m) are at its top.
 
