@@ -10,6 +10,7 @@
 //   * Every actor can stand, walk to a place, sit in a car, take a pose, look at
 //     something, move a hand while speaking, and step out of the player's way.
 //   * Only actors near the player are updated every frame.
+//   * Nobody stands on the water: an actor in deep water (src/world/water.js) swims, at the surface.
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
@@ -18,6 +19,7 @@ import { createAnimator } from '../characters/proceduralAnim.js';
 import { applyCharacterLook } from '../characters/characterLook.js';
 import { makeMannequin } from '../city/models.js';
 import { CONFIG } from '../config.js';
+import { SWIM } from '../world/water.js';
 
 const DEG = Math.PI / 180;
 // compass degrees (0 north, 90 east, 180 south, 270 west) -> our angle (north = +z, east = -x)
@@ -253,21 +255,25 @@ export function createActors({ scene, city, materials, player, vehicles }) {
         walkTo(a, a.x + (ax / d) * 0.6 - (az / d) * 0.35, a.z + (az / d) * 0.6 + (ax / d) * 0.35, 1.2, a.heading);
       }
       a.speed = speed;
-      a.root.position.set(a.x, a.y, a.z);
+      // ---- in deep water (no deck under him, nor a floor at his height): he swims, the root at the surface ----
+      const w = city.water ? city.water.at(a.x, a.z) : null;
+      a.swim = !!w && w.surface - w.bottom >= SWIM && a.y <= w.surface + 0.05;
+      if (a.swim) a.y = w.surface;
+      a.root.position.set(a.x, a.y - (a.swim && !a.anim ? 1.25 : 0), a.z);      // (a plain figure: in the water up to the chest)
       a.root.rotation.y = a.heading;
       if (!a.anim) continue;
       // ---- where to look: at the player when near ('auto'), at a point, or freely ----
       let look = null;
-      const target = a.look === 'player' || (a.look === 'auto' && dist < 6 && !a.walk) ? tmp.set(px, player.position.y + (driving ? 1.1 : 1.6), pz) : a.look && typeof a.look === 'object' && 'x' in a.look ? tmp.set(a.look.x, a.look.y, a.look.z) : null;
+      const target = a.look === 'player' || (a.look === 'auto' && dist < 6 && !a.walk) ? tmp.set(px, player.position.y + (driving ? 1.1 : player.swimming ? 0.25 : 1.6), pz) : a.look && typeof a.look === 'object' && 'x' in a.look ? tmp.set(a.look.x, a.look.y, a.look.z) : null;
       if (target) {
         const yaw = angleDiff(a.heading, Math.atan2(target.x - a.x, target.z - a.z));
-        // (the eyes: 1.62 m above the feet standing, about 0.8 m above the seat when sitting on a chair)
-        const eye = a.y + ((a.pose === 'sit' || a.pose === 'sitEdge') ? 0.8 : 1.62) * a.scale;
+        // (the eyes: 1.62 m above the feet standing, about 0.8 m above the seat when sitting on a chair, just above the water swimming)
+        const eye = a.y + (a.swim ? 0.25 : (a.pose === 'sit' || a.pose === 'sitEdge') ? 0.8 : 1.62) * a.scale;
         if (Math.abs(yaw) < 1.9) look = { yaw, pitch: -Math.atan2(target.y - eye, Math.max(0.5, Math.hypot(target.x - a.x, target.z - a.z))) };
       } else if (a.look && typeof a.look === 'object' && 'yaw' in a.look) look = a.look;
       a.anim.look = look;
       a.anim.talk = a.talking;
-      a.anim.update(step, { speed, x: a.x, z: a.z, y: a.y, heading: a.heading, groundAt: a.keepY ? null : city.groundHeight });
+      a.anim.update(step, { speed, x: a.x, z: a.z, y: a.y, heading: a.heading, groundAt: a.keepY ? null : city.groundHeight, swim: a.swim });
       // the player cannot walk through a standing person
       if (!a.walk && dist < 12 && city.colliders.dynamic && a.pose !== 'fallen' && !a.ghost) city.colliders.dynamic.push({ x: a.x, z: a.z, r: 0.32 });
     }
@@ -277,7 +283,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     for (const a of list) {
       if (!a.tag || !a.name || a.hidden || !a.ready) continue;
       if (Math.abs(a.x - player.position.x) > 25 || Math.abs(a.z - player.position.z) > 25) continue;
-      tmp.set(a.x, a.y + 2.05 * a.scale, a.z).project(camera);
+      tmp.set(a.x, a.y + (a.swim ? 0.75 : 2.05) * a.scale, a.z).project(camera);
       if (tmp.z < 1 && Math.abs(tmp.x) < 1 && Math.abs(tmp.y) < 1) out.push({ x: (tmp.x * 0.5 + 0.5) * window.innerWidth, y: (-tmp.y * 0.5 + 0.5) * window.innerHeight, text: a.name });
     }
   }

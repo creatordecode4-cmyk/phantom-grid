@@ -79,8 +79,9 @@ export function createCameraRig(camera, city) {
       if (Math.abs(d) < 2.3) yaw += d * (1 - Math.exp(-0.9 * dt));
     }
 
-    // the point the camera turns around: the player's shoulders (follows smoothly)
-    const tx = player.position.x, ty = player.position.y + C.pivotHeight, tz = player.position.z;
+    // the point the camera turns around: the player's shoulders (follows smoothly).
+    // Swimming, the root is at the water surface and only the head is out: the camera comes down to it.
+    const tx = player.position.x, ty = player.position.y + C.pivotHeight - (player.swimming ? 1.05 : 0), tz = player.position.z;
     if (first) { pivot.set(tx, ty, tz); first = false; }
     pivot.x = damp(pivot.x, tx, 22, dt);
     pivot.y = damp(pivot.y, ty, 12, dt);
@@ -103,8 +104,9 @@ export function createCameraRig(camera, city) {
     dist = want < dist ? want : damp(dist, want, 4, dt); // go in at once, come out slowly
 
     let cx = sx - dir.x * dist, cy = pivot.y - dir.y * dist, cz = sz - dir.z * dist;
-    // never below the ground
+    // never below the ground, nor under the water
     cy = Math.max(cy, city.groundHeight(cx, cz) + 0.28);
+    if (!room && city.water) { const w = city.water.at(cx, cz); if (w) cy = Math.max(cy, w.surface + 0.3); }
     // inside a room: the camera stays between its walls and under its ceiling
     if (room) {
       cx = clamp(cx, room.minX + 0.22, room.maxX - 0.22); cz = clamp(cz, room.minZ + 0.22, room.maxZ - 0.22);

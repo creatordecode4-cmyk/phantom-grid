@@ -21,6 +21,7 @@ import { makeBeamTexture } from '../vehicles/vehicle.js';
 import { buildProps, makeHoloMaterial } from './props.js';
 import { buildBackdrop } from './backdrop.js';
 import { buildSunk } from './sunk.js';
+import { createWater } from '../world/water.js';
 
 // Used to free the normal-memory copy of a big mesh after it was sent to the graphics card.
 function dropArray() {
@@ -302,6 +303,8 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
     counts: ctx.buildingCounts,
     timing,
     sunk,
+    // where the water is and how deep (src/world/water.js): whoever is in deep water swims
+    water: createWater(layout),
     // LOW quality switches the 3D window detail off
     setQuality(q) {
       const on = q.buildingDetail !== false;

@@ -227,9 +227,25 @@ export function createSound() {
     footstep(surface, running = false) {
       const k = running ? 1.25 : 1;
       if (surface === 'sand') burst(650, 0.5, 0.11 * k, 0.012, 0.16, 'lowpass');
+      // wading: the leg pushing through the water
+      else if (surface === 'water') { burst(700 + Math.random() * 200, 1, 0.08 * k, 0.02, 0.2); burst(2200, 1.2, 0.025 * k, 0.03, 0.18); }
       // wet boards of a pontoon (The Sunk): a hollow knock and a little splash
       else if (surface === 'wood') { burst(420 + Math.random() * 80, 2.5, 0.1 * k, 0.002, 0.07, 'lowpass'); burst(2400, 1.2, 0.025 * k, 0.004, 0.08); }
       else { burst(1900 + Math.random() * 500, 1.6, 0.075 * k, 0.002, 0.045); burst(240, 0.8, 0.09 * k, 0.003, 0.06, 'lowpass'); }
+    },
+    // ---- water (swimming) ----
+    // one stroke of an arm: a soft slap and the water running off it (treading water: only a little lap)
+    stroke(strong = true) {
+      const k = strong ? 1 : 0.45;
+      burst(900 + Math.random() * 300, 1.1, 0.07 * k, 0.006, 0.14);
+      burst(2600 + Math.random() * 600, 1.4, 0.03 * k, 0.02, 0.22);
+    },
+    // into the water (or out of it): a heavy splash. big: a jump in; small: standing up or climbing out
+    splash(big = true) {
+      const k = big ? 1 : 0.5;
+      burst(420, 0.9, 0.26 * k, 0.004, 0.32, 'lowpass');
+      burst(1500, 0.9, 0.12 * k, 0.01, 0.45);
+      burst(4200, 1.2, 0.05 * k, 0.03, 0.6, 'highpass');
     },
     // door: 'open' = a click and a soft creak, 'close' = a dull slam
     doorClick(kind = 'close') {

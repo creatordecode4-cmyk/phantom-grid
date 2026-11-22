@@ -14,6 +14,8 @@
 //     sinks a little when the legs are far apart.
 //   * IDLE: breathing, shifting the weight from foot to foot, slow looks around.
 //   * DRIVING: sitting, hands on the steering wheel (they turn with it).
+//   * SWIMMING (deep water): treading water when still (upright, the head out, the hands sculling), a front
+//     crawl with the head up when moving (flat body that rolls, arms over the water, a fast small kick).
 //   * STORY POSES: asleep on one side, fallen on the back, sitting on the edge
 //     of a bed or in a car seat, arms crossed, hands on the hips, holding,
 //     carrying, looking at a phone, aiming. Hands and feet are put ON things
@@ -651,6 +653,96 @@ export function createAnimator(THREE, rig, opts = {}) {
     }
   }
 
+  // ---------------------------------------------------------------- swimming
+  // The caller puts the root of the character AT the water surface (y = 0 is the surface). Two strokes,
+  // blended by the speed:
+  //   * TREADING WATER (still): the body upright, the head and the top of the shoulders out of the water.
+  //     The hands scull under the surface (small sweeps out and in), the legs turn slowly like an egg beater.
+  //   * FRONT CRAWL with the head up (moving): the body lies almost flat just under the surface and rolls a
+  //     little from side to side. One arm pulls under the water while the other one comes forward over it with
+  //     a high elbow. The legs kick fast and small from the hips, the toes pointed.
+  // The hands and feet are placed with the same arm and leg solver as always, so the joint limits still hold.
+  const SW = { k: 0, ph: 0 };
+  const shoulderRest = restHead('upperArm_L');
+  const swP = V(), swE = V();
+  // a point in BODY space (from the hips: +Y toward the head, +Z the chest side, +X the left) -> character space
+  const fromBody = (out, x, y, z) => out.set(x, y, z).applyQuaternion(bodyQ).add(hipsPos);
+  function swimPose(dt, speed) {
+    const t = st.time;
+    SW.k += (smooth((Math.abs(speed) - 0.15) / 0.7) - SW.k) * (1 - Math.exp(-3 * dt));
+    const w = SW.k;                                         // 0 = treading water, 1 = swimming
+    // one stroke = both arms once (faster swimming, faster strokes)
+    SW.ph = frac(SW.ph + dt * lerp(0.62, 0.42 + 0.22 * Math.min(2.2, Math.abs(speed)), w));
+    const ph = SW.ph * TAU;
+    // ---- the body: upright when treading, almost flat when swimming; it rolls toward the arm that pulls ----
+    const pitch = lerp(6, 74, w) * DEG, roll = -Math.sin(ph) * 22 * DEG * w;
+    bodyQ.setFromAxisAngle(X_AXIS, pitch).multiply(qa.setFromAxisAngle(Y_AXIS, roll));
+    // the shoulders stay just under the surface (treading: the body bobs a little with the kicks)
+    const sy = shoulderRest.y - hipsRest.y, sz = shoulderRest.z - hipsRest.z;
+    tv.set(0, sy, sz).applyQuaternion(bodyQ);
+    const bob = Math.sin(t * TAU * 1.5) * 0.014 * k * (1 - w);
+    hipsPos.set(0, -tv.y - lerp(0.05, 0.09, w) * k + bob, -0.3 * k * w);
+    // ---- spine and head: a long body; the neck bends back so the face stays out of the water ----
+    setDelta('spine', -3 * DEG * w, roll * 0.15, 0);
+    setDelta('spine1', -3 * DEG * w, roll * 0.1, 0);
+    if (lookAt) { look.yaw += (clamp(lookAt.yaw, -1.2, 1.2) - look.yaw) * (1 - Math.exp(-4 * dt)); look.pitch += (clamp(lookAt.pitch || 0, -0.4, 0.4) - look.pitch) * (1 - Math.exp(-4 * dt)); }
+    else { look.yaw *= Math.exp(-2 * dt); look.pitch *= Math.exp(-2 * dt); }
+    const lift = (pitch / DEG - 12);                       // degrees the head has to come up to look ahead
+    const turnHead = look.yaw * (1 - w * 0.7);
+    setDelta('neck', -lim('neck', lift * 0.45) * DEG + look.pitch * 0.4, lim('neck', (-roll * 0.4 + turnHead * 0.45) / DEG) * DEG, 0);
+    setDelta('head', -lim('head', lift * 0.55) * DEG + look.pitch * 0.6, lim('head', (-roll * 0.3 + turnHead * 0.55) / DEG) * DEG, 0);
+    // ---- arms ----
+    const reach = (upperLen + foreLen) * 0.97;
+    for (let q = 0; q < 2; q++) {
+      const { tag, s } = SIDES[q];
+      const shx = s * Math.abs(shoulderRest.x);
+      // treading: the hands scull in front of the chest, a hand's length under the water
+      const sc = Math.sin(t * TAU * 0.9 + q * 0.6);
+      const tx = shx + s * (0.1 + 0.12 * sc) * k, ty = sy - 0.26 * k, tz = sz + (0.3 + 0.04 * Math.cos(t * TAU * 0.9 + q * 0.6)) * k;
+      // the crawl: the hand goes round the shoulder in the plane of the body. 0 = reaching forward past the
+      // head, a quarter = under the chest, a half = back at the hip (the pull, under the water); the second half
+      // comes forward again over the water, the elbow high and the hand wide past the head.
+      const p = frac(SW.ph + q * 0.5);
+      let a, r, ox, ex, ey, ez;
+      if (p < 0.5) {
+        const u = p / 0.5;
+        a = (u * 0.75 + smooth(u) * 0.25) * Math.PI;
+        r = reach * (0.95 - 0.22 * Math.sin(a));                 // (the elbow bends most under the chest)
+        ox = s * (0.03 - 0.1 * Math.sin(a)) * k;                 // (an S: the hand comes in under the body)
+        ex = s * 0.9; ey = 0.1; ez = -0.45;                      // the elbow out to the side and up
+      } else {
+        const u = (p - 0.5) / 0.5;
+        a = Math.PI * (1 + smooth(u));
+        r = reach * (0.88 - 0.32 * Math.sin(u * Math.PI));
+        ox = s * (0.08 + 0.24 * Math.sin(u * Math.PI)) * k;
+        ex = s * 0.45; ey = -0.15; ez = -1;                      // the elbow up, out of the water
+      }
+      const hx = shx + ox, hy = sy + Math.cos(a) * r, hz = sz + Math.sin(a) * r;
+      fromBody(swP, lerp(tx, hx, w), lerp(ty, hy, w), lerp(tz, hz, w));
+      swE.set(lerp(s, ex, w), lerp(-0.35, ey, w), lerp(-0.6, ez, w)).applyQuaternion(bodyQ);
+      handAt(q, swP.x, swP.y, swP.z, swE.x, swE.y, swE.z);
+      setDelta('hand_' + tag, 0, 0, -s * lerp(12 * sc, 14, w) * DEG);
+      fingers(q, lerp(16, 8, w), 12, 0);
+    }
+    // ---- legs ----
+    legIK = true;
+    const kick = SW.ph * 3;                                        // a six-beat kick: three kicks of each leg per stroke
+    for (let q = 0; q < 2; q++) {
+      const { tag, s } = SIDES[q], F = foot[q];
+      const hj = tv2.copy(restHead('thigh_' + tag)).sub(hipsRest);  // the hip joint (body space)
+      // treading: an egg beater (each foot goes round in a circle under its knee)
+      const e = t * TAU * 0.75 + q * Math.PI;
+      const tx = hj.x + s * 0.08 * k, ty = hj.y - legLen * 0.8 + Math.sin(e) * 0.06 * k, tz = hj.z + (0.14 + Math.cos(e) * 0.1) * k;
+      // the crawl: an almost straight leg behind the body that kicks from the hip
+      const f = Math.sin(TAU * kick + q * Math.PI);
+      const cx = hj.x * 0.75, cy = hj.y - legLen * 0.95, cz = hj.z + f * 0.13 * k;
+      fromBody(F.ankle, lerp(tx, cx, w), lerp(ty, cy, w), lerp(tz, cz, w));
+      F.loose = true;
+      F.pole.set(s * lerp(0.35, 0.05, w), lerp(0, -0.1, w), 1).applyQuaternion(bodyQ);   // the knees point forward (down, when swimming)
+      F.pitch = (lerp(22, 55, w) + f * 8 * w) * DEG; F.toe = 0; F.yaw = 0;               // toes pointed
+    }
+  }
+
   // ---------------------------------------------------------------- test poses (rig test screen)
   function testPose(name) {
     bodyQ.identity(); hipsPos.copy(hipsRest);
@@ -671,9 +763,9 @@ export function createAnimator(THREE, rig, opts = {}) {
   }
 
   // ---------------------------------------------------------------- every frame
-  let mode = 'auto';
+  let mode = 'auto', swimming = false;
   // s: { speed (m/s, forward +), x, z (where the character stands in the world), y (height of its root), heading (radians),
-  //      groundAt(x, z) -> height, inPlace (walk on the spot) }
+  //      groundAt(x, z) -> height, inPlace (walk on the spot), swim (true: in deep water, the root is at the surface) }
   function update(dt, s = {}) {
     dt = Math.min(dt, 0.05);
     st.time += dt;
@@ -690,8 +782,17 @@ export function createAnimator(THREE, rig, opts = {}) {
     else { st.x = s.x || 0; st.z = s.z || 0; st.y = s.y || 0; }
     st.speed = speed;
     legIK = true;
+    // into the water / out of it: a soft change of the whole body; out of it the feet stand where he is
+    const swim = !!s.swim && mode === 'auto';
+    if (swim !== swimming) {
+      startBlend(0.45);
+      swimming = swim;
+      if (swim) SW.k = smooth((Math.abs(speed) - 0.15) / 0.7);
+      else { for (const S of step) { S.first = true; S.planted = true; S.t = 1; S.gait = false; } st.drop = 0; }
+    }
     if (mode === 'drive') drivingPose(dt);
     else if (mode === 'armsForward' || mode === 'deepBend') testPose(mode);
+    else if (swimming) swimPose(dt, speed);
     else if (pose === 'sit' || pose === 'sitEdge') sittingPose(dt);
     else if (pose === 'lie') sleepPose();
     else if (pose === 'fallen') fallenPose();
@@ -733,6 +834,9 @@ export function createAnimator(THREE, rig, opts = {}) {
     // 'sitEdge': how far the floor is below the character's root (meters)
     set floorBelow(v) { floorBelow = v; },
     get mode() { return mode; },
+    get swimming() { return swimming; },
+    // where the stroke is (0..1, one stroke = both arms once) - for the splash of each hand
+    get stroke() { return SW.ph; },
     set drive(d) { drive = d; },
     // for tests: is a foot on the ground, and where (world)
     get feet() { return step.map((S, q) => ({ planted: S.planted, x: S.wx, z: S.wz, knee: foot[q].knee })); },

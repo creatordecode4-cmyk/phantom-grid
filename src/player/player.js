@@ -11,6 +11,8 @@
 //     walking, running, standing, sitting in a car
 //   * walks 1.6 m/s, runs 5 m/s, turns smoothly
 //   * cannot walk through buildings, cars, poles or out of the map
+//   * SWIMS in deep water (the canals of The Sunk, the sea): from a low deck or
+//     the beach he goes into the water, swimming into a pontoon he climbs out
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
@@ -19,6 +21,7 @@ import { clamp, damp, angleDelta, DEG } from '../utils/math.js';
 import { makeMannequin } from '../city/models.js';
 import { autoRig } from '../characters/autoRig.js';
 import { createAnimator } from '../characters/proceduralAnim.js';
+import { SWIM, WADE } from '../world/water.js';
 
 // Load the character file. Returns a three.js object, or null if it is missing.
 async function loadCharacter(url) {
@@ -144,6 +147,32 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   };
   const NO_CIRCLES = [];
 
+  // ---- WATER (src/world/water.js): in deep water he swims ----
+  // The root of the character is then AT the surface; the animation puts the body into the water (upright and
+  // treading when still, almost flat in a front crawl with the head up when moving). From a low deck (a pontoon,
+  // the foot of a ramp) or down the beach he goes into the water; swimming into a pontoon he climbs out. In
+  // shallow water he walks on the bottom, slower the deeper it is. Nobody stands ON the water.
+  const water = city.water || null;
+  const SEA_REACH = 45;          // how far past the south edge of the map he can swim out to sea
+  const DIVE = 2.0;              // from a deck higher than this over the water he does not step off (a roof, a stair)
+  let swimming = false, surface = 0, wade = 0, splashes = 0, strokes = 0, strokeDist = 0;
+  // the water at (x, z) for somebody at height y: null where there is none, or where a deck carries him
+  function wetAt(x, z, y) {
+    if (room || !water) return null;
+    const w = water.at(x, z);
+    if (!w) return null;
+    if (inSunk(x, z) && sunk.walk(x, z, y) !== null) return null;
+    return w;
+  }
+  // after he was put somewhere (or moved): is he swimming now?
+  function settle() {
+    if (hidden) { swimming = false; wade = 0; return; }       // (put into a car or a boat: nobody swims in there)
+    const w = wetAt(pos.x, pos.z, pos.y);
+    swimming = !!w && w.surface - w.bottom >= SWIM && pos.y < w.surface + DIVE;
+    if (swimming) { surface = w.surface; pos.y = surface; }
+    wade = 0;
+  }
+
   // Push the player out of anything solid. Returns nothing, changes x/z in "p".
   const p = { x: 0, z: 0 };
   function collide() {
@@ -185,10 +214,10 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
       }
       if (!hit) break;
     }
-    // edge of the world (or the walls of the house)
+    // edge of the world (or the walls of the house). South of the beach there is only sea: he can swim out a bit.
     const B = room || layout.bounds;
     p.x = clamp(p.x, B.minX, B.maxX);
-    p.z = clamp(p.z, B.minZ, B.maxZ);
+    p.z = clamp(p.z, room || !water ? B.minZ : B.minZ - SEA_REACH, B.maxZ);
   }
 
   // input: { moveX, moveY (-1..1), run }, camYaw: where the camera looks
@@ -200,24 +229,29 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     let mz = fz * input.moveY + rz * input.moveX;
     let amount = Math.hypot(mx, mz);
     if (amount > 1) { mx /= amount; mz /= amount; amount = 1; }
-    const top = input.run ? P.runSpeed : P.walkSpeed;
-    vel.x = damp(vel.x, mx * top, P.acceleration, dt);
-    vel.y = damp(vel.y, mz * top, P.acceleration, dt);
+    // swimming is slow (and slow to speed up and to turn); deep water at the beach slows the walk
+    const top = swimming ? (input.run ? P.swimFast ?? 2 : P.swimSpeed ?? 1.2)
+      : (input.run ? P.runSpeed : P.walkSpeed) * (1 - 0.6 * clamp((wade - WADE) / (SWIM - WADE), 0, 1));
+    const acc = swimming ? 2.4 : P.acceleration;
+    vel.x = damp(vel.x, mx * top, acc, dt);
+    vel.y = damp(vel.y, mz * top, acc, dt);
     speed = vel.length();
 
     // turn toward the walking direction
     if (amount > 0.05 && speed > 0.05) {
       const target = Math.atan2(vel.x, vel.y);
-      heading += angleDelta(heading, target) * (1 - Math.exp(-P.turnSpeed * dt));
+      heading += angleDelta(heading, target) * (1 - Math.exp(-P.turnSpeed * (swimming ? 0.4 : 1) * dt));
     }
 
     // move, then fix collisions
     p.x = pos.x + vel.x * dt;
     p.z = pos.z + vel.y * dt;
     collide();
-    // The Sunk: no deck there = water or a drop: slide along the edge (or stay)
+    // The Sunk: no deck there = water or a drop. From a low deck he steps into the water; swimming, he goes on
+    // in the water or climbs onto a deck that is low enough. Anything else (a roof edge, a quay wall): slide along it.
     if (!room && (inSunk(p.x, p.z) || inSunk(pos.x, pos.z))) {
-      const ok = (x, z) => !inSunk(x, z) || sunk.walk(x, z, pos.y) !== null;
+      const ok = (x, z) => !inSunk(x, z) || sunk.walk(x, z, pos.y) !== null ||
+        (!!water && water.at(x, z) !== null && (swimming || pos.y < water.level + DIVE));
       if (!ok(p.x, p.z)) {
         if (ok(p.x, pos.z)) p.z = pos.z;
         else if (ok(pos.x, p.z)) p.x = pos.x;
@@ -232,27 +266,41 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     }
     pos.x = p.x;
     pos.z = p.z;
-    // follow the ground (curbs, the sloping beach)
-    pos.y = damp(pos.y, groundAt(pos.x, pos.z), 14, dt);
+    // ---- in the water, or not? (a little give between the two, so he does not flicker at the edge) ----
+    const w = wetAt(pos.x, pos.z, swimming ? surface : pos.y);
+    const depth = w ? w.surface - w.bottom : 0;
+    if (!swimming && w && depth >= SWIM && pos.y < w.surface + DIVE) { swimming = true; surface = w.surface; splashes++; }
+    else if (swimming && (!w || depth < SWIM - 0.15)) { swimming = false; splashes++; }
+    wade = !swimming && w ? Math.max(0, w.surface - pos.y) : 0;
+    // follow the ground (curbs, the sloping beach) - or float at the surface (going in from a pontoon: a small drop)
+    if (swimming) pos.y = damp(pos.y, surface, 9, dt);
+    else pos.y = damp(pos.y, groundAt(pos.x, pos.z), 14, dt);
     root.rotation.y = heading;
 
-    if (mixer) animate(dt);
+    if (mixer) { animate(dt); body.position.y = swimming ? -1.25 : 0; }
     else if (mover) {
       // the procedural animation: it needs the speed along the walking direction and the ground under the feet
       const forward = vel.x * Math.sin(heading) + vel.y * Math.cos(heading);
-      mover.update(dt, { speed: forward, x: pos.x, z: pos.z, y: pos.y, heading, groundAt });
+      mover.update(dt, { speed: forward, x: pos.x, z: pos.z, y: pos.y, heading, groundAt, swim: swimming });
     } else {
       // no skeleton: a tiny up-down bob and a forward lean, so it does not look like sliding
       stepPhase += dt * (4.5 + speed * 2.2);
       const k = clamp(speed / P.walkSpeed, 0, 1);
-      body.position.y = Math.abs(Math.sin(stepPhase)) * 0.022 * k;
+      body.position.y = Math.abs(Math.sin(stepPhase)) * 0.022 * k - (swimming ? 1.25 : 0);
       body.rotation.x = damp(body.rotation.x, clamp(speed / P.runSpeed, 0, 1) * 0.09, 6, dt);
     }
-    // count the steps (main.js plays a footstep sound for each one)
-    stepDist += speed * dt;
-    const stride = speed > 3 ? 1.25 : 0.72;
-    if (stepDist > stride) { stepDist = 0; steps++; }
+    // count the steps (main.js plays a footstep sound for each one) - or the strokes, swimming
+    if (swimming) {
+      strokeDist += Math.max(speed, 0.35) * dt;                 // (treading water: a soft splash now and then)
+      if (strokeDist > (speed > 0.4 ? 0.85 : 0.6)) { strokeDist = 0; strokes++; }
+    } else {
+      stepDist += speed * dt;
+      const stride = speed > 3 ? 1.25 : 0.72;
+      if (stepDist > stride) { stepDist = 0; steps++; }
+    }
 
+    // (no dark spot on the water, nor on the sand under it)
+    blob.visible = !hidden && !staged && !swimming && wade < 0.2;
     blob.position.set(pos.x, pos.y + 0.02, pos.z);
   }
 
@@ -279,7 +327,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
 
   // ---- used by the cars: hide the player, put them somewhere, walk them to a door ----
   let hidden = false;
-  function setHidden(h) { hidden = h; root.visible = !h && fadeK > 0.02; blob.visible = !h; }
+  function setHidden(h) { hidden = h; root.visible = !h && fadeK > 0.02; blob.visible = !h && !swimming; }
 
   // ---- the camera pressed very close to the player (against a wall, in a small room) ----
   // Instead of the camera cutting through the head and the bag (you would see inside the model),
@@ -308,6 +356,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     if (mover && Math.hypot(pos.x - x, pos.z - z) > 0.5) mover.reset();
     if (typeof y === 'number' && isFinite(y)) pos.y = y;
     pos.set(x, groundAt(x, z), z);
+    settle();
     vel.set(0, 0); speed = 0;
     heading = angle;
     root.rotation.y = heading;
@@ -335,6 +384,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
       mover.reset();
       return;
     }
+    swimming = false;          // (in a car or a boat nobody swims)
     if (sitting !== seat.node) {
       sitting = seat.node;
       seat.node.add(rig.root);
@@ -355,7 +405,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   let staged = false;
   //   floorBelow: for the pose 'sitEdge' - how far the floor is under the seat (meters)
   function stage(x, y, z, angle, pose = 'idle', floorBelow = 0.45) {
-    staged = true;
+    staged = true; swimming = false;
     if (mover) mover.floorBelow = floorBelow;
     pos.set(x, y, z); vel.set(0, 0); speed = 0;
     heading = angle; root.rotation.y = heading;
@@ -383,6 +433,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   function teleport(x, z, compassDeg = null) {
     if (mover) mover.reset();
     pos.set(x, groundAt(x, z), z);
+    settle();
     vel.set(0, 0);
     if (compassDeg !== null) heading = compassToAngle(compassDeg);
     root.rotation.y = heading;
@@ -413,5 +464,11 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     get steps() { return steps; },   // goes up by one with every footstep
     get heading() { return heading; },
     get speed() { return speed; },
+    // in deep water (the root is at the surface), how deep he wades, and the splashes for main.js:
+    // "splashes" goes up by one when he goes into the water or comes out, "strokes" with every stroke
+    get swimming() { return swimming; },
+    get wade() { return wade; },
+    get splashes() { return splashes; },
+    get strokes() { return strokes; },
   };
 }

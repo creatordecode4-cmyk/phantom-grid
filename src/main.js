@@ -218,7 +218,7 @@ async function boot() {
   let goalState = missions.state;   // what the HUD shows: the story's objective or the free roam mission
   let waypoint = null;          // a place the player tapped on the big map
   let route = null;             // list of points along the roads (for the minimap)
-  let routeTimer = 0, nearTimer = 0, lastSteps = 0, wasDriving = false;
+  let routeTimer = 0, nearTimer = 0, lastSteps = 0, lastSplashes = 0, lastStrokes = 0, wasDriving = false;
   let missionState = missions.state;
   const obstacles = [];         // what the traffic must not hit: the player or the player's car
   const _mark = new THREE.Vector3();
@@ -424,10 +424,29 @@ async function boot() {
     const buzz = vehicles.takeHaptic();
     if (buzz && navigator.vibrate) { try { navigator.vibrate(buzz); } catch (e) { /* not allowed */ } }
 
-    // ---- footsteps: a different sound on sand ----
+    // ---- footsteps: a different sound on sand (and in the water) ----
     if (player.steps !== lastSteps) {
       lastSteps = player.steps;
-      if (onFoot) sound.footstep(SK && SK.inZone(px, pz) && SK.walk(px, pz, player.position.y) !== null && player.position.y < 1.5 ? 'wood' : pz < layout.neon.promenadeMinZ && !(SK && SK.inZone(px, pz, 6)) ? 'sand' : 'concrete', player.speed > 3);
+      if (onFoot) sound.footstep(player.wade > 0.15 ? 'water' : SK && SK.inZone(px, pz) && SK.walk(px, pz, player.position.y) !== null && player.position.y < 1.5 ? 'wood' : pz < layout.neon.promenadeMinZ && !(SK && SK.inZone(px, pz, 6)) ? 'sand' : 'concrete', player.speed > 3);
+    }
+    // ---- swimming: a splash going in (or out), the strokes, white water at the hands ----
+    if (player.splashes !== lastSplashes) {
+      lastSplashes = player.splashes;
+      if (onFoot) {
+        const big = player.swimming, wy = city.water.level + 0.1;
+        sound.splash(big);
+        for (let i = 0; i < (big ? 7 : 3); i++) effects.emit('foam', px + (Math.random() - 0.5) * 0.8, wy, pz + (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 1.6, 1.6 + Math.random() * 1.6, (Math.random() - 0.5) * 1.6, big ? 0.55 : 0.4);
+      }
+    }
+    if (player.strokes !== lastStrokes) {
+      lastStrokes = player.strokes;
+      if (onFoot && player.swimming) {
+        const moving = player.speed > 0.4, h = player.heading, side = (player.strokes % 2 ? 1 : -1) * 0.3;
+        sound.stroke(moving);
+        // (where the hand goes into the water: in front of him, a little to one side)
+        const hx = px + Math.sin(h) * 0.7 + Math.cos(h) * side, hz = pz + Math.cos(h) * 0.7 - Math.sin(h) * side;
+        if (moving) effects.emit('foam', hx, city.water.level + 0.08, hz, Math.sin(h) * 0.6, 0.9, Math.cos(h) * 0.6, 0.32);
+      }
     }
 
     // ---- mission, waypoint, GPS route ----

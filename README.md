@@ -42,6 +42,7 @@ Open the GitHub Pages address of this repository (see "Publish on GitHub Pages" 
 | Move | Joystick, bottom-left (touch anywhere in that corner) | `W` `A` `S` `D` or arrow keys |
 | Look | Drag on the right half of the screen | Mouse (click the game to lock the mouse, `Esc` to free it) |
 | Run | `RUN` button (tap = on / off) | Hold `Shift` |
+| Swim | walk into deep water: off a low pontoon in The Sunk, or down the beach into the sea. `RUN` = swim faster. Swim into a pontoon to climb out | same |
 | Time of day | `TIME` button, then Morning / Noon / Sunset / Night | same, or key `T` |
 | Rain | `RAIN` button | same, or key `R` |
 | Quality | Quality button, then Auto / Low / Medium / High | same |
@@ -182,6 +183,7 @@ src/
     music.js               the mixtape "DON'T SKIP" (six lo-fi tracks made in code, track 7 is empty),
                            rain, traffic hum, waves, far sirens, the chase pad, the heartbeat
   world/
+    water.js               where the water is and how deep (the canals of The Sunk, the sea): who is in deep water swims
     lighting.js            sky, sun, day / night, shadows, haze, reflections, street lamps
     weather.js             rain and wet streets
     postfx.js              bloom, film color grade, vignette, grain
@@ -1272,6 +1274,39 @@ point, and the first in the `CARS` menu.
 `blanketGeometry({ w, l, drop: [left, right, foot], thick, quilt })` and `rollGeometry(length, radius)`
 give a geometry that can go into any room (see `bed()` in `src/interiors/furniture.js`).
 
+## Swimming (version 7.1)
+
+**Nobody stands on the water any more.** Whoever is in deep water swims - Nate, the story people and every
+other character.
+
+- **Where:** the canals and the market basin of The Sunk (3.2 m deep), and the sea. Down the beach the water
+  gets deeper slowly: up to the knees Nate walks normally, deeper he walks slower (the water pulls at the legs),
+  and from 1.3 m on (chest deep) he swims. He can swim about 45 m out past the end of the beach.
+- **Going in:** walk off a pontoon or the foot of a ramp. A roof edge, a stair or a bridge still stops him
+  (nobody jumps off a roof).
+- **Getting out:** swim into a pontoon (or into a low step) and he climbs onto it. Walls of houses stop him.
+- **How it looks** (`swimPose` in `src/characters/proceduralAnim.js`): standing still he **treads water** -
+  upright, the head and the top of the shoulders out of the water, the hands sculling under the surface, the
+  legs turning slowly like an egg beater. Moving, he does a **front crawl with the head up**: the body almost
+  flat just under the surface and rolling a little, one arm pulling under the water while the other comes
+  forward over it with a high elbow, the legs kicking fast and small with pointed toes. The two blend into each
+  other by speed. Hands and feet are put in place by the same arm and leg solver as walking, so the joint limits
+  hold.
+- **Speed:** 1.2 m/s, 2 m/s with `RUN` (a person in clothes is slow in the water). Turning is slower too.
+- **Camera:** it comes down to the swimmer's head and never goes under the water.
+- **Sound and water** (made in code): a heavy splash going in, a softer one coming out or standing up, a slap
+  for every stroke (a quiet lap when treading water), legs pushing through shallow water; white water at the
+  hands, and in The Sunk the canal water shows his small wake.
+- **Story people and other characters** (`src/story/actors.js`): an actor whose place is in deep water - put
+  there by the story, or walking there - swims at the surface with the same animation; the name tag and the
+  eyes go down with him.
+- `src/world/water.js` answers "how deep is the water here?" for everybody: `city.water.at(x, z)` gives the
+  surface and the bottom, `city.water.depth(x, z)` the depth. `SWIM` (1.3 m) and `WADE` (0.45 m) are at its top.
+
+The roof route of the raid (mission 3.3) also got its markers back where they belong: they now lead stair by
+stair (Lena's roof, the next roof, the fire escape landing, the pontoon); before, the marker pointed past a
+roof edge, into a 5 m drop.
+
 ---
 
 ## Known limits
@@ -1282,7 +1317,9 @@ give a geometry that can go into any room (see `bed()` in `src/interiors/furnitu
 - Not done from the wish list: the Doppler effect for passing traffic, mirror-like headlight
   reflections on wet roads and separate fog lamps (the wet road only gets the normal light patch).
   The cockpit is the same simple dashboard in every car, without working dials.
-- The boat cannot leave the water; you get out at the beach or at a dock in The Sunk. The drone has no camera
+- The boat cannot leave the water; you get out at the beach or at a dock in The Sunk (not into the open
+  water: you can swim, but the boat does not let you jump out of it). Swimming has no diving under the water and
+  no climbing animation: climbing onto a pontoon is a quick step up. The drone has no camera
   of its own and does not collide with trees or lamps, only with buildings.
 - The police only chase by car; they do not get out and there is no shooting (on purpose).
 - Chapter 2: the voices of the news screens, the radio and the drone loudspeakers are made in code

@@ -46,6 +46,8 @@ export const CONFIG = {
     radius: 0.35,      // body radius used for collisions
     walkSpeed: 1.6,    // meters per second
     runSpeed: 5.0,
+    swimSpeed: 1.2,    // swimming (deep water), and with the RUN button held
+    swimFast: 2.0,
     turnSpeed: 9.0,    // how quickly the body turns toward the move direction
     acceleration: 9.0, // how quickly the speed changes
   },
