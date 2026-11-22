@@ -598,7 +598,7 @@ export default {
             // the glow of the tablet on her face; the old badge swinging on its cord
             { seconds: 7, fade: 'in', fadeSeconds: 2, cam: { from: { of: 'tideBoat', p: [-3.1, 2.3, -2.2] }, look: { of: 'lena', p: [0, 0.45, 0.25] }, fov: 30 },
               do: [{ do: 'music', calm: 0.9 }, { do: 'fill', power: 0.5 }] },
-            { seconds: 6.4, cam: { from: { of: 'tideBoat', p: [-2.55, 2.2, -2.75] }, look: { of: 'lena', p: [0, 0.38, 0.22] }, fov: 24 } },
+            { seconds: 6.4, cam: { from: { of: 'tideBoat', p: [-3.2, 2.35, -2.3] }, look: { of: 'lena', p: [0, 0.32, 0.28] }, fov: 28 } },
             // and the boat goes away down the canal, into the mist
             // (from the corner of the canal, behind the boat: it is 30 m away when this starts, 75 m at the end)
             { seconds: 14, fade: 'out', fadeSeconds: 5, cam: { from: [731.8, 1.25, -137.5], to: [731.6, 1.45, -139.5], look: { of: 'tideBoat', p: [0, 2.0, 0] }, fov: 30 } },
