@@ -9,6 +9,8 @@
 //   road     rumble that changes with the ground   siren, horn, scrape, squeal
 // SHORT SOUNDS: gear click, turbo whoosh, crash (light scrape or heavy hit),
 //   suspension thump, indicator tick, door, footsteps, engine start, chime
+// CHAPTER 2: the beep of a scanner gate (and its alarm), a phone ringing,
+//   a paint spray can, a roller shutter going up or down
 // INSIDE THE CAR everything is muffled: more engine, less wind and tires.
 //
 // Browsers only allow sound after the first tap or key press, so nothing
@@ -28,7 +30,7 @@ const TONES = {
 
 export function createSound() {
   let ctx = null, master = null, out = null, inside = null, noiseBuf = null;
-  let engine = null, screech = null, horn = null, wind = null, road = null, siren = null, scrape = null, squeal = null;
+  let engine = null, screech = null, horn = null, wind = null, road = null, siren = null, scrape = null, squeal = null, spray = null;
   let muted = false, tone = TONES.smooth, isInside = false;
   let volume = 1;           // 0..1, the volume slider in the settings
   let held = false;         // true while the game is paused: all sound stands still
@@ -91,6 +93,8 @@ export function createSound() {
       lfo.connect(depth); depth.connect(o.frequency); o.connect(lp); lp.connect(g); g.connect(master); o.start(); lfo.start();
       siren = { g };
     }
+    // ---- a can of paint: a steady hiss while the button is held ----
+    spray = noise('highpass', 3400, 0.6);
     // ---- brake squeal: a thin high tone ----
     {
       const g = ctx.createGain(); g.gain.value = 0;
@@ -227,9 +231,25 @@ export function createSound() {
       else { burst(900, 1.0, 0.16, 0.002, 0.07); burst(150, 0.8, 0.3, 0.003, 0.12, 'lowpass'); }
     },
     chime() { blip('sine', 660, 660, 0.12, 0.4); setTimeout(() => blip('sine', 880, 880, 0.12, 0.4), 120); },
+    // ---- Chapter 2 ----
+    // a scanner gate reads a plate that is not wanted: two quiet beeps
+    scanBeep() { blip('sine', 1500, 1500, 0.03, 0.06); setTimeout(() => blip('sine', 1900, 1900, 0.03, 0.08), 90); },
+    // ... and one that IS wanted: a hard two-tone alarm
+    scanAlarm() { for (let i = 0; i < 4; i++) setTimeout(() => { blip('square', 720, 720, 0.045, 0.16); setTimeout(() => blip('square', 960, 960, 0.045, 0.16), 170); }, i * 340); },
+    // a phone ringing (a soft, modern trill), "times" rings
+    ring(times = 2) { for (let r = 0; r < times; r++) for (let i = 0; i < 6; i++) setTimeout(() => { blip('sine', 1175, 1175, 0.05, 0.07); blip('sine', 1568, 1568, 0.03, 0.07); }, r * 1400 + i * 85); },
+    // the spray can (on while the button is held)
+    setSpray(on) { if (spray) glide(spray.g.gain, on ? 0.09 : 0, 0.05); },
+    // a roller shutter: a long metal rattle, and a clang at the end when it comes down
+    shutter(down = false) {
+      if (!live()) return;
+      const steps = 34;
+      for (let i = 0; i < steps; i++) setTimeout(() => { burst(1100 + Math.random() * 500, 3, 0.05, 0.001, 0.035); if (i % 3 === 0) burst(240, 1, 0.07, 0.002, 0.05, 'lowpass'); }, i * 70);
+      if (down) setTimeout(() => { burst(170, 0.7, 0.5, 0.003, 0.35, 'lowpass'); burst(2200, 2, 0.12, 0.002, 0.25); }, steps * 70 + 40);
+    },
     // everything that runs all the time goes quiet (when the player leaves the vehicle)
     quiet() {
-      this.setEngine(false); this.setScreech(0); this.setWind(0); this.setRoad(0); this.setScrape(false); this.setSqueal(false); this.setHorn(false); this.setSiren(false); this.setInside(false);
+      this.setEngine(false); this.setScreech(0); this.setWind(0); this.setRoad(0); this.setScrape(false); this.setSqueal(false); this.setHorn(false); this.setSiren(false); this.setInside(false); this.setSpray(false);
     },
   };
 }

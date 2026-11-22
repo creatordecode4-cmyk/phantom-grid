@@ -8,6 +8,9 @@
 //                 mirror of the chase, the tape display, the TALK / TAKE button,
 //                 things to read (a phone, the race ticket)
 //   menus:        title screen, pause, settings, mission list, end and fail cards
+//   chapter 2:    the paint shop (four colors, hold to spray, a new number
+//                 plate), the video on the KEYSTONE chip (a recording with its
+//                 date and time), the BUSTED card (a fine instead of game over)
 //
 // This file only talks to the web page. The story engine tells it what to show.
 // ---------------------------------------------------------------------------
@@ -24,6 +27,7 @@ export function createStoryUI() {
     limiter: $('btn-limiter'), wren: $('wren'), mirror: $('mirror'), tape: $('tape'), tapeName: $('tape-name'), tapeBar: $('tape-bar').firstElementChild,
     act: $('btn-act'), tip: $('tip'), reader: $('reader'), badge: $('limit-badge'),
     title: $('title'), pause: $('pause'), settings: $('settings'), select: $('select'), endcard: $('endcard'), failcard: $('failcard'),
+    paint: $('paint'), video: $('video'), videoDate: $('video-date'), videoFile: $('video-file'), videoLock: $('video-lock'), bustcard: $('bustcard'),
   };
   const button = (label, cls = 'btn') => { const b = document.createElement('button'); b.className = cls; b.textContent = label; return b; };
 
@@ -182,9 +186,60 @@ export function createStoryUI() {
     el.reader.hidden = false;
   }
 
+  // ------------------------------------------------------------ the paint shop (Chapter 2)
+  // stage 'colors': data = { title, options: [{ name, css }] }, cb(index)
+  // stage 'spray':  data = { label }, cb(true) when the finger goes down, cb(false) when it comes up
+  // stage 'plate':  data = { title, old, plate, label }, cb() when the button is pressed
+  // stage null:     hide it
+  let paintBar = null;
+  function paint(stage, data = {}, cb = null) {
+    el.paint.textContent = ''; paintBar = null;
+    if (!stage) { el.paint.hidden = true; return; }
+    const head = document.createElement('div'); head.className = 'head'; head.textContent = data.title || '';
+    el.paint.appendChild(head);
+    if (stage === 'colors') {
+      const row = document.createElement('div'); row.className = 'swatches';
+      data.options.forEach((o, i) => {
+        const b = document.createElement('button'); b.className = 'swatch';
+        b.innerHTML = '<i></i><span></span>'; b.firstElementChild.style.background = o.css; b.lastElementChild.textContent = o.name;
+        press(b, () => cb(i));
+        row.appendChild(b);
+      });
+      el.paint.appendChild(row);
+    } else if (stage === 'spray') {
+      const b = button(data.label || '', 'btn spray'); b.innerHTML = '<i></i><span></span>'; b.lastElementChild.textContent = data.label || '';
+      paintBar = b.firstElementChild;
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add('held'); cb(true); });
+      for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => { if (b.classList.contains('held')) { b.classList.remove('held'); cb(false); } });
+      el.paint.appendChild(b);
+    } else if (stage === 'plate') {
+      const plates = document.createElement('div'); plates.className = 'plates';
+      plates.innerHTML = '<span class="plate old"></span><span class="arrow">\u2192</span><span class="plate"></span>';
+      plates.children[0].textContent = data.old || ''; plates.children[2].textContent = data.plate || '';
+      el.paint.appendChild(plates);
+      const b = button(data.label || '', 'btn main'); press(b, () => cb()); el.paint.appendChild(b);
+    }
+    el.paint.hidden = false;
+  }
+  // how far the spraying is (0..1)
+  function paintProgress(p) { if (paintBar) paintBar.style.width = `${Math.round(Math.max(0, Math.min(1, p)) * 100)}%`; }
+
+  // ------------------------------------------------------------ the video on the chip (Chapter 2)
+  // state: 'on' (a recording: REC, the date, the file), 'glitch' (it breaks up), 'locked' (black, a lock), 'off'
+  function video(state, info = {}) {
+    el.video.classList.remove('glitch', 'locked');
+    if (!state || state === 'off') { el.video.hidden = true; return; }
+    if (info.date !== undefined) el.videoDate.textContent = info.date;
+    if (info.file !== undefined) el.videoFile.textContent = info.file;
+    if (info.lock !== undefined) el.videoLock.textContent = info.lock;
+    if (state === 'glitch') el.video.classList.add('glitch');
+    if (state === 'locked') el.video.classList.add('locked');
+    el.video.hidden = false;
+  }
+
   // ------------------------------------------------------------ menus
   const screen = (node, html) => { node.innerHTML = html; node.hidden = false; return node; };
-  function hideMenus() { for (const n of [el.title, el.pause, el.settings, el.select, el.endcard, el.failcard]) n.hidden = true; }
+  function hideMenus() { for (const n of [el.title, el.pause, el.settings, el.select, el.endcard, el.failcard, el.bustcard]) n.hidden = true; }
   // info: { canContinue, where: text under CONTINUE }, cb(action): 'continue' | 'new' | 'free' | 'select' | 'settings'
   function title(info, cb) {
     hideMenus();
@@ -263,6 +318,16 @@ export function createStoryUI() {
     for (const [label, action, cls] of [[t('ui.retry'), 'retry', 'btn main'], [t('ui.title'), 'title', 'btn']]) { const b = button(label, cls); press(b, () => cb(action)); n.lastElementChild.appendChild(b); }
   }
 
+  // BUSTED (Chapter 2): no game over - a fine, and back to the last checkpoint.
+  //   data: { title, line, fine, left, label } (texts), cb()
+  function bustCard(data, cb) {
+    hideMenus();
+    const n = screen(el.bustcard, '<h2></h2><div class="line"></div><div class="fine"></div><div class="left"></div><div class="menu-col"></div>');
+    n.children[0].textContent = data.title || ''; n.children[1].textContent = data.line || '';
+    n.children[2].textContent = data.fine || ''; n.children[3].textContent = data.left || '';
+    const b = button(data.label || '', 'btn main'); press(b, () => { n.hidden = true; cb(); }); n.lastElementChild.appendChild(b);
+  }
+
   // ------------------------------------------------------------ every frame (real seconds, also while the game is paused)
   function update(dt) {
     if (subNow) {
@@ -291,6 +356,7 @@ export function createStoryUI() {
   function reset() {
     cine(false); clearSubs(); skip(null); limiter(null); prompt(null); tip(null); tape(false); mirror(false); limitBadge(0, false);
     card(null); el.choices.hidden = true; choiceDone = null; el.reader.hidden = true; body.classList.remove('quiet');
+    paint(null); video('off');
   }
 
   return {
@@ -298,14 +364,15 @@ export function createStoryUI() {
     // change one setting from outside the settings screen (the TILT and SOUND buttons) and remember it
     setSetting(key, value) { settings[key] = value; saveSettings(); applyLook(); },
     cine, fade, card, say, clearSubs, choice, skip, limiter, prompt, tip, tape, limitBadge, mirror, drawMirror, reader,
-    title, pause, settingsScreen, select, endCard, failCard, hideMenus,
+    title, pause, settingsScreen, select, endCard, failCard, hideMenus, paint, paintProgress, video, bustCard,
     quiet(on) { body.classList.toggle('quiet', !!on); },
     storyMode(on) { body.classList.toggle('story', !!on); },
     get subsBusy() { return !!subNow || queue.length > 0; },
     get choosing() { return !!choiceDone; },
     get actShown() { return !el.act.hidden; },
+    get actLabel() { return el.act.hidden ? null : el.act.textContent; },
     act() { if (actCb) actCb(); },
-    get menuOpen() { return [el.title, el.pause, el.settings, el.select, el.endcard, el.failcard].some((n) => !n.hidden); },
+    get menuOpen() { return [el.title, el.pause, el.settings, el.select, el.endcard, el.failcard, el.bustcard].some((n) => !n.hidden); },
     onPauseButton(fn) { press($('btn-pause-story'), fn); },
   };
 }

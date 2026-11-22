@@ -7,6 +7,13 @@
 //   * TENSION: a quiet low pad with a slow pulse, for the chase.
 //   * HEARTBEAT: two low thumps, again and again, before the limiter moment.
 //   * AMBIENCE: rain, the hum of traffic, far sirens, waves near the beach.
+//   * WANTED (Chapter 2): a faint low pulse that grows with the stars and goes
+//     away while the player is hidden; the buzz of Guard drones overhead.
+//   * VOICES WITHOUT WORDS: news speakers in the street, an old radio, the
+//     loudspeaker of a drone. A voice is made of short syllables (a buzzing
+//     tone through two moving filters), so it sounds like far-away speech.
+//     What is said is shown as a subtitle.
+//   * CALM: a soft, warm pad for the very last scene of Chapter 2.
 //   * SILENCE: everything here can be cut to nothing for a moment.
 //
 // No sound files. Everything uses the audio system of sound.js and only
@@ -32,10 +39,12 @@ const rnd = (a, b, c = 0) => { const x = Math.sin(a * 127.1 + b * 311.7 + c * 74
 export function createMusic(sound) {
   let A = null;                 // { ctx, out, noiseBuf } from sound.js
   let tapeBus = null, tapeLp = null, hiss = null, padBus = null, pad = null, ambBus = null, amb = null;
-  const want = { track: 0, tension: 0, heart: 0, inCar: false, tapeVol: 1 };
+  let wantBus = null, droneHum = null, voice = null, calmBus = null;
+  const want = { track: 0, tension: 0, heart: 0, inCar: false, tapeVol: 1, stars: 0, hidden: false, chase: false, calm: 0 };
+  let wantedNext = 0, voiceNext = 0, voiceLeft = 0, announceUntil = 0;
   const tape = { track: 0, bar: 0, step: 0, next: 0, startBar: 0, onEnd: null, ended: false };
   let heartNext = 0, pulseNext = 0, sirenNext = 20, silentUntil = 0, time = 0;
-  const env = { rain: 0, city: 0.5, beach: 0, inCar: false };
+  const env = { rain: 0, city: 0.5, beach: 0, inCar: false, drone: 0, street: 0, radio: 0 };
 
   function ready() {
     if (A) return A.ctx.state === 'running';
@@ -64,6 +73,35 @@ export function createMusic(sound) {
       rain: loopNoise('bandpass', 2600, 0.35, ambBus, 0), roof: loopNoise('lowpass', 420, 0.5, ambBus, 0),
       hum: loopNoise('lowpass', 110, 0.6, ambBus, 0), waves: loopNoise('bandpass', 520, 0.5, ambBus, 0),
     };
+    // ---- wanted: the bus of the low pulse ----
+    wantBus = c.createGain(); wantBus.gain.value = 0; wantBus.connect(A.out);
+    // ---- the buzz of a drone: two tones a little apart, and the wind of its rotors ----
+    {
+      const g = c.createGain(); g.gain.value = 0; g.connect(ambBus);
+      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 760; f.Q.value = 0.8; f.connect(g);
+      for (const fr of [182, 187.5, 364]) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; const og = c.createGain(); og.gain.value = fr > 300 ? 0.25 : 0.5; o.connect(og); og.connect(f); o.start(); }
+      const wash = loopNoise('bandpass', 420, 0.6, g, 0.6);
+      droneHum = { g, wash };
+    }
+    // ---- a voice: a buzzing tone (the vocal cords) through two filters (the mouth) ----
+    {
+      const out = c.createGain(); out.gain.value = 0; out.connect(ambBus);
+      const color = c.createBiquadFilter(); color.type = 'bandpass'; color.frequency.value = 1300; color.Q.value = 0.9; color.connect(out);
+      const env2 = c.createGain(); env2.gain.value = 0; env2.connect(color);
+      const f1 = c.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 5; f1.frequency.value = 600;
+      const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 7; f2.frequency.value = 1500;
+      const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 135;
+      o.connect(f1); o.connect(f2); f1.connect(env2); f2.connect(env2); o.start();
+      const crackle = loopNoise('highpass', 5000, 0.4, out, 0);     // an old radio crackles a little
+      voice = { out, color, env: env2, f1, f2, o, crackle };
+    }
+    // ---- calm pad: a warm chord that breathes slowly ----
+    {
+      calmBus = c.createGain(); calmBus.gain.value = 0; calmBus.connect(A.out);
+      const lp2 = c.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 900; lp2.Q.value = 0.5; lp2.connect(calmBus);
+      const lfo2 = c.createOscillator(); lfo2.frequency.value = 0.06; const d2 = c.createGain(); d2.gain.value = 300; lfo2.connect(d2); d2.connect(lp2.frequency); lfo2.start();
+      for (const m of [53, 57, 60, 64, 69]) { const o = c.createOscillator(); o.type = 'triangle'; o.frequency.value = hz(m); o.detune.value = (m % 3) * 3; const og = c.createGain(); og.gain.value = 0.12; o.connect(og); og.connect(lp2); o.start(); }
+    }
     return c.state === 'running';
   }
   // noise that never stops, through one filter, with its own volume
@@ -177,6 +215,27 @@ export function createMusic(sound) {
     glide(amb.roof.g.gain, env.rain * inCar * 0.09 * quiet, 0.4);
     glide(amb.hum.g.gain, env.city * 0.1 * quiet, 0.8);
     glide(amb.waves.g.gain, env.beach * (0.035 + 0.03 * Math.sin(time * 0.75) + 0.012 * Math.sin(time * 0.31)) * quiet, 0.25);
+    // ---- wanted: a low pulse, faster and a little louder with every star, gone while hidden ----
+    const wantLevel = want.stars > 0 && !want.hidden ? 0.35 + want.stars * 0.13 + (want.chase ? 0.15 : 0) : 0;
+    glide(wantBus.gain, wantLevel * quiet, want.hidden ? 1.2 : 0.5);
+    if (wantLevel > 0 && quiet && now > wantedNext) {
+      const bpm = 64 + want.stars * 9 + (want.chase ? 10 : 0);
+      wantedNext = now + 60 / bpm;
+      pulseTo(now + 0.02, 0.16, wantBus);
+      if (want.stars >= 3) tone('sine', hz(31 + (want.stars >= 4 ? 1 : 0)), now + 0.02, 0.5, 0.05, wantBus, 0.03);
+    }
+    // ---- a drone overhead ----
+    glide(droneHum.g.gain, env.drone * 0.03 * quiet, 0.3);
+    // ---- voices: the drone's loudspeaker first, then a radio close by, then the news speakers of the street ----
+    const pa = now < announceUntil;
+    const vLevel = pa ? 0.11 : env.radio > 0.02 ? env.radio * 0.05 : env.street * 0.022;
+    glide(voice.out.gain, vLevel * quiet, 0.25);
+    glide(voice.color.frequency, pa ? 1500 : env.radio > 0.02 ? 1100 : 1300, 0.2);
+    glide(voice.color.Q, pa ? 2.2 : 0.9, 0.2);
+    glide(voice.crackle.g.gain, env.radio > 0.02 && !pa ? env.radio * 0.004 : 0, 0.3);
+    if (vLevel > 0.001) runVoice(now, pa);
+    // ---- the calm pad of the last scene ----
+    glide(calmBus.gain, want.calm * 0.05 * quiet, 2.5);
     // a siren far away, now and then (never while a real one is close: that is sound.js)
     sirenNext -= dt;
     if (sirenNext <= 0 && env.city > 0.2 && quiet) {
@@ -187,6 +246,36 @@ export function createMusic(sound) {
       g.gain.setValueAtTime(0.0001, now); g.gain.linearRampToValueAtTime(0.012, now + 1.2); g.gain.linearRampToValueAtTime(0.0001, now + 5);
       o.connect(f); f.connect(g); g.connect(ambBus); o.start(now); o.stop(now + 5.1);
     }
+  }
+  // the syllables of a voice, written into the audio clock a little ahead of time
+  function runVoice(now, pa) {
+    if (voiceNext < now) voiceNext = now + 0.05;
+    while (voiceNext < now + 0.3) {
+      const t = voiceNext;
+      if (voiceLeft <= 0) {
+        // a pause between two sentences, then a new sentence of 5 .. 14 syllables
+        voiceLeft = 5 + Math.floor(Math.random() * 10);
+        voiceNext += 0.35 + Math.random() * 0.6;
+        continue;
+      }
+      voiceLeft--;
+      const len = 0.08 + Math.random() * 0.12, open = 0.55 + Math.random() * 0.45;
+      // (each syllable is a different vowel: the two filters move; the pitch falls a little toward the end of a sentence)
+      voice.f1.frequency.setValueAtTime(350 + Math.random() * 450, t);
+      voice.f2.frequency.setValueAtTime(1000 + Math.random() * 1300, t);
+      voice.o.frequency.setValueAtTime((pa ? 150 : 128) + Math.random() * 18 - (voiceLeft < 2 ? 12 : 0), t);
+      voice.env.gain.setValueAtTime(0.0001, t);
+      voice.env.gain.linearRampToValueAtTime(open, t + len * 0.25);
+      voice.env.gain.linearRampToValueAtTime(0.0001, t + len);
+      voiceNext += len + 0.015 + (Math.random() < 0.18 ? 0.09 : 0);
+    }
+  }
+  // one beat of the wanted pulse: a soft low thump into the given bus
+  function pulseTo(t, gain, dest) {
+    const c = A.ctx, o = c.createOscillator(), g = c.createGain();
+    o.frequency.setValueAtTime(58, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.16);
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    o.connect(g); g.connect(dest); o.start(t); o.stop(t + 0.3);
   }
   // a soft, very low thump
   function drumLow(t, gain) {
@@ -217,9 +306,20 @@ export function createMusic(sound) {
     // ---- chase pad (0..1) and heartbeat (beats per minute, 0 = off) ----
     setTension(v) { want.tension = v; },
     setHeartbeat(bpm) { want.heart = bpm; },
+    // ---- wanted (Chapter 2): stars 0..5, hidden: the pulse fades away, chase: somebody sees the player ----
+    setWanted(stars, hidden = false, chase = false) { want.stars = stars; want.hidden = !!hidden; want.chase = !!chase; },
+    // the loudspeaker of a drone: a two-tone call, then a few seconds of speech
+    announce(seconds = 3.6) {
+      if (!ready()) return;
+      const now = A.ctx.currentTime;
+      tone('sine', 988, now, 0.35, 0.05, ambBus, 0.01); tone('sine', 784, now + 0.32, 0.5, 0.05, ambBus, 0.01);
+      announceUntil = now + 0.8 + seconds; voiceNext = now + 0.85; voiceLeft = 0;
+    },
+    // the soft pad of the last scene (0 = off .. 1)
+    setCalm(v) { want.calm = v; },
     // ---- everything silent for a moment (seconds) ----
     silence(seconds) { if (ready()) { silentUntil = A.ctx.currentTime + seconds; for (const b of [tapeBus, padBus]) b.gain.setTargetAtTime(0, A.ctx.currentTime, 0.015); } },
     // stop all story sound (leaving the story)
-    reset() { want.track = 0; want.tension = 0; want.heart = 0; tape.onEnd = null; },
+    reset() { want.track = 0; want.tension = 0; want.heart = 0; want.stars = 0; want.calm = 0; tape.onEnd = null; },
   };
 }

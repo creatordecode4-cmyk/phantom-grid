@@ -14,7 +14,7 @@
 // ---------------------------------------------------------------------------
 
 const SCALE = 0.5;   // pixels per meter in the hidden picture
-const VIEW = 0.62;   // screen pixels per meter in the minimap (zoom)
+const VIEW0 = 0.62;  // screen pixels per meter in the minimap (zoom)
 
 export function createMinimap(canvas, layout) {
   const L = layout;
@@ -88,8 +88,14 @@ export function createMinimap(canvas, layout) {
   resize();
 
   // Draw the minimap. heading: the player's angle (0 = north).
-  //   extra: { inCar, cars: [{x, z, alive}], waypoint: {x, z}, marker: {x, z}, route: [{x, z}] }
+  //   extra: { inCar, cars: [{x, z, alive}], waypoint: {x, z}, marker: {x, z}, route: [{x, z}],
+  //            wanted: the Guard (see wanted.js mapView: units with view cones, search area, scanner gates, roadblock),
+  //            view: screen pixels per meter (smaller = more of the city) }
+  let checkSize = 0;
   function draw(x, z, heading, extra = {}) {
+    // (the map can change its size on the page: while wanted it is a little bigger)
+    if (--checkSize <= 0) { checkSize = 20; if ((canvas.clientWidth || 120) !== size) resize(); }
+    const VIEW = extra.view || VIEW0;
     const s = size * dpr;
     const zoom = (VIEW / SCALE) * dpr;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -123,6 +129,8 @@ export function createMinimap(canvas, layout) {
       ctx.lineJoin = 'round';
       ctx.stroke();
     }
+    // the Meridian Guard: where they search, what they see, the scanner gates
+    if (extra.wanted) drawWanted(ctx, extra.wanted, MX, MY, k, s, extra.time || 0);
     // the other cars: small dots
     if (extra.cars) {
       ctx.fillStyle = 'rgba(190,215,255,0.9)';
@@ -192,6 +200,61 @@ export function createMinimap(canvas, layout) {
     ctx.fillText('N', s / 2, 4 * dpr);
   }
 
+  // The Guard on the map. W = { units: [{ x, z, heading, range, fov, kind: 'car' | 'drone', alert }], search: { x, z, r }, gates, block }
+  function drawWanted(c, W, MX, MY, k, s, time) {
+    const out = (px, py, m) => px < -m || px > s + m || py < -m || py > s + m;
+    // the area they search: a soft circle with a broken edge
+    if (W.search) {
+      const cx = MX(W.search.x), cy = MY(W.search.z), r = W.search.r * k;
+      c.fillStyle = 'rgba(255,170,60,0.1)';
+      c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill();
+      c.setLineDash([4 * dpr, 4 * dpr]); c.strokeStyle = 'rgba(255,185,80,0.8)'; c.lineWidth = 1.5 * dpr; c.stroke(); c.setLineDash([]);
+    }
+    // scanner gates: a short bar across the road (red after it has read a plate)
+    for (const g of W.gates || []) {
+      const gx = MX(g.x), gy = MY(g.z);
+      if (out(gx, gy, 20 * dpr)) continue;
+      const half = g.half * k + 2 * dpr;
+      c.strokeStyle = g.alarm > 0 ? '#ff5a4a' : '#7fe0b8'; c.lineWidth = 3.2 * dpr; c.lineCap = 'round';
+      c.beginPath();
+      if (g.axis === 'z') { c.moveTo(gx - half, gy); c.lineTo(gx + half, gy); } else { c.moveTo(gx, gy - half); c.lineTo(gx, gy + half); }
+      c.stroke(); c.lineCap = 'butt';
+    }
+    // what each of them sees. (Never drawn smaller than 18 pixels: on a phone the cones must be easy to read.)
+    for (const u of W.units) {
+      const ux = MX(u.x), uy = MY(u.z), r = Math.max(u.range * k, 18 * dpr);
+      if (out(ux, uy, r)) continue;
+      const a = Math.atan2(-Math.cos(u.heading), -Math.sin(u.heading));
+      c.beginPath();
+      if (u.fov >= Math.PI - 0.01) c.arc(ux, uy, r, 0, Math.PI * 2);
+      else { c.moveTo(ux, uy); c.arc(ux, uy, r, a - u.fov, a + u.fov); c.closePath(); }
+      c.fillStyle = u.alert ? 'rgba(255,70,55,0.34)' : u.kind === 'drone' ? 'rgba(130,175,255,0.2)' : 'rgba(255,205,95,0.22)';
+      c.fill();
+      c.strokeStyle = u.alert ? 'rgba(255,95,75,0.85)' : u.kind === 'drone' ? 'rgba(150,190,255,0.55)' : 'rgba(255,215,125,0.55)';
+      c.lineWidth = 1 * dpr; c.stroke();
+    }
+    // the units themselves: Guard cars (red and blue, slowly changing), drones (a small white diamond)
+    const red = (time * 1.4) % 1 < 0.5;
+    for (const u of W.units) {
+      const ux = MX(u.x), uy = MY(u.z);
+      if (out(ux, uy, 6)) continue;
+      c.save(); c.translate(ux, uy);
+      if (u.kind === 'drone') {
+        c.rotate(Math.PI / 4); c.fillStyle = '#e8f0ff'; c.strokeStyle = 'rgba(0,0,0,0.7)'; c.lineWidth = 1.2 * dpr;
+        const q = 3 * dpr; c.beginPath(); c.rect(-q, -q, q * 2, q * 2); c.fill(); c.stroke();
+      } else {
+        c.rotate(-u.heading); c.fillStyle = red ? '#ff4a3a' : '#4a7aff'; c.strokeStyle = 'rgba(0,0,0,0.75)'; c.lineWidth = 1.2 * dpr;
+        const w = 2.6 * dpr, h = 4.2 * dpr; c.beginPath(); c.rect(-w, -h, w * 2, h * 2); c.fill(); c.stroke();
+      }
+      c.restore();
+    }
+    // a roadblock: a red cross
+    if (W.block) {
+      const bx = MX(W.block.x), by = MY(W.block.z), q = 5 * dpr;
+      if (!out(bx, by, 8)) { c.strokeStyle = '#ff4a3a'; c.lineWidth = 2.6 * dpr; c.beginPath(); c.moveTo(bx - q, by - q); c.lineTo(bx + q, by + q); c.moveTo(bx + q, by - q); c.lineTo(bx - q, by + q); c.stroke(); }
+    }
+  }
+
   // =========================================================================
   // THE FULL-SCREEN MAP
   // =========================================================================
@@ -244,6 +307,16 @@ export function createMinimap(canvas, layout) {
     const dot = (p, color, r) => { c.beginPath(); c.arc(BX(p.x), BY(p.z), r * d, 0, 7); c.fillStyle = color; c.strokeStyle = 'rgba(0,0,0,0.7)'; c.lineWidth = 1.5 * d; c.stroke(); c.fill(); };
     if (extra.marker) dot(extra.marker, '#ffc94a', 6);
     if (extra.waypoint) dot(extra.waypoint, '#ff5a4a', 6);
+    // the scanner gates and the search area of the Guard (they help to plan a way through side streets)
+    if (extra.wanted) {
+      const W = extra.wanted;
+      if (W.search) { c.fillStyle = 'rgba(255,170,60,0.12)'; c.beginPath(); c.arc(BX(W.search.x), BY(W.search.z), W.search.r * k, 0, Math.PI * 2); c.fill(); }
+      for (const g of W.gates || []) {
+        const gx = BX(g.x), gy = BY(g.z), half = Math.max(4 * d, g.half * k);
+        c.strokeStyle = g.alarm > 0 ? '#ff5a4a' : '#7fe0b8'; c.lineWidth = 3 * d;
+        c.beginPath(); if (g.axis === 'z') { c.moveTo(gx - half, gy); c.lineTo(gx + half, gy); } else { c.moveTo(gx, gy - half); c.lineTo(gx, gy + half); } c.stroke();
+      }
+    }
     // the player
     c.save();
     c.translate(BX(x), BY(z));

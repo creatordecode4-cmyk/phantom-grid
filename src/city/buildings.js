@@ -313,6 +313,7 @@ export function buildBuildings(ctx, models = { byId: {}, extra: [] }) {
           placeModel(ctx, lot, { scene, height: HEROES[id].height, file: HEROES[id].file + '.glb', id });
         } else {
           const site = { x: (lot.rect.minX + lot.rect.maxX) / 2, z: (lot.rect.minZ + lot.rect.maxZ) / 2, rot: ROT[lot.front] };
+          ctx.doorCtx = { district: lot.district, type: id };          // (the doors of this building know what it is)
           const out = buildHero(kit, id, site);
           lot.summary = { type: id, floors: Math.round(out.top / FLOOR), rect: out.rect, top: out.top };
         }
@@ -320,6 +321,7 @@ export function buildBuildings(ctx, models = { byId: {}, extra: [] }) {
         continue;
       }
       lot.prev = lot.prevLot ? lot.prevLot.summary || null : null;
+      ctx.doorCtx = { district: lot.district, type: lot.type };
       lot.summary = TYPES[lot.type].build(kit, lot, r);
       counts[lot.type] = (counts[lot.type] || 0) + 1;
       if (lot.summary.rect) kit.finish({ ...lot.summary.rect, top: lot.summary.top, floors: lot.summary.floors, mat: lot.type, playable: true, block, type: lot.type });

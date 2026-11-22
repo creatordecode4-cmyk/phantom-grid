@@ -149,6 +149,7 @@ export const LAYOUT = {
     { id: 'b05', col: 4, row: 4, at: 'nw', front: 'W' },   // villa cluster: right beside the start point
     { id: 'b03', col: 4, row: 4, at: 'sw', front: 'W' },   // garden midrise: first corner south of the start
     { id: 'g01', col: 4, row: 4, at: 'w', front: 'W', shift: -8 },  // Mace's garage (story): between the two, at the start street
+    { id: 'g02', col: 4, row: 7, at: 'w', front: 'W' },    // the old car park with the flooded floor (story, Chapter 2)
     { id: 'b08', col: 5, row: 5, at: 'se', front: 'E' },   // retrofit brick tower: first corner north of the start
     { id: 'b04', col: 4, row: 0, at: 'sw', front: 'S' },   // office hub: where the start street meets Neon Mile
     { id: 'b07', col: 5, row: 0, at: 'se', front: 'S' },   // drone + EV hub: the other side of that junction
@@ -170,6 +171,22 @@ export const LAYOUT = {
   // The north-west corner of the map belongs to The Crown: blocks where
   // (column + row) is at least this number get tall towers.
   crownFrom: 14,
+
+  // ----- Scanner gates of the Meridian Guard (src/ai/wanted.js) ----------------------
+  // Frames over the road that read plates and faces. A wanted driver who passes
+  // under one is seen at once. They stand on the main roads; side streets have none.
+  //   road: 'ns' (c = the street's x) | 'ew' (c = the street's z) | 'neon' (Neon Mile),  at: where along it
+  scanGates: [
+    { road: 'ew', c: 144, at: -148 },   // the two blocks between the start street and the old market
+    { road: 'ew', c: 144, at: -54 },
+    { road: 'ns', c: -195, at: 87 },
+    { road: 'ns', c: -101, at: 87 },
+    { road: 'ns', c: -7, at: 201 },     // the start street, north of Mace's garage
+    { road: 'ns', c: -7, at: -141 },    // the start street, toward the ocean
+    { road: 'neon', at: -150 },         // Neon Mile
+    { road: 'ns', c: 181, at: -141 },
+    { road: 'ew', c: 372, at: 275 },    // The Crown
+  ],
 
   // ----- Where the player starts ----------------------------------------------------
   spawn: {

@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import { makeDrone } from '../city/models.js';
+import { wantedProps } from './propsWanted.js';
 
 // a picture with text, drawn in code. lines: [{ text, size, color, y (0..1), font, weight }]
 function textTexture(w, h, bg, lines, border = null) {
@@ -180,6 +181,9 @@ export function createProps() {
       return g;
     },
   };
+  // the things of Chapter 2 (posters, news screens, the Guard's drones, the tarp, the radio ...): propsWanted.js
+  const chapter2 = wantedProps({ std, box, tex, textTexture, glowTexture });
+  Object.assign(MAKERS, chapter2.makers);
   // a soft round glow (white in the middle, clear at the edge)
   function glowTexture() {
     const cv = document.createElement('canvas'); cv.width = cv.height = 64;
@@ -202,6 +206,7 @@ export function createProps() {
     if (u.flicker) u.flicker.opacity = 0.62 + 0.25 * Math.sin(time * 23 + obj.id) + 0.13 * Math.sin(time * 57 + obj.id * 2);
     if (u.blink) u.blink.visible = (time * 1.6 + obj.id * 0.37) % 1 < 0.5;
     if (u.glow) u.glow.color.setScalar(0.75 + 0.25 * Math.sin(time * 2.2));
+    if (u.anim) u.anim(time);
   }
-  return { make, animate, kinds: Object.keys(MAKERS) };
+  return { make, animate, kinds: Object.keys(MAKERS), setPortrait: chapter2.setPortrait };
 }

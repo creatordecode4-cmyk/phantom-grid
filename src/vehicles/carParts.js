@@ -83,12 +83,13 @@ export function splitBody(geometry, info, color) {
     // the paint parts take the color of this car now
     const k = d[2];
     const c = [col.getX(i) * (1 - k + k * color[0]), col.getY(i) * (1 - k + k * color[1]), col.getZ(i) * (1 - k + k * color[2])];
-    return { p: [pos.getX(i), pos.getY(i), pos.getZ(i)], n: [nor.getX(i), nor.getY(i), nor.getZ(i)], c, d: [d[0], d[1], 0, d[3]] };
+    // (k is kept as "aPaint": the paint can be changed later - Mace's paint shop in Chapter 2)
+    return { p: [pos.getX(i), pos.getY(i), pos.getZ(i)], n: [nor.getX(i), nor.getY(i), nor.getZ(i)], c, d: [d[0], d[1], 0, d[3]], k };
   };
   const tris = [];
   for (let t = 0; t < idx.count; t += 3) tris.push([corner(idx.getX(t)), corner(idx.getX(t + 1)), corner(idx.getX(t + 2))]);
   const isGlass = (tri) => tri[0].d[1] > 0.85 && tri[0].d[0] < 0.1;
-  const mix = (a, b, k) => ({ p: a.p.map((q, i) => q + (b.p[i] - q) * k), n: a.n.map((q, i) => q + (b.n[i] - q) * k), c: a.c, d: a.d });
+  const mix = (a, b, k) => ({ p: a.p.map((q, i) => q + (b.p[i] - q) * k), n: a.n.map((q, i) => q + (b.n[i] - q) * k), c: a.c, d: a.d, k: a.k });
   // cut one triangle with a flat plane; returns the pieces on both sides
   const split = (tri, axis, value) => {
     const d = tri.map((q) => q.p[axis] - value);
@@ -122,11 +123,12 @@ export function splitBody(geometry, info, color) {
   const build = (list, origin = [0, 0, 0]) => {
     const n = list.length * 3;
     const g = new THREE.BufferGeometry();
-    const p = new Float32Array(n * 3), nn = new Float32Array(n * 3), c = new Float32Array(n * 3), d = new Float32Array(n * 4);
+    const p = new Float32Array(n * 3), nn = new Float32Array(n * 3), c = new Float32Array(n * 3), d = new Float32Array(n * 4), k = new Float32Array(n);
     let i = 0;
     for (const t of list) for (const q of t) {
-      p.set([q.p[0] - origin[0], q.p[1] - origin[1], q.p[2] - origin[2]], i * 3); nn.set(q.n, i * 3); c.set(q.c, i * 3); d.set(q.d, i * 4); i++;
+      p.set([q.p[0] - origin[0], q.p[1] - origin[1], q.p[2] - origin[2]], i * 3); nn.set(q.n, i * 3); c.set(q.c, i * 3); d.set(q.d, i * 4); k[i] = q.k || 0; i++;
     }
+    g.setAttribute('aPaint', new THREE.BufferAttribute(k, 1));
     g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nn, 3));
     g.setAttribute('color', new THREE.BufferAttribute(c, 3)); g.setAttribute('aData', new THREE.BufferAttribute(d, 4));
     g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));

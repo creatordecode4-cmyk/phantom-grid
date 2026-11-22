@@ -581,6 +581,36 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     maxHeight: 150, bounds: B,
   };
 
+  // ------------------------------------------------------------ new paint (the story: Mace's paint shop)
+  // color: [r, g, b] (linear, like the color given to spawn). Cars made in code keep the paint in their own body
+  // colors: the "bare" colors are worked out once from the first paint, then any new paint is laid over them.
+  function repaint(v, color) {
+    if (!v || !v.paintMeshes) return;
+    const first = v.color;
+    v.color = color.slice();
+    for (const m of v.paintMeshes) {
+      // (how much paint each point carries: "aPaint" on a body that was cut into doors, else the third data number)
+      const g = m.geometry, c = g.attributes.color, kp = g.attributes.aPaint, dd = g.attributes.aData;
+      if (!c || (!kp && !dd) || m.isInstancedMesh || m.material.userData.paintSet) continue;
+      const d = kp ? { getZ: (i) => kp.getX(i) } : dd;
+      if (!g.userData.bare) {
+        // (once: the colors without paint. A body shared by several cars is copied first.)
+        const bare = new Float32Array(c.array.length);
+        for (let i = 0; i < c.count; i++) {
+          const k = d.getZ(i);
+          for (let j = 0; j < 3; j++) { const f = 1 + (first[j] - 1) * k; bare[i * 3 + j] = f > 1e-4 ? c.array[i * c.itemSize + j] / f : 1; }
+        }
+        g.userData.bare = bare;
+      }
+      const bare = g.userData.bare;
+      for (let i = 0; i < c.count; i++) {
+        const k = d.getZ(i);
+        for (let j = 0; j < 3; j++) c.array[i * c.itemSize + j] = bare[i * 3 + j] * (1 + (color[j] - 1) * k);
+      }
+      c.needsUpdate = true;
+    }
+  }
+
   // ------------------------------------------------------------ damage you can see
   function showDamage(v) {
     const level = v.damage > 0.75 ? 3 : v.damage > 0.5 ? 2 : v.damage > 0.22 ? 1 : 0;
@@ -883,7 +913,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // (a plain object with "get" functions: the values are read fresh every time)
   return {
     live, nearest, tryEnter, requestExit, update, prefetch, spawn, spawnInFront, buildGarage, repair, removeVehicle, world, events, flasher,
-    enterNow, leaveNow, showDamage, clearParked,
+    enterNow, leaveNow, showDamage, clearParked, repaint,
     // story: only vehicles this function says yes to can be entered (null = all)
     set enterFilter(fn) { enterFilter = fn; },
     // where the passenger sits (null until the inside of the car exists)

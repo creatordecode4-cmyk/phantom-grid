@@ -27,6 +27,7 @@
 //   * LOW quality switches fins and facade plants off.
 // ---------------------------------------------------------------------------
 
+import { ENTRANCES } from './entrances.js';
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { DetailSet } from '../utils/geometry.js';
@@ -498,6 +499,11 @@ export function createKit(ctx) {
     const sm = ctx.mb.shop;
     sm.color(1, 1, 1, 1).data(type, rng.int(1, 60) + rng.range(0.1, 0.9), w, h);
     sm.quad(q(-w / 2, y), q(w / 2, y), q(w / 2, y + h), q(-w / 2, y + h), [p.nx, 0, p.nz], [0, 0], [1, 0], [1, 1], [0, 1]);
+    // a door at street level of a building you can walk to: it can be opened (src/interiors)
+    if (ctx.playableNow !== false && y < curb + 0.5) {
+      const l = Math.hypot(p.nx, p.nz) || 1, dc = ctx.doorCtx || {};
+      ENTRANCES.push({ id: 'd' + ENTRANCES.length, x: p.x + (p.nx / l) * o, z: p.z + (p.nz / l) * o, nx: p.nx / l, nz: p.nz / l, w, h, y, door: type, district: dc.district || 'grid', building: dc.type || '' });
+    }
   }
 
   // ROOF of a body: lid + whatever stands on it.

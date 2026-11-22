@@ -33,6 +33,9 @@ export function createWeather(scene, lighting) {
     uFall: { value: new THREE.Vector3(1.6, -15.0, 0.8) },  // meters per second (a bit of wind)
     uColor: { value: new THREE.Color(0.6, 0.65, 0.7) },
     uOpacity: { value: 0 },
+    // a roof the camera is under (a garage, a car park): no rain falls inside it. minX, maxX, minZ, maxZ / top
+    uShelter: { value: new THREE.Vector4(1e9, -1e9, 1e9, -1e9) },
+    uShelterTop: { value: -1e9 },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,
@@ -43,6 +46,8 @@ export function createWeather(scene, lighting) {
       uniform float uTime;
       uniform vec3 uBox;
       uniform vec3 uFall;
+      uniform vec4 uShelter;
+      uniform float uShelterTop;
       varying vec2 vUv;
       varying float vFade;
       void main() {
@@ -62,6 +67,9 @@ export function createWeather(scene, lighting) {
         // fade out drops that are very close or at the edge of the box
         float d = length( rel );
         vFade = smoothstep( 1.5, 5.0, d ) * ( 1.0 - smoothstep( uBox.x * 0.36, uBox.x * 0.5, d ) );
+        // under the roof of a garage there is no rain
+        float inside = step( uShelter.x, world.x ) * step( world.x, uShelter.y ) * step( uShelter.z, world.z ) * step( world.z, uShelter.w ) * step( world.y, uShelterTop );
+        vFade *= 1.0 - inside;
       }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor;
@@ -113,5 +121,10 @@ export function createWeather(scene, lighting) {
     get raining() { return raining; },
     get amount() { return rain; },
     setQuality(q) { geo.instanceCount = Math.min(MAX_STREAKS, q.rainStreaks); },
+    // the roof the camera is under: { minX, maxX, minZ, maxZ, top } or null
+    setShelter(b) {
+      if (b) { uniforms.uShelter.value.set(b.minX, b.maxX, b.minZ, b.maxZ); uniforms.uShelterTop.value = b.top; }
+      else { uniforms.uShelter.value.set(1e9, -1e9, 1e9, -1e9); uniforms.uShelterTop.value = -1e9; }
+    },
   };
 }

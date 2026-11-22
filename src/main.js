@@ -37,7 +37,7 @@ import { createVehicles } from './vehicles/vehicle.js';
 import { CAR_TYPES, carInfo } from './vehicles/carModels.js';
 import { loadVehicles } from './vehicles/vehicleLoader.js';
 import { createEffects } from './vehicles/effects.js';
-import { createPolice } from './ai/police.js';
+import { createWanted, FINE } from './ai/wanted.js';
 import { createMissions } from './missions/missionManager.js';
 import { createStoryUI } from './ui/storyUI.js';
 import { createMusic } from './audio/music.js';
@@ -49,8 +49,10 @@ import { createProps } from './story/props.js';
 import { createStory } from './story/engine.js';
 import { createStreetLife } from './ai/streetLife.js';
 import { t } from './story/strings.js';
-import { GARAGE } from './city/heroBuildings.js';
+import { GARAGE, PARKING } from './city/heroBuildings.js';
+import { takePortrait } from './ui/portrait.js';
 import { setCharacterFill, characterLight } from './characters/characterLook.js';
+import { createInteriors } from './interiors/interiors.js';
 
 const hud = createHUD();
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -136,7 +138,12 @@ async function boot() {
   vehicles.riggedDriver = player.autoRigged;
   const garage = vehicles.buildGarage();                // one of each vehicle, parked next to the start point
   const gps = createGPS(layout);
-  const police = createPolice({ vehicles, gps, layout });
+  const storyProps = createProps();
+  // the Meridian Guard: stars, chasing cars, drones, scanner gates, hiding (src/ai/wanted.js)
+  const police = createWanted({ scene, vehicles, gps, layout, city, props: storyProps, sound });
+  // garages with a roof: a car parked inside cannot be seen by the drones
+  const SHELTERS = [GARAGE.ready ? GARAGE.inside : null, PARKING.ready ? PARKING.inside : null].filter(Boolean);
+  for (const b of SHELTERS) police.addSpot({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ });
   // the garage's repair point: a glowing ring on the road (drive onto it to fix the car)
   const repairRing = new THREE.Mesh(new THREE.RingGeometry(1.9, 2.3, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x5fe0a0, transparent: true, opacity: 0.75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -10 }));
   repairRing.position.set(garage.repair.x, city.groundHeight(garage.repair.x, garage.repair.z) + 0.03, garage.repair.z);
@@ -157,16 +164,30 @@ async function boot() {
   const save = createSave();
   const actors = createActors({ scene, city, materials, player, vehicles });
   const drivers = createDrivers({ vehicles, gps, city, player, sound });
-  const storyProps = createProps();
   // free roam: small moments in the streets (people with their own business, overheard lines)
   const streetLife = createStreetLife({ actors, props: storyProps, vehicles, ui, scene, player, city });
   let story = null;
   const director = createDirector(camera, (place) => story.pt(place));
   let gameMode = 'boot';        // title | story | free
   let paused = false, frozen = false, idleFrames = 0, fovSent = 0;
+  // things of Mace's garage that belong to the city (there in every mode): the cloth over Theo's car, the roller door
+  const world = {};
+  if (GARAGE.ready) {
+    world.tarp = storyProps.make('tarp', GARAGE.tarpSize);
+    world.tarp.position.fromArray(GARAGE.tarp);
+    world.tarp.rotation.y = GARAGE.rot;
+    scene.add(world.tarp);
+    const d = GARAGE.doorSize;
+    world.shutter = storyProps.make('shutter', { width: d.r1 - d.r0 - 0.02, height: d.top - GARAGE.curb - 0.25, open: 1 });
+    world.shutter.position.fromArray(GARAGE.at((d.r0 + d.r1) / 2, d.top - 0.25, 6.78));
+    world.shutter.rotation.y = GARAGE.rot;
+    scene.add(world.shutter);
+  }
   story = createStory({
-    scene, camera, city, layout, vehicles, player, actors, drivers, director, props: storyProps, ui, music, sound, save, police, lighting, weather, hud, rig, carLib,
+    scene, camera, city, layout, vehicles, player, actors, drivers, director, props: storyProps, ui, music, sound, save, police, lighting, weather, hud, rig, carLib, world,
     onExit: () => showTitle(),
+    // free roam: caught by the Guard - a fine, and the game goes on
+    onFreeBusted: () => { const left = save.pay(FINE); hud.toast(`BUSTED  ·  FINE ${FINE} CR  ·  ${left} CR LEFT`, 3200); },
   });
   // the name on Mace's garage (it belongs to the city, so it is there in every mode)
   if (GARAGE.ready) {
@@ -174,6 +195,14 @@ async function boot() {
     sign.position.fromArray(GARAGE.sign.pos);
     sign.rotation.y = GARAGE.rot;
     scene.add(sign);
+  }
+  // HOUSES YOU CAN WALK INTO (src/interiors): real doors on the start street, rooms built far away
+  const interiors = createInteriors({ scene, renderer, camera, player, rig, ui, hud, sound, lighting });
+  // NATE'S FACE for the WANTED posters and the news (a picture of the player character's own head, taken once)
+  let portraitURL = null;
+  if (player.rig && player.rig.bones && player.rig.bones.head) {
+    const cv = takePortrait(renderer, scene, { root: player.root, head: player.rig.bones.head, heading: player.heading }, setCharacterFill);
+    if (cv) { storyProps.setPortrait(cv); try { portraitURL = cv.toDataURL('image/jpeg', 0.82); } catch (e) { portraitURL = null; } }
   }
   // sound settings from the last visit
   sound.setVolume(ui.settings.volume);
@@ -212,6 +241,7 @@ async function boot() {
     baseFov = fovNow = camera.fov;
     pixelH = h * pr;
     effects.setViewport(camera.fov, pixelH);
+    interiors.setViewport(pixelH);
     camera.far = quality.cameraFar;
     camera.updateProjectionMatrix();
     if (usePost) postfx.resize(w * pr, h * pr, quality.msaa);
@@ -229,6 +259,7 @@ async function boot() {
     postfx.setQuality(quality);
     weather.setQuality(quality);
     city.setQuality(quality);
+    interiors.setQuality(quality);
     resize();
     city.props.cull(player.position.x, player.position.z, quality.propDistance, true);
     hud.setQualityButtons(mode, quality.label);
@@ -257,6 +288,8 @@ async function boot() {
       if (lock.action) input.lights = false;
     }
     // ---- E key: the story's TALK / TAKE button when it is shown, else get in or out of a car ----
+    // (walking through a door: the player stands still for that moment)
+    if (interiors.busy) { input.moveX = 0; input.moveY = 0; input.run = false; input.action = false; }
     if (input.action) { if (ui.actShown) ui.act(); else if (!(lock && lock.action)) carAction(); }
     if (input.map) hud.actions.map();
     if (input.camera) hud.actions.camera();
@@ -265,7 +298,10 @@ async function boot() {
     const onFoot = vehicles.state === 'none';
     // (in a story scene the character can be posed somewhere: then it does not listen to the stick)
     if (onFoot) { if (player.staged) player.tick(dt); else player.update(dt, input, rig.yaw); }
-    const px = player.position.x, pz = player.position.z;
+    // inside a house the player is far away from the city: the street goes on living around the door
+    const inside = interiors.inside;
+    const AP = inside ? interiors.anchor : player.position;
+    const px = AP.x, pz = AP.z;
     const night = shared.uPgNight.value, rain = weather.amount;
 
     // ---- traffic and people (they keep away from the player and the player's car) ----
@@ -306,7 +342,12 @@ async function boot() {
     // ---- the story: its people, its steps, its film camera ----
     actors.update(dt, time, driving);
     story.update(dt, time);
-    streetLife.update(dt, time, gameMode === 'free');
+    streetLife.update(dt, time, gameMode === 'free' && !inside);
+    // ---- the doors of the houses (ENTER / EXIT) ----
+    interiors.update(dt, {
+      can: gameMode !== 'title' && vehicles.state === 'none' && !player.staged && !(S && (S.locks.move || S.cameraActive)),
+      seen: !police.scripted && police.mode === 'chase' && police.seen, film: !!S && S.cameraActive, rain, time,
+    });
     const film = !!S && S.cameraActive;
     const view = vehicles.camMode;
     if (film) S.applyCamera(dt);
@@ -314,7 +355,8 @@ async function boot() {
     else rig.update(dt, player);
     {
       // the faster, the wider the view (and a little speed blur at the very top, see postfx.js)
-      const kmh = driving ? vehicles.speedKmh : 0, boost = driving && vehicles.active.nitroOn ? 1 : 0;
+      // (the story can take the player out of the car in the middle of a frame: "driving" may be old here)
+      const kmh = driving ? vehicles.speedKmh : 0, boost = driving && vehicles.active && vehicles.active.nitroOn ? 1 : 0;
       // (after the limiter is switched off the view stays a little wider: the city opens up)
       const want = baseFov + Math.min(14, kmh * 0.058) + boost * 4 + (S ? S.fovBoost * 7 : 0);
       fovNow += (want - fovNow) * Math.min(1, dt * 3);
@@ -322,12 +364,24 @@ async function boot() {
       // the light dots of the lamps are sized for the lens that is used right now (film scenes use long lenses)
       if (Math.abs(camera.fov - fovSent) > 0.04) { fovSent = camera.fov; effects.setViewport(camera.fov, pixelH); }
       if (postfx.setSpeed) postfx.setSpeed(film ? 0 : clamp((kmh - 140) / 90, 0, 1) * 0.8 + boost * 0.25);
-      hud.setWindscreen(!film && driving && rain > 0.3 && (view === 'hood' || view === 'cockpit') && vehicles.active.isCar);
+      hud.setWindscreen(!film && driving && rain > 0.3 && (view === 'hood' || view === 'cockpit') && !!vehicles.active && vehicles.active.isCar);
     }
     // ---- police: wanted stars, chasers, sirens, the flashing light ----
     const knocked = city.people.takeKnocked();
     if (knocked) { sound.thump(1); if (navigator.vibrate) navigator.vibrate(60); }
-    stars = police.update(dt, { x: px, z: pz, speed: car && !onFoot ? Math.hypot(car.vx, car.vz) : player.speed }, knocked);
+    const inCar = !!(car && !onFoot);
+    stars = police.update(dt, { x: px, z: pz, speed: inCar ? Math.hypot(car.vx, car.vz) : inside ? 0 : player.speed, inCar, heading: inCar ? car.heading : player.heading, vx: inCar ? car.vx : 0, vz: inCar ? car.vz : 0, inside }, knocked, night, rain);
+    // (the story's own chases of Chapter 1 only show stars: no pulse, no state, no red and blue light)
+    const realWanted = !police.scripted;
+    music.setWanted(realWanted ? stars : 0, police.hidden, police.mode === 'chase');
+    document.body.classList.toggle('wanted', realWanted && (stars > 0 || police.known));
+    // the roof of a garage keeps the rain out (the camera is inside)
+    {
+      const cp = camera.position;
+      let roof = null;
+      for (const b of SHELTERS) if (cp.x > b.minX - 0.5 && cp.x < b.maxX + 0.5 && cp.z > b.minZ - 0.5 && cp.z < b.maxZ + 0.5 && cp.y < b.top + 0.5) roof = b;
+      weather.setShelter(roof);
+    }
     if (!(driving && vehicles.active && vehicles.active.siren)) {
       let nearSiren = false;
       for (const s of sirens) if (Math.hypot(s.x - px, s.z - pz) < 170) nearSiren = true;
@@ -343,7 +397,7 @@ async function boot() {
     if (gameMode === 'free' && driving && car && car.isCar && car.damage > 0.03 && Math.hypot(car.x - garage.repair.x, car.z - garage.repair.z) < 3.2 && Math.hypot(car.vx, car.vz) < 4) {
       vehicles.repair(car); hud.toast('REPAIRED'); sound.chime();
     }
-    const msg = vehicles.takeMessage() || police.takeMessage();
+    const msg = vehicles.takeMessage() || (gameMode === 'free' ? police.takeMessage() : (police.takeMessage(), null));
     if (msg) hud.toast(msg, 2600);
     const buzz = vehicles.takeHaptic();
     if (buzz && navigator.vibrate) { try { navigator.vibrate(buzz); } catch (e) { /* not allowed */ } }
@@ -367,11 +421,13 @@ async function boot() {
     else if (routeTimer <= 0) { routeTimer = 0.6; route = gps.route(px, pz, goal.x, goal.z); }
     // the CAR button shows up next to a car
     nearTimer -= dt;
-    if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !!vehicles.nearest(px, pz)); vehicles.prefetch(px, pz, active === 'low' ? 2 : active === 'medium' ? 3 : 8); }
+    if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !inside && !!vehicles.nearest(px, pz)); vehicles.prefetch(px, pz, active === 'low' ? 2 : active === 'medium' ? 3 : 8); }
     // ---- rain, traffic hum, waves near the beach, the tape (all made in code: src/audio/music.js) ----
+    const amb = story.ambient;
     music.update(dt, {
       rain: weather.amount, city: clamp(city.traffic.count / 30, 0, 1) * 0.8, beach: clamp((-250 - pz) / 130, 0, 1),
-      inCar: driving || (!!S && S.indoors),
+      inCar: driving || (!!S && S.indoors) || inside,
+      drone: Math.max(police.droneNear, S ? amb.drone : 0), radio: S ? amb.radio : 0, street: S ? amb.street : 0,
     });
     // ---- the title screen: a slow look along the street in front of Mace's garage ----
     if (gameMode === 'title') {
@@ -391,13 +447,13 @@ async function boot() {
     // the characters' own soft light (characterLook.js): clear at night, almost nothing in daylight.
     // (divided by the exposure, so it looks the same on the screen whatever the camera is set to)
     {
-      const li = lighting.info, P = CONFIG.player, test = window.PG && window.PG.fillOverride;
+      const li = lighting.info, P = CONFIG.player, test = window.PG && window.PG.fillOverride !== null && window.PG.fillOverride !== undefined ? window.PG.fillOverride : story.fill;
       // (how much real light there is: all of it with the sun high, little with a low sun, none at night)
       const bright = smoothstep(4, 30, li.elevation === undefined ? 90 : li.elevation);
       const want = P.fillDay + (P.fillNight - P.fillDay) * (1 - bright);
       setCharacterFill(typeof test === 'number' ? test : want / Math.max(li.exposure || 1, 0.25));
     }
-    city.update(dt, time, player.position.x, player.position.z, quality.propDistance);
+    city.update(dt, time, px, pz, quality.propDistance);
     updateSunGlow(dt);
   }
   // Get into the nearest car, or (when driving) stop and get out.
@@ -414,6 +470,10 @@ async function boot() {
     const dash = vehicles.hud;
     if (dash && vehicles.driving) hud.setDash(dash, (time * 2.6) % 1 < 0.5);
     hud.setWanted(stars, police.chased);
+    const real = !police.scripted && gameMode !== 'title';
+    hud.setWantedState(real ? { stars, mode: police.mode, hidden: police.hidden, progress: police.hideProgress, covered: police.covered, light: police.light } : { stars: 0, light: 0 });
+    hud.showCover(real && police.coverAvailable && !story.cameraActive);
+    hud.setTicker(gameMode === 'story' ? story.news : null, portraitURL);
     // name tags over the garage vehicles (only when you stand close)
     tags.length = 0;
     if (vehicles.state === 'none' && gameMode !== 'title') {
@@ -430,7 +490,7 @@ async function boot() {
     hud.setTags(tags);
     hud.setMission(goalState.active ? goalState : null);
     const goal = story.active ? goalState.marker : waypoint || missionState.marker;
-    if (!goal || gameMode === 'title') { hud.setArrow(null); hud.setMarker(null); return; }
+    if (!goal || gameMode === 'title' || interiors.inside) { hud.setArrow(null); hud.setMarker(null); return; }
     const px = player.position.x, pz = player.position.z;
     const dist = Math.hypot(goal.x - px, goal.z - pz);
     // the arrow points along the route (about 28 m ahead), seen from the camera
@@ -443,7 +503,11 @@ async function boot() {
     if (_mark.z < 1 && Math.abs(_mark.x) < 1.05 && Math.abs(_mark.y) < 1.05) hud.setMarker((_mark.x * 0.5 + 0.5) * window.innerWidth, (-_mark.y * 0.5 + 0.5) * window.innerHeight, dist);
     else hud.setMarker(null);
   }
-  const mapExtra = () => ({ inCar: vehicles.driving, cars: city.traffic.cars, waypoint: story.active ? null : waypoint, marker: goalState.marker, route });
+  const mapExtra = () => {
+    // while the Guard is after the player (or knows his face): its view cones, the search area and the scanner gates, and a wider view
+    const showGuard = !police.scripted && (stars > 0 || police.known);
+    return { inCar: vehicles.driving, cars: city.traffic.cars, waypoint: story.active ? null : waypoint, marker: goalState.marker, route, wanted: showGuard ? police.mapView() : null, view: showGuard ? 0.5 : 0, time };
+  };
 
   // ---- sun glow: is the sun on the screen, and do buildings hide it? ----
   const _sun = new THREE.Vector3(), _camFwd = new THREE.Vector3(), _ray = new THREE.Vector3();
@@ -467,7 +531,7 @@ async function boot() {
   function updateSunGlow(dt) {
     const info = lighting.info;
     let target = 0, sx = 0.5, sy = 0.5;
-    if (usePost && info.sunDir && info.sunDir.y > -0.02 && info.sunLevel > 0.02) {
+    if (usePost && !interiors.inside && info.sunDir && info.sunDir.y > -0.02 && info.sunLevel > 0.02) {
       camera.getWorldDirection(_camFwd);
       if (_camFwd.dot(info.sunDir) > 0.15) {
         _sun.copy(camera.position).addScaledVector(info.sunDir, 1000).project(camera);
@@ -544,6 +608,10 @@ async function boot() {
   await nextFrame();
   lighting.forceNight(wasNight);
   draw();
+  // ... and the rooms of the houses you can walk into (built now, drawn once behind the loading screen)
+  hud.setProgress(0.95, 'Warming up rooms');
+  await nextFrame();
+  interiors.warm(draw);
   hud.setProgress(1, 'Ready');
   await nextFrame();
 
@@ -606,6 +674,8 @@ async function boot() {
     hud.toast(sound.muted ? 'SOUND OFF' : 'SOUND ON', 1000);
   };
   hud.actions.dialog = () => missions.advanceDialog();
+  // COVER: parked in an alley, pull the car into the shadow (the drones lose it too)
+  hud.actions.cover = () => { if (police.cover()) { sound.burst(900, 0.6, 0.12, 0.05, 0.4, 'lowpass'); hud.toast('COVERED  ·  STAY STILL', 1600); } };
   // ---- the big map: tap to set a waypoint ----
   const drawBigMap = () => minimap.drawBig(hud.dom.bigmapCanvas, player.position.x, player.position.z, player.heading, mapExtra());
   hud.actions.map = () => {
@@ -652,6 +722,7 @@ async function boot() {
     if (!on) for (const v of [...vehicles.live]) if (!v.keep && !v.npc && !v.storyId) vehicles.removeVehicle(v);
   }
   async function showTitle() {
+    interiors.reset();
     story.stop(); missions.stop();
     gameMode = 'title'; paused = false;
     document.body.classList.add('title');
@@ -677,6 +748,7 @@ async function boot() {
     }
   }
   async function startStory(go) {
+    interiors.reset();
     ui.hideMenus();
     document.body.classList.remove('title');
     gameMode = 'story';
@@ -690,6 +762,7 @@ async function boot() {
   }
   // fromBoot: the game was opened with ?story=0 (tests): the world stays exactly as the address options made it
   function startFree(fromBoot) {
+    interiors.reset();
     story.stop();
     ui.hideMenus();
     document.body.classList.remove('title');
@@ -763,7 +836,8 @@ async function boot() {
     sinceChange += dt;
     if (mapTimer > 0.066) {
       mapTimer = 0;
-      minimap.draw(player.position.x, player.position.z, player.heading, mapExtra());
+      const mp = interiors.inside ? interiors.anchor : player.position;
+      minimap.draw(mp.x, mp.z, player.heading, mapExtra());
       if (hud.bigMapOpen) drawBigMap();
     }
     updateGuides();
@@ -771,7 +845,7 @@ async function boot() {
       fps = frames / fpsTimer;
       frames = 0;
       fpsTimer = 0;
-      hud.setLocation(vehicles.active && vehicles.active.arena ? 'IRONHILL HIGHWAY' : layout.districtAt(player.position.x, player.position.z));
+      hud.setLocation(interiors.inside ? interiors.label : vehicles.active && vehicles.active.arena ? 'IRONHILL HIGHWAY' : layout.districtAt(player.position.x, player.position.z));
       hud.setClock(lighting.hour);
       hud.setWeather(weather.amount > 0.3 ? 'RAIN' : lighting.info.night > 0.6 ? 'NIGHT' : 'CLEAR');
       if (statsOn) {
@@ -793,7 +867,7 @@ async function boot() {
   window.PG = {
     THREE, CONFIG, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
     vehicles, missions, gps, sound, hud, minimap, carLib, effects, police, garage, settings,
-    story, ui, music, save, actors, drivers, director, storyProps, streetLife, GARAGE,
+    story, ui, music, save, actors, drivers, director, storyProps, streetLife, GARAGE, interiors,
     applyQuality, step, draw, carAction, updateGuides, showTitle, startFree, startStory, openPause,
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },

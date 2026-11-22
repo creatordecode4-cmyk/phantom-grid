@@ -44,22 +44,27 @@ function makeCollisionGrid(boxes, circles) {
     return c;
   };
   const M = 1.6; // extra margin so things close to a cell border are found
-  for (const b of boxes) {
+  function addBox(b) {
     for (let cx = Math.floor((b.minX - M) / CELL); cx <= Math.floor((b.maxX + M) / CELL); cx++) {
       for (let cz = Math.floor((b.minZ - M) / CELL); cz <= Math.floor((b.maxZ + M) / CELL); cz++) get(cx, cz).boxes.push(b);
     }
   }
-  for (const c of circles) {
+  for (const b of boxes) addBox(b);
+  function addCircle(c) {
     for (let cx = Math.floor((c.x - c.r - M) / CELL); cx <= Math.floor((c.x + c.r + M) / CELL); cx++) {
       for (let cz = Math.floor((c.z - c.r - M) / CELL); cz <= Math.floor((c.z + c.r + M) / CELL); cz++) get(cx, cz).circles.push(c);
     }
   }
+  for (const c of circles) addCircle(c);
   return {
     boxes, circles,
     // everything that could touch a point near (x, z)
     near(x, z) {
       return cells.get(Math.floor(x / CELL) * 100000 + Math.floor(z / CELL)) || EMPTY;
     },
+    // something solid that is put into the world later (the posts of the scanner gates, the walls of a room)
+    addCircle(c) { circles.push(c); addCircle(c); },
+    addBox(b) { boxes.push(b); addBox(b); },
   };
 }
 

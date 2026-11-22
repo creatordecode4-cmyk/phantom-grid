@@ -24,6 +24,7 @@ export function createCameraRig(camera, city) {
   const look = new THREE.Vector3();
   const dir = new THREE.Vector3();
   let first = true;
+  let room = null;              // inside a house: { minX, maxX, minZ, maxZ, floor, top, boxes, dist } (null outdoors)
 
   // How far can we go from (ox,oy,oz) along (dx,dy,dz) before hitting a box?
   // Boxes are made a bit bigger, so the camera keeps a small distance to walls.
@@ -34,13 +35,14 @@ export function createCameraRig(camera, city) {
     // look in the grid cells at the start, the middle and the end of the ray
     const seen = new Set();
     for (const t of [0, 0.5, 1]) {
-      const cell = city.colliders.near(ox + (ex - ox) * t, oz + (ez - oz) * t);
+      // (inside a house: its walls instead of the city's buildings)
+      const cell = room && room.boxes ? room : city.colliders.near(ox + (ex - ox) * t, oz + (ez - oz) * t);
       for (const b of cell.boxes) {
         if (seen.has(b)) continue;
         seen.add(b);
         // "slab" test against the padded box (x, z and height)
         let t0 = 0, t1 = best;
-        const lo = [b.minX - pad, -100, b.minZ - pad], hi = [b.maxX + pad, b.h + pad, b.maxZ + pad];
+        const lo = [b.minX - pad, room ? room.floor - 1 : -100, b.minZ - pad], hi = [b.maxX + pad, (room ? room.floor : 0) + b.h + pad, b.maxZ + pad];
         const o = [ox, oy, oz], d = [dx, dy, dz];
         let miss = false;
         for (let a = 0; a < 3; a++) {
@@ -95,14 +97,19 @@ export function createCameraRig(camera, city) {
     shoulder = wantSide < shoulder ? wantSide : damp(shoulder, wantSide, 5, dt);
     const sx = pivot.x + rx * shoulder, sz = pivot.z + rz * shoulder;
 
-    // 2. pull back from the shoulder point, stop before any wall
-    const free = castRay(sx, pivot.y, sz, -dir.x, -dir.y, -dir.z, C.distance);
+    // 2. pull back from the shoulder point, stop before any wall (in a room: not so far back)
+    const free = castRay(sx, pivot.y, sz, -dir.x, -dir.y, -dir.z, room && room.dist ? Math.min(C.distance, room.dist) : C.distance);
     const want = Math.max(0.45, free);
     dist = want < dist ? want : damp(dist, want, 4, dt); // go in at once, come out slowly
 
     let cx = sx - dir.x * dist, cy = pivot.y - dir.y * dist, cz = sz - dir.z * dist;
     // never below the ground
     cy = Math.max(cy, city.groundHeight(cx, cz) + 0.28);
+    // inside a room: the camera stays between its walls and under its ceiling
+    if (room) {
+      cx = clamp(cx, room.minX + 0.22, room.maxX - 0.22); cz = clamp(cz, room.minZ + 0.22, room.maxZ - 0.22);
+      cy = clamp(cy, room.floor + 0.3, room.top - 0.18);
+    }
     camera.position.set(cx, cy, cz);
     look.set(sx + dir.x * 12, pivot.y + dir.y * 12, sz + dir.z * 12);
     camera.lookAt(look);
@@ -183,5 +190,8 @@ export function createCameraRig(camera, city) {
     // direction the camera looks at, flat on the ground (x, z)
     forwardXZ(out) { return out.set(Math.sin(yaw), 0, Math.cos(yaw)); },
     set(yawRad, pitchRad) { yaw = yawRad; pitch = clamp(pitchRad, C.minPitch, C.maxPitch); first = true; idle = 10; },
+    // the house the player is in (the camera stays inside it), or null. (walking from room to room: no jump)
+    setRoom(r) { if (!r !== !room) first = true; room = r; },
+    get room() { return room; },
   };
 }

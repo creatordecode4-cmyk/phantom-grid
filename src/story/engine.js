@@ -19,6 +19,7 @@
 //     { garage: [r, u, f] }       in Mace's garage (r to its right, u up, f toward the street)
 //     { flat: [r, u, f] }         in Nate's flat above it (u = above the flat's floor)
 //     { roof: [x, z], up }        on the roof of the building at x, z
+//     { parking: [r, u, f] }      in the old car park of Chapter 2 (the same directions as the garage)
 //   DIRECTIONS ("face") are compass degrees: 0 north, 90 east, 180 south, 270 west.
 //   SPEEDS are km/h.
 //
@@ -28,14 +29,22 @@
 //     cutscene, card, lines, choice, read, fade, wait, end
 //   STEPS THAT CHANGE THE WORLD AT ONCE
 //     time, world, clear, spawn, actor, prop, remove, player, allow, vehicleSet, actorSet, drive, music,
-//     sound, say, tip, flag, light, wanted, mirror, cam, quiet, cine, fire, checkpoint, chapter
+//     sound, say, tip, flag, light, wanted, mirror, cam, quiet, cine, fire, checkpoint, chapter,
+//     police (the real wanted system of src/ai/wanted.js), news (the news line on the screen), video (the
+//     look of a recording), tarp (the cloth over Theo's car), shutter (Mace's door), fill (light on faces)
+//   CHAPTER 2 STEPS THAT WAIT: paint (the paint shop: a color, hold to spray, a new number plate)
+//   BUSTED: when the real Guard catches the player, a short line, a fine, and the last checkpoint again.
 //   STEPS THAT HOLD OTHER STEPS
 //     if (cond, then, else), seq (steps in order), meanwhile (steps in order, beside the main story)
 //
 //   Any step can carry  if: { condition }  and is skipped when the condition is not true.
 //   CONDITIONS: { zone: { x: [from, to], z: [from, to] } }, { near: place, radius }, { flag, is }, { time },
 //     { event }, { inCar }, { speedOver }, { speedUnder }, { limited: seconds }, { carNear | carFar: id, radius },
-//     { damageOver: 0..1 }, { all: [...] }, { any: [...] }, { not: {...} }
+//     { damageOver: 0..1 }, { stars: n }, { starsOver: n }, { starsUnder: n }, { seen }, { hidden }, { searching },
+//     { droneOver: 0..1 (how close a Guard drone is) },
+//     { all: [...] }, { any: [...] }, { not: {...} }
+//   EVENTS the world fires: 'seen' (the Guard has seen the player), 'starLost', 'gate' (a scanner gate read the plate),
+//     'tape:N' (the tape player started track N)
 //   RULES ("on" lists of a mission or of a step): a condition plus what happens when it comes true:
 //     { ...condition, hold: seconds it must stay true, do: [steps], fail: 'text key', repeat }
 // ---------------------------------------------------------------------------
@@ -44,7 +53,8 @@ import * as THREE from 'three';
 import { t } from './strings.js';
 import { makePath, pointOn } from './drivers.js';
 import { compassToAngle } from './actors.js';
-import { GARAGE } from '../city/heroBuildings.js';
+import { GARAGE, PARKING } from '../city/heroBuildings.js';
+import { FINE } from '../ai/wanted.js';
 import { lin } from '../city/models.js';
 
 const KMH = 3.6;
@@ -72,6 +82,10 @@ export function createStory(G) {
   let allowDrive = true, allowMove = true;
   let light = null, mirrorOn = false, tapeShown = false, indoors = false, fovWant = 0, fovNow = 0;
   let fadeColor = 'black', fadeTouched = false, limitedFor = 0, clock = 0, frame = 0, held = false;
+  // chapter 2: the real Guard is on, the drones speak, the news line, the light on faces
+  let realPolice = false, announce = false, paNext = 0, paCount = 0, newsText = null, fillPower = null, starsWas = 0, seenWas = false;
+  const ambient = { radio: 0, street: 0, drone: 0 };
+  const world = G.world || {};
   const objective = { text: '', info: '' };
   let marker = null;
   // what main.js reads every frame
@@ -115,8 +129,10 @@ export function createStory(G) {
   // a point inside a car, in the car's own directions (+x = its left, +z = its nose)
   function cabinLocal(v, at, p = [0, 0, 0]) {
     const c = vehicles.cabin(v), s = c.seat;
+    // ('back' / 'front': the middle of the car's tail / nose, at the height of a number plate)
+    const plateY = v.info.plateY || v.info.wheelR * 1.55;
     const b = at === 'eye' ? c.eye : at === 'pass' ? [-c.eye[0], c.eye[1], c.eye[2]] : at === 'mid' ? [0, c.eye[1], c.eye[2]] : at === 'dash' ? c.dash
-      : at === 'wheel' ? c.wheel : at === 'passSeat' ? [-s.x, s.y, s.z] : [s.x, s.y, s.z];
+      : at === 'wheel' ? c.wheel : at === 'passSeat' ? [-s.x, s.y, s.z] : at === 'back' ? [0, plateY, v.info.backZ] : at === 'front' ? [0, plateY, v.info.frontZ] : [s.x, s.y, s.z];
     return [b[0] + p[0], b[1] + p[1], b[2] + p[2]];
   }
   // any "place" of the data -> [x, y, z] in the world
@@ -125,6 +141,7 @@ export function createStory(G) {
     if (Array.isArray(a)) return a.length === 2 ? [a[0], groundAt(a[0], a[1]), a[1]] : a;
     if (a.garage) return GARAGE.at(a.garage[0], GARAGE.curb + a.garage[1], a.garage[2]);
     if (a.flat) return GARAGE.at(a.flat[0], GARAGE.flat.floor + a.flat[1], a.flat[2]);
+    if (a.parking) return PARKING.ready ? PARKING.at(a.parking[0], PARKING.curb + a.parking[1], a.parking[2]) : [0, 0, 0];
     if (a.roof) return [a.roof[0], roofAt(a.roof[0], a.roof[1]) + (a.up || 0), a.roof[1]];
     if (a.cabin) {
       const v = car(a.cabin);
@@ -177,6 +194,14 @@ export function createStory(G) {
     if (c.carNear) { const v = car(c.carNear); if (!v || distTo(v) > (c.radius || 10)) return false; }
     if (c.carFar) { const v = car(c.carFar); if (v && distTo(v) < (c.radius || 60)) return false; }
     if (c.damageOver !== undefined) { const v = vehicles.active; if (!v || !(v.damage > c.damageOver)) return false; }
+    // the Guard (Chapter 2)
+    if (c.stars !== undefined && police.stars !== c.stars) return false;
+    if (c.starsOver !== undefined && !(police.stars > c.starsOver)) return false;
+    if (c.starsUnder !== undefined && !(police.stars < c.starsUnder)) return false;
+    if (c.seen !== undefined && (police.stars > 0 && police.mode === 'chase') !== !!c.seen) return false;
+    if (c.hidden !== undefined && police.hidden !== !!c.hidden) return false;
+    if (c.searching !== undefined && (police.stars > 0 && police.mode === 'search') !== !!c.searching) return false;
+    if (c.droneOver !== undefined && !(police.droneNear > c.droneOver)) return false;
     return true;
   }
   // rules: conditions with something to do. Returns the text key of a rule that fails the mission (or null).
@@ -398,6 +423,8 @@ export function createStory(G) {
     const face = s.face && s.face.like ? (car(s.face.like) || { heading: 0 }).heading : angle(s.face || 0);
     if (!arena) vehicles.clearParked((rec) => Math.hypot(rec.x - p[0], rec.z - p[2]) < 6.5);
     const opts = { keep: true, npc: !!s.npc, simple: !!s.simple, arena, tint: s.tint || null, lights: s.lights || 'normal', noDetail: !!s.noDetail };
+    // (a car that was painted in the story keeps its new paint: paints = the list of colors, paintFlag = the flag with the choice)
+    if (s.paints && s.paintFlag && flags[s.paintFlag] >= 0 && s.paints[flags[s.paintFlag]]) s = { ...s, color: s.paints[flags[s.paintFlag]].color };
     // ("or": the car to use when the wanted model file is missing in this copy of the game)
     const v = vehicles.spawn(s.kind, p[0], p[2], face, s.color ? lin(s.color) : null, opts) || (s.or ? vehicles.spawn(s.or, p[0], p[2], face, s.color ? lin(s.color) : lin([0.1, 0.1, 0.11]), opts) : null);
     if (!v) { console.warn('[story] no such vehicle:', s.kind); return; }
@@ -407,6 +434,7 @@ export function createStory(G) {
     if (s.mirror) v.mirrorKind = s.mirror;
     if (s.type) { v.type = { ...v.type, ...s.type }; if (s.type.label) v.label = s.type.label; }
     if (s.speed) { v.forward = s.speed / KMH; v.vx = Math.sin(face) * v.forward; v.vz = Math.cos(face) * v.forward; }   // (it is already rolling)
+    if (s.detail && v.needDetail) v.needDetail();              // (the detailed model now: glass you can see through, the inside)
     STEP.vehicleSet(s);
   };
   STEP.vehicleSet = (s) => {
@@ -466,6 +494,8 @@ export function createStory(G) {
     if ('look' in s) a.look = lookOf(s.look);
     if (s.at) { const p = pt(s.at); actors.place(a, p[0], p[1], p[2], s.face === undefined ? null : angle(s.face)); a.root.position.set(p[0], p[1], p[2]); }
     else if (s.face !== undefined) a.heading = angle(s.face);
+    // turn the back to somebody (people who do not want to meet Nate's eyes)
+    if (s.faceAway) { const q = s.faceAway === 'player' ? player.position : (() => { const w = pt(s.faceAway); return { x: w[0], z: w[2] }; })(); a.heading = Math.atan2(a.x - q.x, a.z - q.z); }
     if (s.walk) { const p = pt(s.walk); actors.walkTo(a, p[0], p[2], s.speed || 1.4, s.then === undefined ? null : angle(s.then)); }
     if ('hidden' in s) a.hidden = !!s.hidden;
     if ('seat' in s) actors.sitIn(a, s.seat ? car(s.seat) : null);
@@ -479,6 +509,9 @@ export function createStory(G) {
   // where: at (a place) + face, or in: 'car' with at: { cabinAt, p }, or on: 'person' with bone + p + rot (in the hand)
   STEP.prop = (s) => {
     if (things.has(s.id)) { if (!s.replace) return; removeThing(s.id); }
+    if (s.textFlag && flags[s.textFlag]) s = { ...s, text: flags[s.textFlag] };      // (a number plate that was changed in the story)
+    // (many copies in one draw: list = [{ at: place, face }])
+    if (s.list) s = { ...s, list: s.list.map((e) => { const q = pt(e.at); return [q[0], q[1], q[2], e.face || 0]; }) };
     const inner = props.make(s.kind, s), holder = new THREE.Group();
     holder.add(inner);
     if (s.scale) holder.scale.setScalar(s.scale);
@@ -490,11 +523,23 @@ export function createStory(G) {
       const c = cabinLocal(v, s.at.cabinAt || 'dash', s.at.p);
       holder.position.set(c[0], c[1], c[2]);
       v.tilt.add(holder);                                   // it travels with the car
+    } else if (s.on === 'player') {
+      // in Nate's own hand (the player character)
+      const b = player.rig && player.rig.bones[s.bone || 'hand_R'];
+      if (!b) return;
+      if (s.p) holder.position.set(s.p[0], s.p[1], s.p[2]);
+      b.add(holder);
     } else if (s.on) {
       const a = actors.get(s.on);
       if (!a) return;
       if (s.p) holder.position.set(s.p[0], s.p[1], s.p[2]);
       actors.attach(a, s.bone || 'hand_R', holder);
+      // along: the name of the next bone (a bandage around a forearm: it lies along the bone, near its end)
+      if (s.along && a.rig && a.rig.bones[s.along]) {
+        const d = a.rig.bones[s.along].position.clone();
+        holder.position.copy(d).multiplyScalar(s.t === undefined ? 0.86 : s.t);
+        holder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+      }
     } else {
       const p = pt(s.at);
       holder.position.set(p[0], p[1], p[2]);
@@ -552,6 +597,7 @@ export function createStory(G) {
     if (s.tension !== undefined) music.setTension(s.tension);
     if (s.heart !== undefined) music.setHeartbeat(s.heart);
     if (s.volume !== undefined) music.setTapeVolume(s.volume);
+    if (s.calm !== undefined) music.setCalm(s.calm);                 // the soft pad of the last scene of Chapter 2
     if (s.silence) { music.silence(s.silence); sound.duck(s.silence); }
     if ('hud' in s) tapeShown = !!s.hud;
   };
@@ -559,6 +605,7 @@ export function createStory(G) {
     honkTwice: (s) => sound.honkTwice(s.volume || 0.8), shot: () => sound.shot(), crash: () => sound.crash('heavy', 1), go: () => sound.chime(), chime: () => sound.chime(),
     door: (s) => sound.doorClick(s.kind || 'close'), wren: () => sound.wren(), tick: () => sound.tick(), clunk: () => sound.burst(700, 1.2, 0.14, 0.002, 0.07),
     beep: () => sound.blip('sine', 880, 880, 0.07, 0.3), thump: () => sound.thump(1), cloth: () => sound.burst(1200, 0.5, 0.05, 0.03, 0.22),
+    ring: (s) => sound.ring(s.times || 2), scan: () => sound.scanAlarm(), announce: (s) => music.announce(s.seconds || 3.6),
   };
   STEP.sound = (s) => {
     if (SOUNDS[s.name]) SOUNDS[s.name](s);
@@ -584,6 +631,96 @@ export function createStory(G) {
   STEP.fire = (s) => { fire(s.event); };
   STEP.light = (s) => { light = s.at ? { at: s.at, color: s.color || 0xffc890, power: s.power || 30, range: s.range || 12 } : null; };
   STEP.wanted = (s) => { police.setScripted({ stars: s.stars || 0 }); };
+  // THE REAL GUARD (Chapter 2): { real, known, disguised, stars, search: place, seen, radius, cars, drones, gates,
+  //   roadblocks, ram (false: they chase but do not ram), patrol: { at, r, cars, drones } | null, startStars, announce (the drones speak) }
+  const xz = (place) => { const q = pt(place); return [q[0], q[2]]; };
+  STEP.police = (s) => {
+    if (s.real !== undefined) { realPolice = !!s.real; police.setScripted(realPolice ? null : { stars: 0 }); }
+    const o = {};
+    for (const k of ['known', 'disguised', 'cars', 'drones', 'gates', 'roadblocks', 'startStars', 'ram']) if (k in s) o[k] = s[k];
+    if ('patrol' in s) o.patrol = s.patrol ? (() => { const q = xz(s.patrol.at); return { x: q[0], z: q[1], r: s.patrol.r || 120, cars: s.patrol.cars || 0, drones: s.patrol.drones || 0 }; })() : null;
+    if (realPolice) o.freeRoam = false;
+    if (Object.keys(o).length) police.configure(o);
+    if (s.stars !== undefined) police.setStars(s.stars, { search: s.search ? xz(s.search) : null, seen: !!s.seen, radius: s.radius });
+    if ('announce' in s) { announce = !!s.announce; paNext = clock + (s.announceIn || 12); }
+  };
+  // the news line at the bottom of the screen: { text: key } or { text: null }
+  STEP.news = (s) => { newsText = s.text ? t(s.text) : null; };
+  // the look of a recording: { state: 'on' | 'glitch' | 'locked' | 'off', date, file, lock (keys) }
+  STEP.video = (s) => { ui.video(s.state, { date: s.date ? t(s.date) : undefined, file: s.file ? t(s.file) : undefined, lock: s.lock ? t(s.lock) : undefined }); };
+  // the light that characters carry for the camera: { power } (null = as the time of day wants it)
+  STEP.fill = (s) => { fillPower = s.power === undefined ? null : s.power; };
+  // something that moves from one value to another over some seconds (a corner of cloth, a door)
+  const ease = (get, set, to, seconds) => {
+    const from = get();
+    if (!seconds) { set(to); return null; }
+    let k = 0;
+    return { update(dt) { k = Math.min(1, k + dt / seconds); const e = k * k * (3 - 2 * k); set(from + (to - from) * e); return k >= 1; } };
+  };
+  // THE TARP over Theo's car: { lift: 0..1, seconds, fit: 'car' (the cloth takes the size of that car), hidden }
+  STEP.tarp = (s) => {
+    const T = world.tarp;
+    if (!T) return null;
+    if ('hidden' in s) T.visible = !s.hidden;
+    if (s.fit) { const v = car(s.fit); if (v) T.userData.resize(v.info.length + 0.25, v.info.halfWidth * 2 + 0.18, v.info.roof + 0.06); }
+    if (s.lift === undefined) return null;
+    const task = ease(T.userData.lift, T.userData.setLift, s.lift, s.seconds || 0);
+    if (task && !s.wait) { bg.push(task); return null; }
+    return task;
+  };
+  // MACE'S DOOR: { open: 0 (down) .. 1 (rolled up), seconds }
+  STEP.shutter = (s) => {
+    const D = world.shutter;
+    if (!D) return null;
+    if (s.seconds !== 0) sound.shutter(s.open < D.userData.open());
+    const task = ease(D.userData.open, D.userData.setOpen, s.open, s.seconds === undefined ? 2.4 : s.seconds);
+    if (task && !s.wait) { bg.push(task); return null; }
+    return task;
+  };
+  // THE PAINT SHOP: { vehicle, colors: [{ name: key, color: [r, g, b] }], plate: 'NEW TEXT', mist: place,
+  //   title, sprayText, plateTitle, plateText (keys), sprayTime (seconds of spraying) }
+  // The choice is saved: van_color (0..3) and van_plate.
+  STEP.paint = (s) => {
+    const id = s.vehicle || 'van', v = car(id);
+    if (!v) return null;
+    const from = v.color.slice();
+    let stage = '', pick = -1, holding = false, progress = 0, to = null, done = false, again = 0;
+    STEP.prop({ id: '_mist', kind: 'sprayMist', at: s.mist || { of: id, p: [1.7, 1.1, 0] }, hidden: true });
+    const mist = () => things.get('_mist');
+    const css = (c) => `rgb(${c.map((x) => Math.round(Math.min(1, x) * 255)).join(',')})`;
+    const show = (next) => {
+      stage = next;
+      if (next === 'colors') ui.paint('colors', { title: t(s.title || 'c2.paint.title'), options: s.colors.map((c) => ({ name: t(c.name), css: css(c.color) })) }, (i) => {
+        pick = i; to = lin(s.colors[i].color);
+        const m = mist(); if (m) m.inner.userData.setColor(s.colors[i].color);
+        sound.tick(); show('spray');
+      });
+      else if (next === 'spray') ui.paint('spray', { title: t(s.colors[pick].name), label: t(s.sprayText || 'c2.paint.spray') }, (on) => { holding = on; });
+      else if (next === 'plate') ui.paint('plate', { title: t(s.plateTitle || 'c2.paint.plate_title'), old: flags.van_plate || s.oldPlate || '', plate: s.plate, label: t(s.plateText || 'c2.paint.plate') }, () => {
+        STEP.prop({ id: s.plateId || 'plate', kind: 'plate', text: s.plate, in: id, at: { cabinAt: 'back', p: [0, 0, -0.03] }, rot: [0, Math.PI, 0], replace: true });
+        sound.doorClick('close');
+        flags.van_color = pick; flags.van_plate = s.plate;
+        done = true;
+      });
+    };
+    show('colors');
+    // (a fixed shot of the van while the player chooses and sprays)
+    // (nobody sits in the van while it is painted: no stand-in driver)
+    if (s.cam) { cine = true; ui.cine(true); director.play({ seconds: 3600, ...s.cam }); vehicles.forceDriver = false; }
+    return goal(s, null, (dt) => {
+      if (stage === 'spray') {
+        if (holding) progress = Math.min(1, progress + dt / (s.sprayTime || 3.2));
+        sound.setSpray(holding);
+        const m = mist(); if (m) m.holder.visible = holding;
+        ui.paintProgress(progress);
+        again -= dt;
+        // the new color comes over the old one while the spray is held
+        if (holding && again <= 0) { again = 0.08; const e = progress * progress * (3 - 2 * progress); vehicles.repaint(v, from.map((c, i) => c + (to[i] - c) * e)); }
+        if (progress >= 1) { holding = false; sound.setSpray(false); vehicles.repaint(v, to); if (m) m.holder.visible = false; sound.chime(); show('plate'); }
+      }
+      return done;
+    }, () => { ui.paint(null); sound.setSpray(false); removeThing('_mist'); if (s.cam && !s.keep) leaveCine(); });
+  };
   STEP.mirror = (s) => { mirrorOn = !!s.on; };
   STEP.quiet = (s) => { quietOn = !!s.on; ui.quiet(quietOn); };
   STEP.cine = (s) => { if (s.on === false) leaveCine(); else { cine = true; ui.cine(true); } };
@@ -885,6 +1022,28 @@ export function createStory(G) {
     ui.failCard(t(key), (a) => { ui.hideMenus(); failed = false; if (a === 'retry') restart(); else G.onExit('title'); });
   }
 
+  // BUSTED: the real Guard caught the player. No game over: a short line, a fine, the last checkpoint again.
+  function busted(stars) {
+    if (failed || !active || loading) return;
+    failed = true; gen++;
+    const my = gen;
+    ui.clearSubs(); quietTalk(); ui.limiter(null); ui.prompt(null); ui.tip(null); ui.paint(null);
+    music.setHeartbeat(0); sound.setSpray(false);
+    const left = save.pay(FINE);
+    const n = 1 + Math.floor(Math.random() * 3);
+    ui.say(t('name.guard'), t('c2.busted.' + n), { now: true, seconds: 2.4 });
+    if (navigator.vibrate) { try { navigator.vibrate([60, 60, 60]); } catch (e) { /* not allowed */ } }
+    setTimeout(() => {
+      if (my !== gen) return;
+      ui.fade('black', 0.6, 0.6);
+      ui.bustCard({ title: t('ui.busted'), line: t('c2.busted.after'), fine: `${t('ui.fine')}   -${FINE} CR`, left: `${t('ui.money_left')}   ${left} CR`, label: t('ui.continue') }, () => {
+        ui.hideMenus(); failed = false;
+        if (my === gen) restart();
+      });
+    }, 2300);
+  }
+  police.onBusted = (stars) => { if (active && realPolice) busted(stars); else if (!active) G.onFreeBusted && G.onFreeBusted(stars); };
+
   // everything of the story out of the world
   function halt() {
     gen++;
@@ -900,7 +1059,11 @@ export function createStory(G) {
     for (const id of [...things.keys()]) removeThing(id);
     drivers.reset(); enterable.clear();
     music.reset(); music.setTapeVolume(1);
-    police.setScripted({ stars: 0 });
+    police.reset(); police.setScripted({ stars: 0 });
+    realPolice = false; announce = false; newsText = null; fillPower = null; starsWas = 0; seenWas = false;
+    if (world.tarp) { world.tarp.userData.setLift(0); world.tarp.visible = true; }
+    if (world.shutter) world.shutter.userData.setOpen(1);
+    sound.setSpray(false);
     city.traffic.setCap(Infinity); city.people.setCap(Infinity);
     allowDrive = allowMove = true; light = null; mirrorOn = false; tapeShown = false; indoors = false; fovWant = 0; limitedFor = 0;
     player.mood = 'neutral';
@@ -990,7 +1153,7 @@ export function createStory(G) {
     halt();
     active = false; loading = false;
     ui.storyMode(false); ui.fade(fadeColor, 0, 0.4);
-    police.setScripted(null);
+    police.reset(); police.setScripted(null);
     vehicles.enterFilter = null;
     lighting.setRunning(true);
   }
@@ -1016,6 +1179,34 @@ export function createStory(G) {
       if (my !== gen) return;
     }
     drivers.update();
+    // ---- the Guard: what happened (for rules and waits), and the drones' loudspeakers ----
+    if (realPolice) {
+      const st = police.stars, seenNow = st > 0 && police.mode === 'chase';
+      if (seenNow && !seenWas) fire('seen');
+      if (st < starsWas) fire('starLost');
+      starsWas = st; seenWas = seenNow;
+      if (police.takeGate() !== null) fire('gate');
+      if (announce && !cine && police.droneNear > 0.3 && clock > paNext && !ui.subsBusy) {
+        paNext = clock + 34;
+        music.announce(3.4);
+        const my = gen;
+        setTimeout(() => { if (my === gen && !cine) ui.say(t('name.drone'), t('c2.pa.' + (1 + (paCount++ % 3))), { kind: 'thought', seconds: 3.4 }); }, 800);
+      }
+    }
+    // ---- the voices around: an old radio, the news screens of the street (for music.js) ----
+    ambient.radio = 0; ambient.street = 0; ambient.drone = 0;
+    {
+      const cx = camera.position.x, cz = camera.position.z;
+      for (const o of things.values()) {
+        const k = o.inner.userData.kind;
+        if (k === 'policeDrone') { o.holder.getWorldPosition(_v); ambient.drone = Math.max(ambient.drone, clamp(1 - Math.hypot(_v.x - cx, _v.z - cz) / 70, 0, 1)); continue; }
+        if (k !== 'radio' && k !== 'newsScreen') continue;
+        o.holder.getWorldPosition(_v);
+        const d = Math.hypot(_v.x - cx, _v.z - cz);
+        if (k === 'radio' && o.holder.visible && !o.inner.userData.off) ambient.radio = Math.max(ambient.radio, clamp(1 - d / 11, 0, 1));
+        else if (k === 'newsScreen') ambient.street = Math.max(ambient.street, clamp(1 - d / 48, 0, 1));
+      }
+    }
     // ---- things that move by themselves ----
     for (const o of things.values()) {
       props.animate(o.inner, time);
@@ -1071,6 +1262,10 @@ export function createStory(G) {
       return lightOut;
     },
     get fovBoost() { return fovNow; },     // 0..1: the view opens up after the limiter is off
+    get news() { return active && !cine ? newsText : null; },     // the news line (Chapter 2)
+    get fill() { return active ? fillPower : null; },             // light on faces chosen by the story (null = by the time of day)
+    get ambient() { return ambient; },                            // how near an old radio / a news screen is (0..1)
+    get realPolice() { return active && realPolice; },
     get indoors() { return indoors; },     // true: rain is heard on a roof
     get flags() { return flags; },
     // ---- for tests ----

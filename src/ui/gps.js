@@ -5,6 +5,10 @@
 // Neon Mile. Where two of them meet there is a "node". The route is the
 // shortest chain of nodes (found with Dijkstra's method), with a first piece
 // from where you are to the nearest road, and a last piece to the goal.
+//
+// AVOID: some places can be marked "go around if you can" (the scanner gates
+// of the Meridian Guard, Chapter 2). A piece of road with such a place on it
+// counts as much longer, so the route takes the side streets instead.
 // ---------------------------------------------------------------------------
 
 export function createGPS(layout) {
@@ -43,8 +47,37 @@ export function createGPS(layout) {
     return best;
   }
 
+  // ---- places to go around: every link with such a place on it gets a penalty ----
+  const AVOID_COST = 900;                  // meters added to a link with a scanner gate on it
+  function setAvoid(points) {
+    for (const n of nodes) for (const l of n.links) l.avoid = false;
+    for (const p of points || []) {
+      for (const n of nodes) for (const l of n.links) {
+        const a = n, b = l.to;
+        // is p on the straight piece of road from a to b?
+        const onNS = a.x === b.x && Math.abs(p.x - a.x) < 4 && p.z > Math.min(a.z, b.z) && p.z < Math.max(a.z, b.z);
+        const onEW = a.z === b.z && Math.abs(p.z - a.z) < 4 && p.x > Math.min(a.x, b.x) && p.x < Math.max(a.x, b.x);
+        if (onNS || onEW) l.avoid = true;
+      }
+    }
+  }
+
+  // an AREA to go around (where the Guard is searching): { x, z, r } or null. A link that runs through it counts
+  // as longer, the deeper it goes in: the yellow line leaves the area the short way and then goes around it.
+  let area = null;
+  function setAvoidArea(a) { area = a ? { x: a.x, z: a.z, r: a.r } : null; }
+  function areaCost(a, b) {
+    if (!area) return 0;
+    const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((area.x - a.x) * dx + (area.z - a.z) * dz) / L2));
+    const d = Math.hypot(a.x + dx * t - area.x, a.z + dz * t - area.z);
+    return d < area.r ? 420 * (1 - d / area.r) : 0;
+  }
+
   // Returns a list of points [{x, z}, ...] from (x0, z0) to (x1, z1).
-  function route(x0, z0, x1, z1) {
+  // opts.ignoreAvoid: take the shortest way even through the places to avoid (the Guard does not hide from its own gates)
+  function route(x0, z0, x1, z1, opts = {}) {
+    const avoid = !opts.ignoreAvoid;
     const S = snap(x0, z0), E = snap(x1, z1);
     const startPts = [{ x: x0, z: z0 }, { x: S.x, z: S.z }], endPts = [{ x: E.x, z: E.z }, { x: x1, z: z1 }];
     // both on the same piece of road: just go there
@@ -57,7 +90,7 @@ export function createGPS(layout) {
       if (!u) break;
       done[u.id] = true;
       for (const l of u.links) {
-        const nd = dist[u.id] + l.d;
+        const nd = dist[u.id] + l.d + (avoid ? (l.avoid ? AVOID_COST : 0) + areaCost(u, l.to) : 0);
         if (nd < dist[l.to.id]) { dist[l.to.id] = nd; prev[l.to.id] = u; }
       }
     }
@@ -80,5 +113,5 @@ export function createGPS(layout) {
     return pts[pts.length - 1];
   }
 
-  return { route, length, pointAhead, snap };
+  return { route, length, pointAhead, snap, setAvoid, setAvoidArea };
 }

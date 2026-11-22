@@ -130,12 +130,18 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   pos.set(layout.spawn.x, city.groundHeight(layout.spawn.x, layout.spawn.z), layout.spawn.z);
   root.rotation.y = heading;
 
+  // ---- inside a house (src/interiors): its own floor, walls and furniture instead of the city's ----
+  // room = { floor, minX, maxX, minZ, maxZ, boxes: [{ minX, maxX, minZ, maxZ }] } or null (outdoors)
+  let room = null;
+  const groundAt = (x, z) => (room ? room.floor : city.groundHeight(x, z));
+  const NO_CIRCLES = [];
+
   // Push the player out of anything solid. Returns nothing, changes x/z in "p".
   const p = { x: 0, z: 0 };
   function collide() {
     const r = P.radius;
     for (let pass = 0; pass < 3; pass++) {
-      const cell = city.colliders.near(p.x, p.z);
+      const cell = room ? room : city.colliders.near(p.x, p.z);
       let hit = false;
       for (const b of cell.boxes) {
         const cx = clamp(p.x, b.minX, b.maxX), cz = clamp(p.z, b.minZ, b.maxZ);
@@ -156,7 +162,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
         }
       }
       // (fixed things first, then the moving cars close to the player)
-      for (const c of city.colliders.dynamic && city.colliders.dynamic.length ? cell.circles.concat(city.colliders.dynamic) : cell.circles) {
+      for (const c of room ? NO_CIRCLES : city.colliders.dynamic && city.colliders.dynamic.length ? cell.circles.concat(city.colliders.dynamic) : cell.circles) {
         const dx = p.x - c.x, dz = p.z - c.z;
         const min = r + c.r;
         const d2 = dx * dx + dz * dz;
@@ -168,8 +174,8 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
       }
       if (!hit) break;
     }
-    // edge of the world
-    const B = layout.bounds;
+    // edge of the world (or the walls of the house)
+    const B = room || layout.bounds;
     p.x = clamp(p.x, B.minX, B.maxX);
     p.z = clamp(p.z, B.minZ, B.maxZ);
   }
@@ -207,14 +213,14 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     pos.x = p.x;
     pos.z = p.z;
     // follow the ground (curbs, the sloping beach)
-    pos.y = damp(pos.y, city.groundHeight(pos.x, pos.z), 14, dt);
+    pos.y = damp(pos.y, groundAt(pos.x, pos.z), 14, dt);
     root.rotation.y = heading;
 
     if (mixer) animate(dt);
     else if (mover) {
       // the procedural animation: it needs the speed along the walking direction and the ground under the feet
       const forward = vel.x * Math.sin(heading) + vel.y * Math.cos(heading);
-      mover.update(dt, { speed: forward, x: pos.x, z: pos.z, y: pos.y, heading, groundAt: city.groundHeight });
+      mover.update(dt, { speed: forward, x: pos.x, z: pos.z, y: pos.y, heading, groundAt });
     } else {
       // no skeleton: a tiny up-down bob and a forward lean, so it does not look like sliding
       stepPhase += dt * (4.5 + speed * 2.2);
@@ -256,7 +262,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   function setHidden(h) { hidden = h; root.visible = !h; blob.visible = !h; }
   function place(x, z, angle) {
     if (mover && Math.hypot(pos.x - x, pos.z - z) > 0.5) mover.reset();
-    pos.set(x, city.groundHeight(x, z), z);
+    pos.set(x, groundAt(x, z), z);
     vel.set(0, 0); speed = 0;
     heading = angle;
     root.rotation.y = heading;
@@ -328,7 +334,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
 
   function teleport(x, z, compassDeg = null) {
     if (mover) mover.reset();
-    pos.set(x, city.groundHeight(x, z), z);
+    pos.set(x, groundAt(x, z), z);
     vel.set(0, 0);
     if (compassDeg !== null) heading = compassToAngle(compassDeg);
     root.rotation.y = heading;
@@ -344,6 +350,10 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     rigged, animated: !!mixer || !!mover, autoRigged: !!rig, rig, anim: mover,
     setHidden, place, glideTo, sit,
     stage, unstage, tick, setPose, hold,
+    // walking inside a house: its floor, its walls and furniture (null = back in the city)
+    setRoom(r) { room = r; },
+    get room() { return room; },
+    blob,
     get staged() { return staged; },
     set talk(v) { if (mover) mover.talk = v; },
     set look(v) { if (mover) mover.look = v; },

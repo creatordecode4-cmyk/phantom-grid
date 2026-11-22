@@ -116,6 +116,149 @@ function makeLampGlow(lamps, glowTex) {
 }
 
 // ---------------------------------------------------------------------------
+// HALOS: the soft glow that hangs in the air around every lamp at night
+// (much bigger and stronger in rain, when the air is full of water - like the
+// foggy street of the player's picture 4). One wide, very soft sprite per lamp.
+// ---------------------------------------------------------------------------
+function softRound() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d'), img = g.createImageData(128, 128);
+  for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) {
+    const r = Math.hypot(x - 63.5, y - 63.5) / 64;
+    const v = r >= 1 ? 0 : Math.exp(-r * r * 5.5) * (1 - r * r);   // a gaussian that reaches 0 at the edge
+    const i = (y * 128 + x) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.round(v * 255); img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(cv);
+}
+function makeLampHalo(lampGlow, count) {
+  const g0 = lampGlow.geometry, geo = new THREE.InstancedBufferGeometry();
+  geo.index = g0.index;
+  for (const k of ['position', 'uv', 'aOffset', 'aColor']) geo.setAttribute(k, g0.attributes[k]);
+  geo.instanceCount = count;
+  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTex: { value: softRound() } }]);
+  uniforms.uPgNight = shared.uPgNight;
+  uniforms.uPgWet = shared.uPgWet;
+  const mat = new THREE.ShaderMaterial({
+    uniforms, fog: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: /* glsl */ `
+      attribute vec3 aOffset;
+      attribute vec3 aColor;
+      uniform float uPgNight, uPgWet;
+      varying vec2 vUv;
+      varying vec3 vCol;
+      #include <fog_pars_vertex>
+      void main() {
+        vUv = uv;
+        vec4 mvPosition = viewMatrix * vec4( aOffset, 1.0 );
+        float dist = - mvPosition.z;
+        float haze = 0.28 + 0.72 * uPgWet;                 // how much water is in the air
+        mvPosition.xy += position.xy * ( 4.2 + 3.6 * uPgWet );
+        mvPosition.z += 0.6;
+        gl_Position = projectionMatrix * mvPosition;
+        // (only the lamps near the camera: far away the halos would melt into one orange sky)
+        float near = 1.0 - smoothstep( 45.0, 140.0, dist );
+        vCol = aColor * uPgNight * haze * near * 0.28;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D uTex;
+      varying vec2 vUv;
+      varying vec3 vCol;
+      #include <fog_pars_fragment>
+      void main() {
+        float a = texture2D( uTex, vUv ).r;
+        gl_FragColor = vec4( vCol * a, 1.0 );
+        #ifdef USE_FOG
+          gl_FragColor.rgb *= 1.0 - 0.7 * pgFogAmount();
+        #endif
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'lampHalo';
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 19;
+  return mesh;
+}
+
+// ---------------------------------------------------------------------------
+// WET ROAD: in the rain every lamp is mirrored on the road as a long, soft
+// streak of light that runs toward the camera (picture 4). One quad per lamp,
+// laid on the road and turned to the camera by the graphics card.
+// ---------------------------------------------------------------------------
+function makeWetStreaks(lampGlow, lamps, groundAt) {
+  const g0 = lampGlow.geometry, geo = new THREE.InstancedBufferGeometry();
+  geo.index = g0.index;
+  for (const k of ['position', 'uv', 'aOffset', 'aColor']) geo.setAttribute(k, g0.attributes[k]);
+  const ground = new Float32Array(lamps.length);
+  lamps.forEach((l, i) => { ground[i] = groundAt(l.x, l.z); });
+  geo.setAttribute('aGround', new THREE.InstancedBufferAttribute(ground, 1));
+  geo.instanceCount = lamps.length;
+  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {}]);
+  uniforms.uPgNight = shared.uPgNight;
+  uniforms.uPgWet = shared.uPgWet;
+  uniforms.uPgTime = shared.uPgTime;
+  const mat = new THREE.ShaderMaterial({
+    uniforms, fog: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+    vertexShader: /* glsl */ `
+      attribute vec3 aOffset;
+      attribute vec3 aColor;
+      attribute float aGround;
+      uniform float uPgNight, uPgWet;
+      varying vec2 vUv;
+      varying vec3 vCol;
+      varying float vLen;
+      #include <fog_pars_vertex>
+      void main() {
+        vUv = uv;
+        vec3 foot = vec3( aOffset.x, aGround + 0.03, aOffset.z );
+        vec2 toCam = cameraPosition.xz - foot.xz;
+        float d = length( toCam );
+        vec2 dir = d > 0.01 ? toCam / d : vec2( 0.0, 1.0 );
+        vec2 side = vec2( -dir.y, dir.x );
+        float hl = max( aOffset.y - aGround, 1.0 ), hc = max( cameraPosition.y - aGround, 0.3 );
+        float mirror = d * hl / ( hl + hc );               // where the lamp's mirror image meets the road
+        float len = clamp( mirror * 1.5, 2.5, 16.0 );        // rough wet asphalt stretches it into a long streak
+        float along = mirror + position.y * len;
+        float across = position.x * ( 0.45 + 0.015 * d );
+        vec3 p = foot + vec3( dir.x * along + side.x * across, 0.0, dir.y * along + side.y * across );
+        vec4 mvPosition = viewMatrix * vec4( p, 1.0 );
+        gl_Position = projectionMatrix * mvPosition;
+        float near = 1.0 - smoothstep( 40.0, 95.0, d );
+        vCol = aColor * uPgNight * uPgWet * near * 0.95;
+        vLen = len;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform float uPgTime;
+      varying vec2 vUv;
+      varying vec3 vCol;
+      varying float vLen;
+      #include <fog_pars_fragment>
+      void main() {
+        float across = ( vUv.x - 0.5 ) * 2.0, along = ( vUv.y - 0.5 ) * 2.0;
+        float a = exp( - across * across * 5.0 ) * ( 1.0 - along * along );
+        // small ripples run through the streak (rain drops on the water)
+        a *= 0.7 + 0.3 * sin( vUv.y * vLen * 5.0 + uPgTime * 2.3 + vUv.x * 3.0 );
+        gl_FragColor = vec4( vCol * a, 1.0 );
+        #ifdef USE_FOG
+          gl_FragColor.rgb *= 1.0 - pgFogAmount();
+        #endif
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'wetStreaks';
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 3;
+  return mesh;
+}
+
+// ---------------------------------------------------------------------------
 // Hologram billboards (near-future touch on Neon Mile).
 // ---------------------------------------------------------------------------
 export function makeHoloMaterial(tex) {
@@ -739,6 +882,10 @@ export function buildProps(ctx) {
   for (const s of Object.values(sets)) s.finish(ctx.group);
   const lampGlow = makeLampGlow(lamps, ctx.tex.glow);
   ctx.group.add(lampGlow);
+  // the soft halos in the air and the streaks of light on the wet road (night only; the streaks only in rain)
+  const lampHalo = makeLampHalo(lampGlow, lamps.length);
+  const wetStreaks = makeWetStreaks(lampGlow, lamps, L.groundHeight);
+  ctx.group.add(lampHalo, wetStreaks);
 
   // ---------------------------------------------------------------------------
   // Things that change over time
@@ -780,6 +927,8 @@ export function buildProps(ctx) {
     if (updateSignals(time) && !moved) bits.cull(cullX, cullZ, cullMul, true);
     // traffic lamps are brighter at night
     bitMat.color.setScalar(1 + 1.6 * shared.uPgNight.value);
+    lampHalo.visible = shared.uPgNight.value > 0.01;
+    wetStreaks.visible = shared.uPgNight.value > 0.01 && shared.uPgWet.value > 0.03;
 
     // drones fly slowly back and forth along their street, bobbing a little
     for (let i = 0; i < drones.length; i++) {
@@ -805,5 +954,5 @@ export function buildProps(ctx) {
   // draw the copies again after something was changed by hand (a parked car was taken)
   const recull = () => cull(cullX > 1e8 ? 0 : cullX, cullZ > 1e8 ? 0 : cullZ, cullMul, true);
 
-  return { sets, lampGlow, cull, recull, update, setViewport, setDetail };
+  return { sets, lampGlow, lampHalo, wetStreaks, cull, recull, update, setViewport, setDetail };
 }

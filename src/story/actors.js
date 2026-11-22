@@ -208,7 +208,9 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       const target = a.look === 'player' || (a.look === 'auto' && dist < 6 && !a.walk) ? tmp.set(px, player.position.y + (driving ? 1.1 : 1.6), pz) : a.look && typeof a.look === 'object' && 'x' in a.look ? tmp.set(a.look.x, a.look.y, a.look.z) : null;
       if (target) {
         const yaw = angleDiff(a.heading, Math.atan2(target.x - a.x, target.z - a.z));
-        if (Math.abs(yaw) < 1.9) look = { yaw, pitch: -Math.atan2(target.y - (a.y + 1.62 * a.scale), Math.max(0.5, Math.hypot(target.x - a.x, target.z - a.z))) };
+        // (the eyes: 1.62 m above the feet standing, about 0.8 m above the seat when sitting on a chair)
+        const eye = a.y + ((a.pose === 'sit' || a.pose === 'sitEdge') ? 0.8 : 1.62) * a.scale;
+        if (Math.abs(yaw) < 1.9) look = { yaw, pitch: -Math.atan2(target.y - eye, Math.max(0.5, Math.hypot(target.x - a.x, target.z - a.z))) };
       } else if (a.look && typeof a.look === 'object' && 'yaw' in a.look) look = a.look;
       a.anim.look = look;
       a.anim.talk = a.talking;

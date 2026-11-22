@@ -24,6 +24,9 @@ export function createHUD() {
     btnCam: $('drv-cam'), btnLight: $('drv-light'), btnHorn: $('drv-horn'),
     gear: $('gear'), indL: $('ind-l'), indR: $('ind-r'), rpm: $('rpm-bar').firstElementChild, dmg: $('dmg-bar').firstElementChild, nitro: $('nitro-bar').firstElementChild,
     wanted: $('hud-wanted'), tags: $('tags'), windscreen: $('windscreen'),
+    // Phase 5: the wanted level
+    stars: [...document.querySelectorAll('#hud-stars i')], wstate: $('hud-wstate'), wstateText: $('hud-wstate-text'), wstateBar: $('hud-wstate-bar'),
+    edge: $('edge-light'), ticker: $('ticker'), tickerText: $('ticker-text'), tickerFace: $('ticker-face'), btnCover: $('btn-cover'),
     bigmap: $('bigmap'), bigmapClear: $('bigmap-clear'), bigmapClose: $('bigmap-close'), minimap: $('minimap'),
   };
 
@@ -31,7 +34,7 @@ export function createHUD() {
   const actions = {
     time: () => {}, rain: () => {}, quality: () => {}, stats: () => {},
     camera: () => {}, lights: () => {}, spawn: () => {}, assist: () => {},
-    car: () => {}, map: () => {}, mapClose: () => {}, mapClear: () => {}, sound: () => {}, dialog: () => {},
+    car: () => {}, map: () => {}, mapClose: () => {}, mapClear: () => {}, sound: () => {}, dialog: () => {}, cover: () => {},
   };
 
   // ---- menus ----
@@ -74,6 +77,7 @@ export function createHUD() {
   press(el.btnMap, () => { closeMenus(); actions.map(); });
   press(el.minimap, () => { closeMenus(); actions.map(); });   // tapping the small map opens the big one
   press(el.btnSound, () => { closeMenus(); actions.sound(); });
+  press(el.btnCover, () => actions.cover());
   press(el.dialog, () => actions.dialog());
   press(el.bigmapClose, () => actions.mapClose());
   press(el.bigmapClear, () => actions.mapClear());
@@ -91,6 +95,7 @@ export function createHUD() {
   let toastTimer = 0;
   let lastLocation = '', lastClock = '', lastWeather = '';
   let lastGear = '', lastRpm = -1, lastDmg = -1, lastNitro = -1, lastBlink = 0, lastWanted = -1, lastRole = '';
+  let lastState = '', lastBar = -1, lastEdge = -1, tickerOn = false, coverOn = false;
   const tagNodes = [];
   let lastSpeed = -1, lastMission = '', lastDist = '', lastArrowDist = '', carShown = false, arrowShown = false, markerShown = false;
   const meters = (d) => (d >= 1000 ? `${(d / 1000).toFixed(1)} KM` : `${Math.round(d)} M`);
@@ -130,15 +135,46 @@ export function createHUD() {
       if (b !== lastBlink) { lastBlink = b; el.indL.classList.toggle('on', b === -1 || b === 2); el.indR.classList.toggle('on', b === 1 || b === 2); }
     },
     setLightButton(on) { el.btnLight.classList.toggle('on', on); },
-    // wanted level: 0 hides the stars
+    // wanted level: a thin row of five stars (0 hides it). chased: somebody can see the player right now
     setWanted(stars, chased) {
       const key = stars * 2 + (chased ? 1 : 0);
       if (key === lastWanted) return;
       lastWanted = key;
       el.wanted.hidden = stars <= 0;
-      el.wanted.textContent = '\u2605'.repeat(stars) + '\u2606'.repeat(Math.max(0, 5 - stars));
-      el.wanted.classList.toggle('flash', chased);
+      el.stars.forEach((n, i) => n.classList.toggle('on', i < stars));
+      el.wanted.classList.toggle('chased', chased);
     },
+    // what the Guard is doing: w = { stars, mode: 'chase' | 'search' | 'patrol' | 'idle', hidden, progress 0..1, covered, light 0..1 }
+    //   SEEN (red) while somebody sees the player, SEARCHING while they look, HIDDEN + a bar while a star goes away
+    setWantedState(w) {
+      let text = '', kind = '';
+      if (w.stars > 0) {
+        if (w.mode === 'chase') { text = 'SEEN'; kind = 'seen'; }
+        else if (w.hidden) { text = w.covered ? 'COVERED' : 'HIDDEN'; kind = 'hidden'; }
+        else { text = 'SEARCHING'; kind = 'search'; }
+      }
+      const key = text + kind;
+      if (key !== lastState) {
+        lastState = key;
+        el.wstate.hidden = !text;
+        el.wstateText.textContent = text;
+        el.wstate.className = kind;
+      }
+      const bar = kind === 'hidden' ? Math.round(w.progress * 100) : 0;
+      if (bar !== lastBar) { lastBar = bar; el.wstateBar.style.width = bar + '%'; }
+      // red and blue light at the edges of the screen during a chase (soft, it breathes; no hard flashing)
+      const e = Math.round((w.light || 0) * 40) / 40;
+      if (e !== lastEdge) { lastEdge = e; el.edge.style.opacity = String(e * 0.85); el.edge.hidden = e <= 0; }
+    },
+    // the news line at the bottom of the screen: text (null = off), face: a picture (data URL) for the left end
+    setTicker(text, face = null) {
+      const on = !!text;
+      if (on && el.tickerText.textContent !== text) el.tickerText.textContent = text;
+      if (face && el.tickerFace.dataset.src !== face) { el.tickerFace.src = face; el.tickerFace.dataset.src = face; }
+      if (on !== tickerOn) { tickerOn = on; el.ticker.hidden = !on; document.body.classList.toggle('ticker', on); }
+    },
+    // the COVER button (parked in an alley: pull the car into the shadow)
+    showCover(on) { if (on !== coverOn) { coverOn = on; el.btnCover.hidden = !on; } },
     // the test menu: one button per vehicle. list: [[kind, label], ...]
     setVehicleMenu(list) {
       el.menuVehRow.textContent = '';

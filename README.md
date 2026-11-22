@@ -146,19 +146,34 @@ src/
     engine.js              THE STORY ENGINE: reads a chapter file and makes it happen (steps, objectives,
                            film scenes, choices, checkpoints, fail and retry). Its top explains every step
     chapters/prologue.js   THE PROLOGUE AS DATA ("LAST LAP")
-    chapters/chapter01.js  CHAPTER 1 AS DATA ("RAIN DELIVERY") - chapter02.js goes next to it
+    chapters/chapter01.js  CHAPTER 1 AS DATA ("RAIN DELIVERY")
+    chapters/chapter02.js  CHAPTER 2 AS DATA ("WANTED") - chapter03.js goes next to it
     strings.js             EVERY TEXT of the story and its menus (translate the game here)
     save.js                the saved game: chapter, mission, checkpoint, choices, unlocked characters
     actors.js              the people of the story: loading, poses, walking, sitting in cars, looking
     drivers.js             the computer drivers: racers, Zero, the Meridian Guard, impatient cars
     director.js            the camera of the film scenes
     props.js               the small things: mixtape, photo, ticket, phone, sticker "80", parcel ...
+    propsWanted.js         the things of Chapter 2: WANTED posters, news screens, Guard drones, the tarp
+                           over Theo's car, the roller door, radio, mug, KEYSTONE chip, number plate ...
   ai/
     traffic.js             the other cars: lanes, traffic lights, turns, braking, honking, pulling over
-    police.js              the wanted level and the police cars that chase you
+    wanted.js              THE WANTED SYSTEM: 0-5 stars, Meridian Guard cars and drones that see and
+                           search, hiding, COVER, scanner gates, roadblocks, disguise, BUSTED
+    police.js              (old name, kept: it hands out wanted.js)
     pedestrians.js         the people: sidewalks, crosswalks, red lights
     streetLife.js          free roam: small moments in the streets (people with their own business,
                            lines you overhear when you walk past) - a list of data, easy to add to
+  interiors/
+    interiors.js           GOING INTO HOUSES: the real doors in the city (ENTER / EXIT), the fade, the
+                           rooms' light for every hour (sun through the window, lamps, moonlight),
+                           sun beams with dust; the street keeps living around the door meanwhile
+    rooms.js               THE HOUSES AS DATA: Halden House (a dining kitchen and a child's room) and
+                           Flat 3B (a retro kitchen) - where every piece of furniture stands
+    furniture.js           the pieces: walls with windows and doors, tables, chairs, stove, fridge,
+                           dresser with plates, bed, wardrobe, desk, shelves, pots, cups, books, plants
+    kit.js                 the materials of the rooms (wood, tiles, wallpaper, rug ... drawn in code),
+                           the darker corners, and the builder that puts a whole room into ~20 meshes
   missions/
     missions.js            THE MISSIONS AS DATA - add your story here
     missionManager.js      runs the mission steps
@@ -179,7 +194,9 @@ src/
     gps.js                 finds a route along the roads
     hud.js                 text, buttons, menus, mission box, dialog, loading screen
     storyUI.js             film bars, subtitles, choices, title screen, pause, settings, LIMITER OFF button,
-                           rear-view mirror, tape display, things to read
+                           rear-view mirror, tape display, things to read, the paint shop, the video
+                           on the chip, the BUSTED card
+    portrait.js            takes a picture of the player character's face (for posters and the news)
   utils/
     math.js                small math helpers, seeded random numbers, polygons
     geometry.js            MeshBuilder (many shapes -> one mesh), InstancedSet, DetailSet
@@ -193,6 +210,7 @@ assets/
   reference/               the reference pictures (buildings/b01 ... b11)
 docs/
   building_notes.md        notes on every reference building (written before coding)
+  interior_notes.md        notes on the four interior reference pictures and how the game imitates them
 ```
 
 ---
@@ -875,6 +893,169 @@ language code, translate the right-hand sides and set `LANGUAGE`.
 - **Performance:** story assets load lazily, the chase limits traffic to 15 cars and uses the
   one-mesh versions of the other cars.
 
+## Chapter 2: WANTED (version 5.0)
+
+The morning after Chapter 1. Nate is wanted for Dr. Solberg's murder: the city has his face on
+posters and street screens, Guard drones speak from the sky, the news line at the bottom of the
+screen says **NATE CALLOWAY, WANTED FOR MURDER** (with his face: a picture the game takes of the
+character model itself). Same tone as before: rain, quiet, short lines, feelings through objects.
+
+### The missions, and how to start each one
+
+| # | Mission | What happens | Address option |
+|---|---|---|---|
+| 2.0 | **LEARN THE RULES** | A flooded car park, three stars, WREN's calm voice. A drone passes. Then get out of the search area (the yellow circle) and hide in an alley until a star goes. WREN explains each rule the first time it happens: seen, searching, drones, gates, hidden. In this lesson the Guard chases but does not ram. | `?story=chapter02.0` |
+| 2.1 | **PRESS CONFERENCE** | A short film scene: Captain Sloane Harrow at a podium in The Crown. Her phone rings in the middle of a sentence: IVY, a little girl's picture. "Mama will talk later." On her patrol car's dashboard, a child's drawing. Back to Nate in the alley. | `?story=chapter02.1` |
+| 2.2 | **MACE'S GARAGE** | Drive through The Grid to the garage without being seen; the main roads have scanner gates, the yellow line takes the side streets. Mace opens the door without a question. A hot drink (if you were kind to him in Chapter 1) or only a nod. "Did you do it?" (choice). The paint shop: pick one of 4 colors, hold to spray, a new number plate. | `?story=chapter02.2` |
+| 2.3 | **THE CORNER OF THE GARAGE** | A quiet moment. Walk to the covered car at the back. "Don't touch that." The camera stays on the cloth. No music. | `?story=chapter02.3` |
+| 2.4 | **THE CASE** | Solberg's case on the work bench: a chip called KEYSTONE. One video opens: a white room, Theo with a bandage on his wrist, dated three months after the crash. "Nate, if you're watching this, I didn't die the way you think I did." The rest is locked. Tell Mace, or keep it (choice). | `?story=chapter02.4` |
+| 2.5 | **TWO HONKS** (optional) | Mace has a short story about the first time Theo honked twice outside the garage. Listen, or not tonight (choice). | `?story=chapter02.5` |
+| 2.6 | **TRACK 7** | Night. Lift a corner of the tarp, or leave it covered (choice). Nate sits in Theo's covered car and puts the tape in: the end of track 6, then the silence of track 7. Only the rain on the roof. End card. | `?story=chapter02.6` |
+
+### The wanted system (`src/ai/wanted.js`)
+
+- **Stars 0 to 5**, shown as a thin row of stars under the mission box, with a small label next to
+  it: **SEEN** (red: somebody sees you right now), **SEARCHING** (they lost you and look where they
+  saw you last), **HIDDEN** with a thin bar (a star is going away).
+- **The Meridian Guard:** Guard cars (the police coupe and the tech patrol car) chase along the
+  roads and ram from 3 stars; drones fly over the streets with a searchlight; from 4 stars there are
+  **roadblocks** (two cars and barriers across a crossing ahead of you, or at the foot of the
+  Ironhill ramp). At most 4 cars and 2 drones at once. No guns, no gore: chases, ramming,
+  roadblocks and arrests only.
+- **Seeing:** every car looks forward in a cone, a drone sees everything under the open sky around
+  it. Buildings block the view (the game checks the line through the city's buildings). On the
+  small map the cones are drawn (red when they see you), and the searched area is a yellow circle.
+  While you are wanted the small map is a little bigger and zoomed out, so the cones can be read.
+- **Hiding:** parked in an **alley** or a **garage** (Mace's repair bay, the old car park) and not
+  seen: after **20 seconds one star goes**, then the next. In an alley the **COVER** button appears
+  (parked, in the car): it pulls the car into the shadow and the drones cannot see it either.
+- **Scanner gates:** green frames over the main roads (`scanGates` in `src/city/layout.js`). They read
+  plates and faces: a wanted driver who passes under one is seen at once (the frame flashes red).
+  While you are wanted the yellow GPS line goes around them, and around the searched area.
+- **Disguise:** after Mace's paint shop the van has a new color and a new plate. The Guard does not
+  look at it any more - unless you drive dangerously (ramming, knocking people over) or pass a
+  scanner gate (the camera reads your face behind the glass).
+- **BUSTED:** a Guard car stops right beside you while you stand still. No game over: a short line,
+  a fine of 250 credits (you start with 1,500; it is saved), and the last checkpoint again. In free
+  roam you pay the fine and drive on.
+- **Free roam** uses the same system, gentler: one star (a bumped car) sends nobody yet, Guard cars
+  come from two stars, drones from three.
+- On the screen during a chase: a soft red and blue light at the edges of the screen (it breathes,
+  it does not flash). In the music: a faint low pulse that grows with the stars and fades away while
+  you are hidden. Drones buzz overhead and speak through a loudspeaker; the news screens and Mace's
+  old radio murmur (voices made in code: what they say is in the subtitles).
+
+### Chapter 2 choices and flags
+
+| Flag | Set when |
+|---|---|
+| `harrow_ivy_seen` | the press conference was seen (Captain Harrow's daughter called) |
+| `nate_denied` | Mace asked "Did you do it?": true = "No.", false = "I don't know." |
+| `van_color` / `van_plate` | the van's new paint (0 night blue, 1 rust red, 2 moss green, 3 ash grey) and plate |
+| `keystone_found` | the KEYSTONE chip and the video of Theo |
+| `told_mace_video` | Nate told Mace about the video (Mace knows more than he says - it matters later) |
+| `mace_story_heard` | Nate stayed for Mace's story about the two honks |
+| `lifted_tarp` | in the last scene Nate lifted a corner of the tarp and looked at Theo's car |
+
+Chapter 1's flags are used too: `limiter_off` (the van stays free), `ticket_taken` (who has the
+race ticket: WREN and the news screen say it), `mace_kind` (the hot drink or the nod),
+`wren_tracks_zero` (WREN: "I am still watching.").
+
+### What was built for it
+
+- **The old car park** (`g02` in `src/city/heroBuildings.js`, at the north end of the start street):
+  two concrete levels, columns with yellow bands, dead tube lights, a closed ramp, and a ground floor
+  half under black, mirror-flat water. No rain falls under a roof any more (the rain knows the
+  roofs of the garage and the car park).
+- **Mace's garage** got a roller door that really goes up and down, and the tarp over Theo's car is
+  now a cloth that can be lifted at one corner (with the real car under it in the last scene).
+- **The press set** in The Crown, **the white room** of the video, WANTED posters, street screens.
+- New engine steps: `police`, `news`, `video`, `tarp`, `shutter`, `fill`, `paint`; new conditions
+  `stars`, `starsOver`, `starsUnder`, `seen`, `hidden`, `searching`, `droneOver`; events `seen`,
+  `starLost`, `gate`. They are explained at the top of `src/story/engine.js`.
+- **Performance:** at most 4 Guard cars (they never load the detailed model) and 2 drones; the
+  scanner gates are 3 instanced meshes for all of them; all posters are one instanced mesh.
+
+### How to add Chapter 3 (only a data file)
+
+The same as before: copy `chapter02.js` to `chapter03.js`, set `id: 'chapter03'`, `number: 3`, write
+the missions, put the texts into `strings.js`. The engine finds it by itself; until it exists the end
+card of Chapter 2 says "CHAPTER 3 IS LOCKED".
+
+## Every door opens (version 6.0)
+
+**Every door at street level in the whole city can be opened now - 559 of them.** Walk up to a
+door (a shop door, the glass door of a lobby, a garage door) and the **ENTER** button appears; the
+screen goes dark for a moment and you are inside. To leave, walk back to the door: **EXIT**.
+
+Three houses were made by hand, after the player's reference pictures. Their doors are real wooden
+doors with a small brass lamp over it (it glows at night, with a soft halo in the rain) that swing
+open:
+
+| Door | Where | Inside |
+|---|---|---|
+| Halden House | the two round villas right next to the start point (both doors) | a dining kitchen and, through a doorway, a child's room |
+| Flat 3B | the garden building, first corner south of the start (its lobby door) | a retro kitchen |
+
+**All the other doors** get a room made by the game itself (`src/interiors/generate.js`), the first
+time you open them. What is behind a door depends on the building and the part of town:
+
+| Kind | How many | Inside |
+|---|---|---|
+| Flat | 261 | a living room: sofa with pillows, TV, coffee table on a rug, bookcase, armchair, floor lamp, a small kitchen with a fridge, a table for two by the window, pictures, plants |
+| Café | 103 | a counter with a coffee machine and a glass case of cakes, a menu board, small round tables with bistro chairs, shelves of mugs |
+| Corner shop | 66 | shelves you can walk around (boxes, tins, bottles), glowing drinks fridges, a counter with a till |
+| Lobby | 102 | letter boxes, two lift doors, a reception desk, a bench, big plants |
+| Office | 18 | desks with glowing screens, office chairs, filing cabinets, a water cooler, a whiteboard |
+| Garage | 6 | a work bench, tools on the wall, shelves of boxes, old tires, an oil drum |
+
+The Grid has mostly flats (and some shops and cafés), Neon Mile cafés and shops, The Crown offices
+and lobbies. Each room is built from the door's own number: the same door always opens into the
+same room, and no two are quite alike (sizes, colors, which side the kitchen is on, the furniture).
+At most three made rooms are kept in memory; the oldest one is thrown away.
+
+**The rooms (made like the player's reference pictures):**
+
+- **The dining kitchen** (picture 1): ochre plaster walls, a dark wooden ceiling with beams, blue and
+  cream patterned floor tiles, a cream enamel stove with a red pot and a kettle, a blue tile panel
+  behind it, a sink under the window with a dish rack, copper pans on a rail, jars on shelves, papers
+  pinned over a work table with crates of onions and potatoes, a big dresser with plates and cups, a
+  radio and a candle, a table with plates, cups, a teapot, a green bottle and flowers, three
+  spindle-back chairs, a green enamel lamp over the table, a coat by the door, a plant in the corner.
+- **The child's room** (picture 3): wallpaper, a wooden plank floor, a red patterned rug with a board
+  game and a ball, a bed with a grey blanket, a wardrobe, a desk with a lamp and drawings, a cork
+  pin board with notes and a map between two little blue shutters, shelves with books, a globe and a
+  teddy bear, an armchair by the window, orange curtains, a fan, a toy box, posters.
+- **The retro kitchen** (picture 2): a round cream fridge with notes on it, a mint green stove,
+  wooden cupboards with drawers, cream wall tiles with a green border, a checkered floor, open
+  shelves with mugs and jars, a kitchen scale, plants, thin white curtains glowing in the sun, a
+  small table with two red chairs, a clock and a calendar.
+
+**The light follows the game's clock:** by day the sun comes through the window - a real light with
+shadows (the window bars draw lines on the floor), a soft beam in the air with slow dust in it, warm
+light bouncing back from the floor. In the evening the sun is low and orange and the lamps go on. At
+night: cold moonlight through the window, warm lamps, dark corners. The picture outside the windows
+changes from day to evening to night too.
+
+**How it works:** the houses are not inside the city's buildings - they are built far away from the
+city (and while the game loads, so the first visit is quick). Inside, the camera only draws the house
+and the player, so the city costs nothing. The street keeps living around the door (traffic, people,
+the Guard) and is all there when you come out. Inside nobody can see you: **the Guard loses you and
+the stars go down** like in a hiding place - but you cannot go in while a Guard car is looking at you.
+Doors work in free roam and in quiet story moments (not during film scenes or locked moments); if a
+film scene of the story starts, the game puts you back at the door first.
+
+**To add a house made by hand:** write a function like `buildFlat` in `src/interiors/rooms.js`
+(walls, holes, furniture), give it a place in `ORIGINS` (`src/interiors/interiors.js`) and the names
+of its doors in `HOUSES`. A door of a hero building gets a name with `markEntrance(...)` in
+`src/city/heroBuildings.js`. **To change the made rooms:** the templates are at the end of
+`src/interiors/generate.js` (one function per kind), `kindOf()` decides the kind of a door.
+
+**Outside too (picture 4):** every street lamp now has a soft halo in the air at night (much bigger
+and stronger in the rain, when the air is full of water), and in the rain each lamp is mirrored on
+the wet road as a long, rippling streak of light that runs toward the camera. Two extra draw calls
+for the whole city.
+
 ---
 
 ## Known limits
@@ -887,7 +1068,10 @@ language code, translate the right-hand sides and set `LANGUAGE`.
   The cockpit is the same simple dashboard in every car, without working dials.
 - The boat cannot leave the water and you can only get out at the beach. The drone has no camera
   of its own and does not collide with trees or lamps, only with buildings.
-- The police only chase by car; they do not get out and there is no shooting.
+- The police only chase by car; they do not get out and there is no shooting (on purpose).
+- Chapter 2: the voices of the news screens, the radio and the drone loudspeakers are made in code
+  and have no words (the words are in the subtitles). The press conference is seen without shadows
+  (the shadows follow the player, who is far away in the alley at that moment).
 - The new driving feel was tuned with numbers and a software renderer, not on a real phone - the
   grip, steering speed and button sizes will need a round of tuning after real play.
 - The car model files were scans without an inside and without separate doors. Doors, glass and
@@ -897,7 +1081,10 @@ language code, translate the right-hand sides and set `LANGUAGE`.
   steering and the sound still have to be checked on a real phone.
 - The player's movement is made by code, not by an animator: it is clean but simpler than hand-made
   animation (no turning on the spot animation, no jumping, the same walk for everyone).
-- Buildings cannot be entered (Nate's flat is only seen in film scenes).
+- Every street door opens, but each building has one room behind its door (no stairs, no upper
+  floors). Inside you can walk and look, but not sit, open cupboards or switch lamps yourself. The
+  view through a window is a picture, not the real street. Only the three houses made by hand have
+  a door leaf that swings; the other doors open behind the dark fade.
 - THE STORY: it was played from start to end by a test robot in a software renderer, not by a person on a
   phone - timing of the scenes, the difficulty of the race and the chase, the size of the buttons and
   all sound still need a real play-through. The prologue runs about 3 minutes (not 4): the city is one

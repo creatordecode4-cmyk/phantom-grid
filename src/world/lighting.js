@@ -293,6 +293,7 @@ export function createLighting(scene, renderer, city, materials) {
   let quality = CONFIG.quality.medium;
   let postActive = true;       // false = we draw straight to the screen (fog color needs tone mapping)
   let nightMode = false;
+  let interior = null;          // inside a house (see the end of update)
   let lampLevel = 0;           // 0..1, lamps warming up
   let winLate = 1;
   let envDirty = true, envTimer = 0, envSunEl = 99, envSunAz = 99, envRain = -1, envLum = 1;
@@ -474,11 +475,12 @@ export function createLighting(scene, renderer, city, materials) {
     shared.uPgSunDir.value.copy(lightDir);
     shared.uPgSunCol.value.copy(sun.color).multiplyScalar(nightMode ? 0 : sun.intensity);
     info.sunDir = sunDir; info.sunColor = sunCol;
-    const wantShadows = quality.shadows && !nightMode;
+    // (inside a house the rooms have their own lights: no sun, no street lamps, no far shadows)
+    const wantShadows = quality.shadows && !nightMode && !interior;
     if (sun.castShadow !== wantShadows) { sun.castShadow = wantShadows; farDirty = true; }
     const wantFar = wantShadows && quality.farShadows;
     if (farSun.visible !== wantFar) { farSun.visible = wantFar; farDirty = true; }
-    for (const pl of pool) pl.visible = nightMode;
+    for (const pl of pool) pl.visible = nightMode && !interior;
 
     // ---- sky light and ground bounce ----
     const zen = skyColor(st, -sunDir.x * 0.3, 0.9, -sunDir.z * 0.3);
@@ -556,6 +558,18 @@ export function createLighting(scene, renderer, city, materials) {
     );
     envRingLightsMat.color.setScalar(1.5 * lampLevel);
 
+    // ---- inside a house: the room's own soft light instead of the sky (src/interiors/interiors.js sets it) ----
+    if (interior) {
+      sun.intensity = 0;
+      hemi.color.setRGB(interior.sky[0], interior.sky[1], interior.sky[2]);
+      hemi.groundColor.setRGB(interior.ground[0], interior.ground[1], interior.ground[2]);
+      hemi.intensity = interior.hemi;
+      scene.fog.density = 0.0002;
+      renderer.toneMappingExposure = interior.exposure; info.exposure = interior.exposure;
+      scene.environmentIntensity = interior.env;
+      shared.uPgSunCol.value.setScalar(0);
+    }
+
     // ---- sharp shadow map: follows the player, looks ahead of the camera ----
     const R = quality.shadowRange;
     _v.set(playerPos.x + camDir.x * R * 0.55, 0, playerPos.z + camDir.z * R * 0.55);
@@ -583,7 +597,7 @@ export function createLighting(scene, renderer, city, materials) {
     }
 
     // ---- street lamps -> real lights ----
-    if (nightMode) {
+    if (nightMode && !interior) {
       lampTimer -= dt;
       if (lampTimer <= 0) { lampTimer = 0.2; assignLamps(playerPos.x, playerPos.z); }
       for (const pl of pool) {
@@ -660,5 +674,8 @@ export function createLighting(scene, renderer, city, materials) {
     forceNight(v) { nightMode = v; for (const pl of pool) pl.visible = v; sun.castShadow = quality.shadows && !v; farSun.visible = sun.castShadow && quality.farShadows; },
     fogHDR,
     sunDir,
+    // inside a house: { hemi, sky: [r, g, b], ground: [r, g, b], exposure, env } (null = outdoors)
+    set interior(v) { if (!!v !== !!interior) { farDirty = true; envDirty = true; } interior = v; },
+    get interior() { return interior; },
   };
 }
