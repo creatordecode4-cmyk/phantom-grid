@@ -345,7 +345,7 @@ export default {
       steps: [
         { do: 'enter', text: 'c3.obj.boat', vehicle: 'oldBoat' },
         { do: 'driveTo', text: 'c3.obj.lena', vehicle: 'oldBoat', at: LENA.boat, radius: 7, stop: true },
-        { do: 'leave', text: 'c3.obj.tie', marker: LENA.dock },
+        { do: 'leave', text: 'c3.obj.tie_lena', marker: LENA.dock },
         { do: 'goto', text: 'c3.obj.inside', at: LENA.room, radius: 2.2 },
         { do: 'checkpoint', id: 1, setup: [{ do: 'player', at: [705, 1.2, -121], face: 0 }] },
         {

@@ -372,6 +372,7 @@ export const STRINGS = {
     'c3.wren.people': 'People live up there. On the roofs.',
     'c3.obj.market': 'Find the Tidewalkers. Follow the lanterns.',
     'c3.obj.tie': 'Tie up at the market and get out',
+    'c3.obj.tie_lena': 'Tie up at her pontoon and get out',
     'c3.obj.wick': 'Talk to the old man at the table',
     'c3.wick.1': "You're Mace's courier.",
     'c3.nate.static': 'I need to see Static.',
