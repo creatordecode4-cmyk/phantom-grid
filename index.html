@@ -147,6 +147,10 @@
     /* the drone has no handbrake and no horn: UP and DOWN take their places */
     body.role-drone #drv-up, body.role-drone #drv-down { display: block; }
     body.role-drone #drv-hand, body.role-drone #drv-horn, body.role-drone #drv-light, body.role-boat #drv-light, body.role-boat #drv-hand { display: none; }
+    /* the boat: QUIET (hold) takes the place of the handbrake - a slow, soft motor to sneak past the Guard */
+    #drv-quiet { width: 66px; height: 66px; font-size: 9px; right: calc(24px + env(safe-area-inset-right)); bottom: calc(142px + env(safe-area-inset-bottom)); display: none; border-color: rgba(120, 230, 200, 0.75); }
+    body.role-boat #drv-quiet { display: block; }
+    #drv-quiet.on { background: rgba(60, 160, 140, 0.55); }
     /* the pedals show how hard they are pressed */
     #drv-gas.on, #drv-brake.on { background: rgba(255, 255, 255, calc(0.3 + 0.56 * var(--press, 1))); }
     /* ---------- dashboard: gear, speed, turn arrows, thin bars ---------- */
@@ -178,6 +182,11 @@
     #hud-wstate-bar-wrap { width: 34px; height: 2px; background: rgba(255, 255, 255, 0.18); display: none; }
     #hud-wstate.hidden #hud-wstate-bar-wrap { display: block; }
     #hud-wstate-bar { display: block; height: 100%; width: 0%; background: #8fe0c0; }
+    /* stealth (Chapter 3): bigger and clearer, with the meter that fills while the Guard notices him */
+    #hud-wstate.big { font-size: 12px; padding: 6px 10px; letter-spacing: 0.26em; gap: 9px; }
+    #hud-wstate.big #hud-wstate-bar-wrap { display: block; width: 54px; height: 4px; }
+    #hud-wstate.sneak { color: #8fe0c0; } #hud-wstate.exposed { color: #ffb36a; background: rgba(40, 14, 4, 0.7); }
+    #hud-wstate.exposed #hud-wstate-bar { background: #ff8a4a; }
     /* red and blue light at the edges of the screen during a chase */
     #edge-light { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
     #edge-light[hidden] { display: none; }
@@ -240,6 +249,7 @@
       #drv-nitro { right: calc(14px + env(safe-area-inset-right)); bottom: calc(204px + env(safe-area-inset-bottom)); }
       #drv-up { right: calc(14px + env(safe-area-inset-right)); bottom: calc(132px + env(safe-area-inset-bottom)); }
       #drv-down { right: calc(84px + env(safe-area-inset-right)); bottom: calc(122px + env(safe-area-inset-bottom)); }
+      #drv-quiet { right: calc(12px + env(safe-area-inset-right)); bottom: calc(130px + env(safe-area-inset-bottom)); }
       #hud-speed { bottom: calc(200px + env(safe-area-inset-bottom)); }
     }
     /* with a mouse and keyboard the touch buttons are not needed */
@@ -609,6 +619,7 @@
       <button class="btn round" id="drv-nitro" aria-label="Nitro boost">NITRO</button>
       <button class="btn round" id="drv-up" aria-label="Drone up">UP</button>
       <button class="btn round" id="drv-down" aria-label="Drone down">DOWN</button>
+      <button class="btn round" id="drv-quiet" aria-label="Quiet motor (hold)">QUIET</button>
       <div id="hud-speed">
         <div id="dash-row"><span id="ind-l">&#9664;</span><span id="gear">N</span><span id="speed-num">0</span><span class="unit">KM/H</span><span id="limit-badge" hidden>80</span><span id="ind-r">&#9654;</span></div>
         <div class="dash-bar" id="rpm-bar"><i></i></div>

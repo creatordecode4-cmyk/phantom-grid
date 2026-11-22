@@ -39,6 +39,11 @@ export const shared = {
   uPgDetail: { value: null },                    // wall cracks / drips / pitting
   uPgSunDir: { value: new THREE.Vector3(0, 1, 0) }, // direction TO the sun (or moon)
   uPgSunCol: { value: new THREE.Color(0, 0, 0) },   // sun light color x strength (black at night)
+  // The Sunk (Chapter 3): r = close to a wall, g = algae, b = the tunnel (src/city/sunk.js draws it)
+  uPgSunkMask: { value: null },
+  uPgSunkRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+  // up to three boats on the canals: x, z, speed (m/s), heading - for their waves and wake
+  uPgBoats: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
 };
 
 // ---------------------------------------------------------------------------
@@ -321,6 +326,11 @@ varying vec3 vPgNormal;
 #endif
 #ifdef PG_OCEAN
 	uniform sampler2D uPgWaterNormal;
+#endif
+#ifdef PG_CANAL
+	uniform sampler2D uPgSunkMask;
+	uniform vec4 uPgSunkRect;
+	uniform vec4 uPgBoats[ 3 ];
 #endif
 
 float pgHash( vec2 p ) {
@@ -1093,6 +1103,80 @@ const PG_FRAGMENT_NORMAL = /* glsl */ `
 	normal = normalize( normal + viewMatrix[ 1 ].xyz * pgRidge * 0.55 );
 #endif
 #ifdef PG_OCEAN
+#ifdef PG_CANAL
+	// ---- THE CANALS OF THE SUNK: calm, dark water between walls ----
+	vec3 pgCanalGlow = vec3( 0.0 );
+	{
+		vec2 xz = vPgWorld.xz;
+		float dist = length( vPgWorld - cameraPosition );
+		vec2 t = vec2( uPgTime );
+		vec4 pgMask = texture2D( uPgSunkMask, ( xz - uPgSunkRect.xy ) * uPgSunkRect.zw );
+		float pgFoam = 0.0, pgStir = 0.0;
+	#ifdef PG_CANAL_LOW
+		// (LOW quality: one wave picture, no rain rings, no boat waves)
+		vec3 a = texture2D( uPgWaterNormal, xz * 0.07 + t * vec2( 0.01, 0.006 ) ).xyz * 2.0 - 1.0;
+		vec2 slope = a.xy * 0.42;
+	#else
+		vec3 a = texture2D( uPgWaterNormal, xz * 0.11 + t * vec2( 0.012, 0.007 ) ).xyz * 2.0 - 1.0;
+		vec3 b = texture2D( uPgWaterNormal, xz * 0.041 - t * vec2( 0.006, 0.011 ) ).xyz * 2.0 - 1.0;
+		vec2 slope = a.xy * 0.3 + b.xy * 0.4;
+		// rain: small rings that grow and fade (one drop in every cell of 0.8 m, each at its own time)
+		if ( uPgWet > 0.05 && dist < 38.0 ) {
+			vec2 cell = floor( xz / 0.8 );
+			vec2 f = fract( xz / 0.8 ) - 0.5;
+			float h = pgHash( cell );
+			vec2 c = ( vec2( pgHash( cell + 3.1 ), pgHash( cell + 7.7 ) ) - 0.5 ) * 0.5;
+			float ph = fract( uPgTime * 1.1 + h );
+			vec2 q = f - c;
+			float r = length( q ) - ph * 0.42;
+			float ring = sin( r * 42.0 ) * exp( - r * r * 300.0 ) * ( 1.0 - ph );
+			slope += ( q / ( length( q ) + 1e-3 ) ) * ring * 0.8 * uPgWet * ( 1.0 - smoothstep( 14.0, 38.0, dist ) );
+		}
+		// boats: the V of the wake behind them and the churned water at the stern
+		for ( int i = 0; i < 3; i++ ) {
+			vec4 bt = uPgBoats[ i ];
+			if ( bt.z < 0.4 ) continue;
+			vec2 d = xz - bt.xy;
+			if ( dot( d, d ) > 5000.0 ) continue;
+			vec2 fw = vec2( sin( bt.w ), cos( bt.w ) ), sd = vec2( fw.y, - fw.x );
+			float back = - dot( d, fw ) - 3.0, side = dot( d, sd );
+			float sp = clamp( bt.z / 12.0, 0.0, 1.0 );
+			if ( back > - 4.0 && back < 70.0 ) {
+				float arm = abs( side ) - max( back, 0.0 ) * 0.36 - 1.3;
+				float w = exp( - arm * arm * 0.4 ) * exp( - max( back, 0.0 ) / 26.0 ) * sp;
+				slope += sd * sign( side ) * sin( back * 1.7 - uPgTime * 7.0 ) * w * 0.8;
+				pgStir = max( pgStir, w );
+				pgFoam = max( pgFoam, w * sp * 0.55 * exp( - max( back, 0.0 ) / 10.0 ) );
+			}
+			float churn = exp( - side * side * 0.45 ) * ( 1.0 - smoothstep( 0.0, 14.0, back ) ) * step( - 1.5, back ) * sp;
+			pgFoam = max( pgFoam, churn * 0.75 );
+			pgStir = max( pgStir, churn );
+		}
+	#endif
+		// far away the water looks flat; in the tunnel there is no wind
+		slope *= mix( 1.0, 0.3, smoothstep( 25.0, 450.0, dist ) ) * ( 1.0 - 0.6 * pgMask.b );
+		vec3 nw = normalize( vec3( slope.x, 1.0, slope.y ) );
+		normal = normalize( ( viewMatrix * vec4( nw, 0.0 ) ).xyz );
+		roughnessFactor = mix( 0.05, 0.15, smoothstep( 30.0, 600.0, dist ) );
+		// little waves break along the walls: a thin line of foam
+		float n = texture2D( uPgNoise, xz * vec2( 0.11, 0.13 ) + t * vec2( 0.01, 0.02 ) ).r;
+		pgFoam = max( pgFoam, smoothstep( 0.6, 0.97, pgMask.r ) * ( 0.2 + 0.8 * n ) * 0.65 );
+		// algae: a dark film near the walls by day; at night it glows green and teal (more where the water is stirred)
+		float n2 = texture2D( uPgNoise, xz * 0.045 - t * vec2( 0.003, 0.002 ) ).r;
+		float algae = pgMask.g * smoothstep( 0.3, 0.72, n2 + pgMask.g * 0.35 );
+		diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.025, 0.05, 0.03 ), algae * 0.55 );
+		diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.72, 0.78, 0.76 ), pgFoam * 0.8 );
+		diffuseColor.rgb *= 1.0 - 0.55 * pgMask.b;
+		roughnessFactor = mix( roughnessFactor, 0.7, pgFoam );
+		// you see a little into the water when you look down; at a low angle it is a mirror
+		float facing = clamp( normalize( cameraPosition - vPgWorld ).y, 0.0, 1.0 );
+		diffuseColor.a = max( mix( 0.97, 0.78, facing ), pgFoam );
+		float pulse = 0.72 + 0.28 * sin( uPgTime * 0.6 + n2 * 9.0 );
+		pgCanalGlow = vec3( 0.03, 0.62, 0.46 ) * ( algae * pulse + pgStir * 0.9 * ( 0.3 + algae ) ) * ( 0.03 + 0.97 * uPgNight );
+		// the lanterns mirrored on the water, broken up by the waves (night)
+		pgCanalGlow += pgLampColor( pgLampTexel( xz + slope * 2.0 ), xz ) * ( 0.18 + 0.6 * length( slope ) ) * 0.5 * ( 1.0 - 0.5 * pgMask.b );
+	}
+#else
 	{
 		vec2 xz = vPgWorld.xz;
 		float dist = length( vPgWorld - cameraPosition );
@@ -1118,11 +1202,15 @@ const PG_FRAGMENT_NORMAL = /* glsl */ `
 		roughnessFactor = mix( roughnessFactor, 0.75, foam );
 	}
 #endif
+#endif
 `;
 
 // ---- E: light that the surface gives off -----------------------------------------------------
 const PG_FRAGMENT_EMISSIVE = /* glsl */ `
 	totalEmissiveRadiance += pgEmit * step( 0.001, uPgWinLight + uPgNight ) + pgEmitA;
+#ifdef PG_CANAL
+	totalEmissiveRadiance += pgCanalGlow;
+#endif
 #ifdef PG_PANEL
 	// glowing parts: data.w from 0..1 glows only at night, 1..2 glows always
 	{
@@ -1444,6 +1532,11 @@ export async function createMaterials(renderer, onProgress = () => {}) {
     new THREE.MeshPhysicalMaterial({ color: 0x06222e, roughness: 0.1, metalness: 0, ior: 1.34, reflectivity: 0.5 }),
     ['PG_OCEAN']
   );
+  // The canals of The Sunk (Chapter 3): dark, a little see-through, foam at the walls, glowing algae.
+  // canalLow: the same without rain rings and boat waves (LOW quality)
+  const canalOpts = { color: 0x0a2426, roughness: 0.08, metalness: 0, ior: 1.33, reflectivity: 0.5, transparent: true };
+  mats.canal = patch(new THREE.MeshPhysicalMaterial(canalOpts), ['PG_OCEAN', 'PG_CANAL']);
+  mats.canalLow = patch(new THREE.MeshPhysicalMaterial(canalOpts), ['PG_OCEAN', 'PG_CANAL', 'PG_CANAL_LOW']);
   // Far hills.
   mats.hills = std({ map: tex.plaster, normalMap: nr.plaster, normalScale: new THREE.Vector2(2.5, 2.5), roughness: 1 });
   // Thin wires between power poles.

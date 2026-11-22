@@ -144,6 +144,13 @@ async function boot() {
   // garages with a roof: a car parked inside cannot be seen by the drones
   const SHELTERS = [GARAGE.ready ? GARAGE.inside : null, PARKING.ready ? PARKING.inside : null].filter(Boolean);
   for (const b of SHELTERS) police.addSpot({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ });
+  // THE SUNK (Chapter 3): the drain tunnel, the space under a bridge, a market tarp, Lena's flat, the Guard hut:
+  // roofs that keep the rain off and hide a boat (or a person) from the drones
+  const SK = city.sunk;
+  if (SK) for (const b of SK.spots) { SHELTERS.push(b); police.addSpot({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ }); }
+  const sunkBoats = [], sunkWalker = { x: 0, z: 0, vx: 0, vz: 0, heading: 0 };
+  let lenaCam = false;           // the camera is in "room" mode in Lena's flat
+  let marketHush = 0;            // 0..1: the Tidewalkers at the market have gone quiet (Nate is close)
   // the garage's repair point: a glowing ring on the road (drive onto it to fix the car)
   const repairRing = new THREE.Mesh(new THREE.RingGeometry(1.9, 2.3, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x5fe0a0, transparent: true, opacity: 0.75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -10 }));
   repairRing.position.set(garage.repair.x, city.groundHeight(garage.repair.x, garage.repair.z) + 0.03, garage.repair.z);
@@ -350,6 +357,12 @@ async function boot() {
     });
     const film = !!S && S.cameraActive;
     const view = vehicles.camMode;
+    // Lena's flat in The Sunk: inside it the camera stays under the ceiling (like in a house)
+    if (SK && !inside) {
+      const pp = player.position, R = SK.room;
+      const inRoom = vehicles.state === 'none' && pp.x > R.minX && pp.x < R.maxX && pp.z > R.minZ && pp.z < R.maxZ && pp.y > R.floor - 1.2 && pp.y < R.top;
+      if (inRoom !== lenaCam) { lenaCam = inRoom; rig.setRoom(inRoom ? R : null); }
+    }
     if (film) S.applyCamera(dt);
     else if (driving && vehicles.active) rig.updateChase(dt, vehicles.active, vehicles.shake, view);
     else rig.update(dt, player);
@@ -376,7 +389,10 @@ async function boot() {
     const knocked = city.people.takeKnocked();
     if (knocked) { sound.thump(1); if (navigator.vibrate) navigator.vibrate(60); }
     const inCar = !!(car && !onFoot);
-    stars = police.update(dt, { x: px, z: pz, speed: inCar ? Math.hypot(car.vx, car.vz) : inside ? 0 : player.speed, inCar, heading: inCar ? car.heading : player.heading, vx: inCar ? car.vx : 0, vz: inCar ? car.vz : 0, inside }, knocked, night, rain);
+    // (a boat: a loud motor is heard by the Guard; the QUIET motor is not)
+    const boatNow = inCar && car.role === 'boat', boatSpeed = boatNow ? Math.hypot(car.vx, car.vz) : 0;
+    stars = police.update(dt, { x: px, z: pz, y: inCar ? car.y : player.position.y, speed: inCar ? Math.hypot(car.vx, car.vz) : inside ? 0 : player.speed, inCar, heading: inCar ? car.heading : player.heading, vx: inCar ? car.vx : 0, vz: inCar ? car.vz : 0, inside,
+      loud: boatNow && !car.quiet && (boatSpeed > 2.5 || (car.fx && car.fx.throttle > 0.5)), quiet: boatNow && !!car.quiet }, knocked, night, rain);
     // (the story's own chases of Chapter 1 only show stars: no pulse, no state, no red and blue light)
     const realWanted = !police.scripted;
     music.setWanted(realWanted ? stars : 0, police.hidden, police.mode === 'chase');
@@ -411,7 +427,7 @@ async function boot() {
     // ---- footsteps: a different sound on sand ----
     if (player.steps !== lastSteps) {
       lastSteps = player.steps;
-      if (onFoot) sound.footstep(pz < layout.neon.promenadeMinZ ? 'sand' : 'concrete', player.speed > 3);
+      if (onFoot) sound.footstep(SK && SK.inZone(px, pz) && SK.walk(px, pz, player.position.y) !== null && player.position.y < 1.5 ? 'wood' : pz < layout.neon.promenadeMinZ && !(SK && SK.inZone(px, pz, 6)) ? 'sand' : 'concrete', player.speed > 3);
     }
 
     // ---- mission, waypoint, GPS route ----
@@ -422,15 +438,28 @@ async function boot() {
     const goal = S ? goalState.marker : waypoint || missionState.marker;
     routeTimer -= dt;
     // (the raised highway is not part of the street map: up there the arrow points straight at the goal)
-    const onDeck = !!(car && car.arena) || px < layout.highway.maxX;
+    // (The Sunk: a boat follows the canals; on foot on the decks the arrow points straight at the goal)
+    const byBoat = !!(car && !onFoot && car.role === 'boat');
+    const inSunkNow = !!SK && SK.inZone(px, pz, 4);
+    const onDeck = !!(car && car.arena) || px < layout.highway.maxX || (inSunkNow && !byBoat) || (byBoat && !(SK && SK.inZone(goal ? goal.x : 0, goal ? goal.z : 0, 40)) && !inSunkNow);
     if (!goal || onDeck) route = null;
-    else if (routeTimer <= 0) { routeTimer = 0.6; route = gps.route(px, pz, goal.x, goal.z); }
+    else if (routeTimer <= 0) { routeTimer = 0.6; route = byBoat && SK ? SK.route(px, pz, goal.x, goal.z) : gps.route(px, pz, goal.x, goal.z); }
     // the CAR button shows up next to a car
     nearTimer -= dt;
     if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !inside && !!vehicles.nearest(px, pz)); vehicles.prefetch(px, pz, active === 'low' ? 2 : active === 'medium' ? 4 : 8); }
     // ---- rain, traffic hum, waves near the beach, the tape (all made in code: src/audio/music.js) ----
     const amb = story.ambient;
+    // THE SUNK: how deep in it the camera is, the market's murmur (it goes quiet when Nate comes close), the tunnel
+    let sunkK = 0, marketK = 0, tunnelK = 0;
+    if (SK && !inside) {
+      const cp = camera.position, fz = SK.fogAt(cp.x, cp.y, cp.z);
+      sunkK = fz.k; tunnelK = fz.tunnel;
+      const m = SK.market, dm = Math.hypot(cp.x - m[0], cp.z - m[1]), dp = Math.hypot(px - m[0], pz - m[1]);
+      marketHush += ((dp < 30 ? 1 : 0) - marketHush) * Math.min(1, dt * (dp < 30 ? 0.8 : 0.15));
+      marketK = clamp(1 - dm / 130, 0, 1) * (1 - 0.85 * marketHush) * (S ? amb.market ?? 1 : 1);
+    }
     music.update(dt, {
+      sunk: sunkK, market: marketK, tunnel: tunnelK,
       rain: weather.amount, city: clamp(city.traffic.count / 30, 0, 1) * 0.8, beach: clamp((-250 - pz) / 130, 0, 1),
       inCar: driving || (!!S && S.indoors) || inside,
       drone: Math.max(police.droneNear, S ? amb.drone : 0), radio: S ? amb.radio : 0, street: S ? amb.street : 0,
@@ -448,6 +477,23 @@ async function boot() {
       camera.lookAt(fc.look[0], fc.look[1], fc.look[2]);
     }
     shared.uPgPlayer.value.copy(player.position);
+    // ---- THE SUNK: its water and mist, the steady rain there, the teal dark of the tunnel ----
+    if (SK) {
+      const cp = camera.position;
+      lighting.zone = inside ? null : SK.fogAt(cp.x, cp.y, cp.z);
+      weather.setZoneRain(!inside && SK.inZone(px, pz, 40));
+      sunkBoats.length = 0;
+      const av = vehicles.active;
+      if (av && av.role === 'boat') sunkBoats.push(av);
+      for (const v of vehicles.live) if (v.role === 'boat' && v !== av && !v.away && sunkBoats.length < 3 && Math.abs(v.x - cp.x) < 150 && Math.abs(v.z - cp.z) < 150) sunkBoats.push(v);
+      // (walking on a pontoon: it moves a little in the water, small ripples go out from it)
+      if (onFoot && sunkBoats.length < 3 && player.position.y < 0 && player.speed > 0.4 && SK.inZone(px, pz)) {
+        sunkWalker.x = px; sunkWalker.z = pz; sunkWalker.heading = player.heading;
+        sunkWalker.vx = Math.sin(player.heading) * (player.speed + 2.5); sunkWalker.vz = Math.cos(player.heading) * (player.speed + 2.5);
+        sunkBoats.push(sunkWalker);
+      }
+      SK.update(dt, time, cp, sunkBoats, quality, scene.fog.color);
+    }
     weather.update(dt);
     lighting.update(dt, player.position, rig.forwardXZ(camDir));
     // the characters' own soft light (characterLook.js): clear at night, almost nothing in daylight.
@@ -477,7 +523,8 @@ async function boot() {
     if (dash && vehicles.driving) hud.setDash(dash, (time * 2.6) % 1 < 0.5);
     hud.setWanted(stars, police.chased);
     const real = !police.scripted && gameMode !== 'title';
-    hud.setWantedState(real ? { stars, mode: police.mode, hidden: police.hidden, progress: police.hideProgress, covered: police.covered, light: police.light } : { stars: 0, light: 0 });
+    hud.setWantedState(real ? { stars, mode: police.mode, hidden: police.hidden, progress: police.hideProgress, covered: police.covered, light: police.light,
+      stealth: police.stealth, exposed: police.exposed, suspicion: police.suspicion, heard: police.heard, seenNow: police.exposed && !police.heard } : { stars: 0, light: 0 });
     hud.showCover(real && police.coverAvailable && !story.cameraActive);
     hud.setTicker(gameMode === 'story' ? story.news : null, portraitURL);
     // name tags over the garage vehicles (only when you stand close)

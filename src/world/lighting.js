@@ -294,6 +294,7 @@ export function createLighting(scene, renderer, city, materials) {
   let postActive = true;       // false = we draw straight to the screen (fog color needs tone mapping)
   let nightMode = false;
   let interior = null;          // inside a house (see the end of update)
+  let zone = null;              // The Sunk (Chapter 3): { k: 0..1 how deep in its mist, tunnel: 0..1 } (null = none)
   let lampLevel = 0;           // 0..1, lamps warming up
   let winLate = 1;
   let envDirty = true, envTimer = 0, envSunEl = 99, envSunAz = 99, envRain = -1, envLum = 1;
@@ -375,6 +376,7 @@ export function createLighting(scene, renderer, city, materials) {
     const N = pool.length;
     for (let i = 0; i < lamps.length; i++) {
       const l = lamps[i];
+      if (l.noLight) continue;              // (small lanterns: only a glow, no real light)
       const d = (l.x - px) * (l.x - px) + (l.z - pz) * (l.z - pz);
       if (d > 60 * 60) continue;
       let k = nearest.length;
@@ -531,13 +533,22 @@ export function createLighting(scene, renderer, city, materials) {
     info.sunPower = sun.intensity;
     info.zenith = zen;
 
-    if (postActive) scene.fog.color.setRGB(fogHDR[0], fogHDR[1], fogHDR[2]);
+    // THE SUNK: thick grey-green mist over the canals; in the drain tunnel a dark teal haze
+    let fogC = fogHDR, fogK = 1;
+    if (zone && (zone.k > 0.001 || zone.tunnel > 0.001)) {
+      const k = zone.k, tn = zone.tunnel;
+      const mistC = [fogHDR[0] * 0.92 + 0.004, fogHDR[1] * 0.98 + 0.006, fogHDR[2] * 0.96 + 0.006];
+      const deep = [0.004 + 0.01 * day, 0.018 + 0.03 * day, 0.02 + 0.032 * day];
+      fogC = [0, 1, 2].map((i) => lerp(lerp(fogHDR[i], mistC[i], k), deep[i], tn));
+      fogK = lerp(1, 2.3, k) * lerp(1, 9, tn);
+    }
+    if (postActive) scene.fog.color.setRGB(fogC[0], fogC[1], fogC[2]);
     else {
       // drawing straight to the screen: three.js mixes fog in AFTER tone mapping
-      const tm = acesToneMap(fogHDR, exposure);
+      const tm = acesToneMap(fogC, exposure);
       scene.fog.color.setRGB(tm[0], tm[1], tm[2]);
     }
-    scene.fog.density = lerp(CONFIG.fog.density, CONFIG.fog.rainDensity, rain) * quality.fogMultiplier * lerp(1, 0.8, night);
+    scene.fog.density = lerp(CONFIG.fog.density, CONFIG.fog.rainDensity, rain) * quality.fogMultiplier * lerp(1, 0.8, night) * fogK;
 
     // ---- reflection strength follows the sky brightness ----
     if (hdriEnv) scene.environmentIntensity = (0.06 + 0.94 * day) * (1 - 0.4 * rain);
@@ -606,7 +617,7 @@ export function createLighting(scene, renderer, city, materials) {
         const l = lamps[pl.userData.lamp];
         const d = Math.hypot(l.x - playerPos.x, l.z - playerPos.z);
         // fades out with distance, matching the fake lamp light in the shaders
-        pl.intensity = SL.intensity * lampLevel * pl.userData.fade * (1 - smoothstep(18, 40, d));
+        pl.intensity = SL.intensity * lampLevel * pl.userData.fade * (1 - smoothstep(18, 40, d)) * (l.power ?? 1);
       }
     }
   }
@@ -676,6 +687,8 @@ export function createLighting(scene, renderer, city, materials) {
     sunDir,
     // inside a house: { hemi, sky: [r, g, b], ground: [r, g, b], exposure, env } (null = outdoors)
     set interior(v) { if (!!v !== !!interior) { farDirty = true; envDirty = true; } interior = v; },
+    // The Sunk: { k, tunnel } from sunk.fogAt() (null = outside)
+    set zone(v) { zone = v; },
     get interior() { return interior; },
   };
 }

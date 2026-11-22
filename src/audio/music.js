@@ -14,6 +14,9 @@
 //     tone through two moving filters), so it sounds like far-away speech.
 //     What is said is shown as a subtitle.
 //   * CALM: a soft, warm pad for the very last scene of Chapter 2.
+//   * THE SUNK (Chapter 3): rain on tin roofs and old boats, water dripping,
+//     water slapping against hulls, the murmur of the Tidewalker market far
+//     away (it goes quiet when Nate comes close), and a low hum of old pumps.
 //   * SILENCE: everything here can be cut to nothing for a moment.
 //
 // No sound files. Everything uses the audio system of sound.js and only
@@ -44,7 +47,8 @@ export function createMusic(sound) {
   let wantedNext = 0, voiceNext = 0, voiceLeft = 0, announceUntil = 0;
   const tape = { track: 0, bar: 0, step: 0, next: 0, startBar: 0, onEnd: null, ended: false };
   let heartNext = 0, pulseNext = 0, sirenNext = 20, silentUntil = 0, time = 0;
-  const env = { rain: 0, city: 0.5, beach: 0, inCar: false, drone: 0, street: 0, radio: 0 };
+  const env = { rain: 0, city: 0.5, beach: 0, inCar: false, drone: 0, street: 0, radio: 0, sunk: 0, market: 0, tunnel: 0 };
+  let sunkAmb = null, dripNext = 0, slapNext = 0, tinkNext = 0, crowdNext = 0;
 
   function ready() {
     if (A) return A.ctx.state === 'running';
@@ -94,6 +98,16 @@ export function createMusic(sound) {
       o.connect(f1); o.connect(f2); f1.connect(env2); f2.connect(env2); o.start();
       const crackle = loopNoise('highpass', 5000, 0.4, out, 0);     // an old radio crackles a little
       voice = { out, color, env: env2, f1, f2, o, crackle };
+    }
+    // ---- THE SUNK: tin roofs in the rain, the crowd of the market, the hum of old pumps ----
+    {
+      const tin = loopNoise('bandpass', 4300, 2.2, ambBus, 0);
+      const crowdG = c.createGain(); crowdG.gain.value = 0; crowdG.connect(ambBus);
+      const crowdEnv = c.createGain(); crowdEnv.gain.value = 0.3; crowdEnv.connect(crowdG);
+      const crowd = [loopNoise('bandpass', 650, 2.4, crowdEnv, 1), loopNoise('bandpass', 1450, 3, crowdEnv, 0.6)];
+      const humG = c.createGain(); humG.gain.value = 0; humG.connect(ambBus);
+      for (const [f, g] of [[46, 0.5], [46.6, 0.5], [92.3, 0.18]]) { const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f; const og = c.createGain(); og.gain.value = g; o.connect(og); og.connect(humG); o.start(); }
+      sunkAmb = { tin, crowdG, crowdEnv, crowd, humG };
     }
     // ---- calm pad: a warm chord that breathes slowly ----
     {
@@ -234,6 +248,40 @@ export function createMusic(sound) {
     glide(voice.color.Q, pa ? 2.2 : 0.9, 0.2);
     glide(voice.crackle.g.gain, env.radio > 0.02 && !pa ? env.radio * 0.004 : 0, 0.3);
     if (vLevel > 0.001) runVoice(now, pa);
+    // ---- THE SUNK ----
+    if (sunkAmb) {
+      const k = env.sunk * quiet, out = inCar ? 0.6 : 1;
+      glide(sunkAmb.tin.g.gain, env.rain * k * 0.03 * out, 0.5);
+      glide(sunkAmb.humG.gain, (k * 0.012 + env.tunnel * 0.02) * quiet, 1.2);
+      glide(sunkAmb.crowdG.gain, env.market * 0.05 * quiet, 1.6);
+      // the crowd: syllables of many people, no words (louder and softer in turns)
+      if (env.market > 0.01 && now > crowdNext) {
+        crowdNext = now + 0.12 + Math.random() * 0.2;
+        sunkAmb.crowdEnv.gain.setTargetAtTime(0.25 + Math.random() * 0.75, now, 0.06);
+        sunkAmb.crowd[0].f.frequency.setTargetAtTime(480 + Math.random() * 420, now, 0.05);
+        sunkAmb.crowd[1].f.frequency.setTargetAtTime(1100 + Math.random() * 900, now, 0.05);
+      }
+      // water dripping (much more in the tunnel), a hollow tink of rain on a can, water slapping a hull
+      if ((k > 0.05 || env.tunnel > 0.05) && now > dripNext) {
+        dripNext = now + (env.tunnel > 0.3 ? 0.25 : 0.9) + Math.random() * (env.tunnel > 0.3 ? 0.9 : 2.6);
+        const f = 900 + Math.random() * 1100;
+        const c2 = A.ctx, o = c2.createOscillator(), g = c2.createGain();
+        o.type = 'sine'; o.frequency.setValueAtTime(f, now); o.frequency.exponentialRampToValueAtTime(f * 1.9, now + 0.05);
+        g.gain.setValueAtTime(0.0001, now); g.gain.linearRampToValueAtTime((0.012 + env.tunnel * 0.02) * out, now + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.16 + env.tunnel * 0.3);
+        o.connect(g); g.connect(ambBus); o.start(now); o.stop(now + 0.5);
+      }
+      if (k > 0.05 && env.rain > 0.2 && now > tinkNext) {
+        tinkNext = now + 0.08 + Math.random() * 0.5;
+        tone('triangle', 2600 + Math.random() * 1800, now, 0.05, 0.004 * k * out, ambBus, 0.002);
+      }
+      if (k > 0.05 && now > slapNext) {
+        slapNext = now + 1.1 + Math.random() * 2.8;
+        const c2 = A.ctx, src = c2.createBufferSource(), f = c2.createBiquadFilter(), g = c2.createGain();
+        src.buffer = A.noiseBuf; f.type = 'lowpass'; f.frequency.value = 260 + Math.random() * 260; f.Q.value = 1.4;
+        g.gain.setValueAtTime(0.0001, now); g.gain.linearRampToValueAtTime(0.05 * k * out, now + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+        src.connect(f); f.connect(g); g.connect(ambBus); src.start(now, Math.random()); src.stop(now + 0.4);
+      }
+    }
     // ---- the calm pad of the last scene ----
     glide(calmBus.gain, want.calm * 0.05 * quiet, 2.5);
     // a siren far away, now and then (never while a real one is close: that is sound.js)

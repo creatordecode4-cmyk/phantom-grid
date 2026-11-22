@@ -32,10 +32,17 @@
 //
 // BUSTED: a Guard car stops next to the stopped player for a few seconds. The
 // story then sends the player back to the last checkpoint with a small fine.
+//
+// ON THE WATER (Chapter 3, The Sunk): where the player is in the canals the
+// Guard comes in BOATS (at most 3) that follow the canal map, and drones (at
+// most 2). A loud boat motor is HEARD; the QUIET motor is not. The story can
+// put SENTRIES up: drones that fly a fixed path and look forward in a cone
+// (shown on the minimap). With "stealth" on, a cone that touches the player
+// fills a meter first - only when it is full has the Guard spotted him.
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
-import { stepSimpleCar } from '../vehicles/physics.js';
+import { stepSimpleCar, stepBoat } from '../vehicles/physics.js';
 import { CAR_TYPES } from '../vehicles/carModels.js';
 
 const HIDE_SECONDS = 20;              // hidden this long = one star less
@@ -43,6 +50,8 @@ const CARS = [0, 1, 2, 3, 4, 4];      // Guard cars at each star level (somebody
 const DRONES = [0, 0, 1, 1, 2, 2];    // drones at each star level
 const CARS_FREE = [0, 0, 1, 2, 3, 4]; // free roam (a stranger who bumped a car): one star sends nobody yet
 const DRONES_FREE = [0, 0, 0, 1, 1, 2];
+const BOATS = [0, 1, 2, 2, 3, 3];     // Guard boats at each star level (on the canals of The Sunk)
+const HEAR = 24;                      // meters: how far a loud boat motor is heard
 export const FINE = 250;              // credits the Guard takes when it catches the player
 const LOST_AFTER = 2.6;               // seconds without being seen before the Guard starts to search
 const DRONE_ALT = 24;                 // how high the drones fly (meters)
@@ -53,6 +62,7 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
   const kinds = ['police_coupe', 'tech_patrol_car'].filter((k) => CAR_TYPES[k]);
   const fallback = kinds.length ? kinds : ['sedan'];   // without the model files: a plain dark sedan
   const B = layout.bounds, H = layout.highway;
+  const SK = city.sunk || null;      // The Sunk (Chapter 3): canals, the canal map, decks
 
   // ------------------------------------------------------------------ state
   let level = 0;                      // 0..5 (stars = level rounded up)
@@ -64,9 +74,13 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
   let seen = false, lostT = 0, searchT = 0, hiddenT = 0, hidden = false, bustT = 0, gateCool = 0, spawnT = 0, droneSpawnT = 0, sightT = 0, time = 0;
   let message = '', onBusted = null, onGate = null, light = 0, droneNear = 0, gateHit = null, nightNow = 0;
   let graceT = 0;                       // just after an arrest: bumps with the leaving Guard cars do not count
+  let heard = false, sightClose = 0, sightHeard = false;
   const lastKnown = { x: 0, z: 0 };
   let searchR = 20, searchBase = 22;            // the radius of the searched area (it grows while they search)
-  const caps = { cars: 4, drones: 2 };
+  const caps = { cars: 4, drones: 2, boats: 3 };
+  let water = false;                  // the player is in The Sunk: the Guard comes by boat
+  let stealth = false, suspicion = 0, spotted = false, hearOn = true;
+  const sentries = [];                // drones on a fixed path that look forward (the story puts them up)
   let gatesOn = true, roadblocksOn = true, patrol = null, startStars = 2, freeRoam = true, ram = true, areaT = 0;
   const units = [];                   // the Guard cars: { v, mode, goal, wait, route, t, check, lastX, lastZ, back, sees }
   const drones = [];                  // { o, x, y, z, vx, vz, goal, sees, heading, leaving }
@@ -254,6 +268,123 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     units.splice(i, 1);
   }
 
+  // ------------------------------------------------------------------ Guard boats (The Sunk)
+  // a place on the canals near (x, z), r meters around
+  const waterPoint = (x, z, r) => (SK ? SK.waterPoint(x, z, r) : { x, z });
+  function spawnBoat(near, minD = 70, maxD = 150) {
+    if (!SK) return null;
+    for (let k = 0; k < 12; k++) {
+      const a = Math.random() * Math.PI * 2, d = minD + Math.random() * (maxD - minD);
+      const p = waterPoint(near.x + Math.sin(a) * d, near.z + Math.cos(a) * d, 10);
+      if (Math.hypot(p.x - target.x, p.z - target.z) < 45 || !SK.inZone(p.x, p.z, 30)) continue;
+      const v = vehicles.spawn('patrol_boat', p.x, p.z, Math.atan2(target.x - p.x, target.z - p.z), null, { npc: true, keep: true, noDetail: true, tint: [0.42, 0.46, 0.55] });
+      if (!v) return null;
+      const u = { v, kind: 'boat', mode: 'search', goal: { x: near.x, z: near.z }, wait: 0, route: null, t: 0, check: 1.5, lastX: p.x, lastZ: p.z, back: 0, sees: false, gone: 0 };
+      v.guard = u;
+      v.ai = (boat, dt) => driveBoat(u, boat, dt);
+      units.push(u);
+      return u;
+    }
+    return null;
+  }
+  const _in = { steer: 0, gas: 0, brake: 0, handbrake: false };
+  function driveBoat(u, v, dt) {
+    const chase = u.mode === 'chase';
+    const goal = chase ? target : u.goal;
+    const dist = Math.hypot(goal.x - v.x, goal.z - v.z);
+    u.t -= dt;
+    if (u.t <= 0) { u.t = 0.7; u.route = dist > 14 && SK ? SK.route(v.x, v.z, goal.x, goal.z) : null; }
+    const aim = u.route && u.route.length > 1 ? gps.pointAhead(u.route, 13) || goal : goal;
+    const top = v.type.topSpeed / 3.6;
+    let want;
+    if (chase) {
+      const st = Math.ceil(level - 0.001);
+      want = dist < 9 ? Math.min(target.speed + (st >= 3 && ram ? 3 : 0), 6) : Math.min(top * (st >= 5 ? 0.88 : 0.78), Math.max(9, target.speed + 6));
+    } else if (u.mode === 'leave') want = 10;
+    else {
+      want = u.mode === 'patrol' ? 5.5 : 9;
+      if (dist < 8) { want = 0; u.wait -= dt; if (u.wait <= 0) { u.wait = 1.5 + Math.random() * 3; u.goal = u.mode === 'patrol' && patrol ? waterPoint(patrol.x, patrol.z, patrol.r) : waterPoint(lastKnown.x, lastKnown.z, searchR); } }
+    }
+    // steer toward the point ahead on the canal line; slow down for a sharp turn
+    const d = angleDiff(v.heading, Math.atan2(aim.x - v.x, aim.z - v.z));
+    if (Math.abs(d) > 0.7) want = Math.min(want, 5);
+    const fwd = v.forward || 0;
+    _in.steer = clamp(-d * 2.4, -1, 1);
+    _in.gas = fwd < want ? clamp((want - fwd) / 3, 0.15, 1) : 0;
+    _in.brake = fwd > want + 1.2 ? clamp((fwd - want) / 4, 0, 1) : 0;
+    if (u.back > 0) { u.back -= dt; _in.gas = 0; _in.brake = 1; _in.steer = -_in.steer; }
+    stepBoat(v, _in, dt, vehicles.seaWorld);
+    v.braking = _in.brake > 0;
+    // stuck at a wall: back off for a moment
+    u.check -= dt;
+    if (u.check <= 0) { u.check = 1.5; if (Math.hypot(v.x - u.lastX, v.z - u.lastZ) < 0.8 && dist > 10 && want > 2) u.back = 1.1; u.lastX = v.x; u.lastZ = v.z; }
+  }
+
+  // ------------------------------------------------------------------ sentries (fixed paths, a cone of sight)
+  // spec: { path: [[x, z], ...] (a loop), y: height, speed (m/s), range (m), fov (half the cone, radians), sweep (radians), stop: seconds at each point }
+  function addSentry(spec) {
+    const o = props ? props.make('policeDrone') : new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({ color: 0x222222 }));
+    const U = o.userData;
+    if (U.beam) U.beam.visible = false;
+    if (U.spot) U.spot.visible = false;
+    const range = spec.range || 22, fov = spec.fov || 0.55;
+    // its searchlight looks forward and down: a soft cone and a pool of light where it meets the ground
+    const coneGeo = new THREE.ConeGeometry(Math.tan(fov) * range * 0.9, range, 20, 1, true);
+    coneGeo.translate(0, -range / 2, 0);
+    const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0xcfe2ff, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    cone.rotation.x = -Math.PI / 2 - 0.5;      // tip at the drone, opening forward and a little down
+    cone.renderOrder = 18;
+    o.add(cone);
+    const spotMesh = U.spot ? U.spot.clone() : null;
+    if (spotMesh) { spotMesh.visible = true; spotMesh.material = U.spot.material.clone(); scene.add(spotMesh); }
+    const p0 = spec.path[0];
+    const sn = { o, cone, spot: spotMesh, path: spec.path, i: 0, x: p0[0], z: p0[1], y: spec.y, speed: spec.speed || 3, range, fov, sweep: spec.sweep ?? 0.45, stop: spec.stop || 0, wait: 0, heading: 0, look: 0, sees: false, ph: Math.random() * 6 };
+    if (spec.path.length > 1) sn.heading = Math.atan2(spec.path[1][0] - p0[0], spec.path[1][1] - p0[1]);
+    else sn.heading = spec.face || 0;
+    o.position.set(sn.x, sn.y, sn.z);
+    scene.add(o);
+    sentries.push(sn);
+    return sn;
+  }
+  function clearSentries() {
+    for (const sn of sentries) {
+      scene.remove(sn.o); if (sn.spot) scene.remove(sn.spot);
+      sn.o.traverse((m) => { if (m.isMesh) { m.geometry.dispose(); if (m.material.dispose) m.material.dispose(); } });
+    }
+    sentries.length = 0;
+  }
+  function flySentry(sn, dt) {
+    if (sn.path.length > 1) {
+      const next = sn.path[(sn.i + 1) % sn.path.length];
+      const dx = next[0] - sn.x, dz = next[1] - sn.z, d = Math.hypot(dx, dz);
+      if (sn.wait > 0) sn.wait -= dt;
+      else if (d < 0.3) { sn.i = (sn.i + 1) % sn.path.length; sn.wait = sn.stop; }
+      else {
+        const step = Math.min(d, sn.speed * dt);
+        sn.x += (dx / d) * step; sn.z += (dz / d) * step;
+        sn.heading += angleDiff(sn.heading, Math.atan2(dx, dz)) * Math.min(1, dt * 2.5);
+      }
+    }
+    // it looks around a little while it flies
+    sn.look = sn.heading + Math.sin(time * 0.7 + sn.ph) * sn.sweep;
+    sn.o.position.set(sn.x, sn.y + Math.sin(time * 1.7 + sn.ph) * 0.2, sn.z);
+    sn.o.rotation.set(0, sn.look, 0);
+    sn.cone.material.opacity = (sn.sees ? 0.1 : 0.035) + 0.04 * nightNow;
+    sn.cone.material.color.setHex(sn.sees ? 0xffb080 : 0xcfe2ff);
+    if (sn.spot) {
+      const gx = sn.x + Math.sin(sn.look) * sn.range * 0.55, gz = sn.z + Math.cos(sn.look) * sn.range * 0.55;
+      sn.spot.position.set(gx, city.groundHeight(gx, gz) + 0.06, gz);
+      sn.spot.material.opacity = 0.06 + 0.3 * nightNow;
+    }
+    if (sn.o.userData.anim) sn.o.userData.anim(time);
+  }
+  function sentrySees(sn, px, pz, ph, roofed) {
+    if (roofed) return false;
+    const dx = px - sn.x, dz = pz - sn.z, d = Math.hypot(dx, dz);
+    if (d > sn.range * look || (d > 3 && Math.abs(angleDiff(sn.look, Math.atan2(dx, dz))) > sn.fov)) return false;
+    return clearLine(sn.x, sn.z, sn.y, px, pz, ph);
+  }
+
   // ------------------------------------------------------------------ drones
   function spawnDrone() {
     const a = Math.random() * Math.PI * 2, d = 130;
@@ -275,7 +406,15 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     const over = Math.max(roofAt(dr.x, dr.z), roofAt(dr.x + dr.vx * 2.5, dr.z + dr.vz * 2.5)) + 9;
     dr.y += ((dr.leaving ? Math.max(40, over) : Math.min(75, Math.max(DRONE_ALT, over))) - dr.y) * Math.min(1, dt * 1.2);
     if (Math.hypot(dr.vx, dr.vz) > 0.5) dr.heading = Math.atan2(dr.vx, dr.vz);
-    if (!dr.leaving && mode !== 'chase' && d < 4) { dr.wait -= dt; if (dr.wait <= 0) { dr.wait = 2 + Math.random() * 3; dr.goal = mode === 'patrol' && patrol ? searchPoint(patrol.x, patrol.z, patrol.r) : searchPoint(lastKnown.x, lastKnown.z, searchR * 0.8); } }
+    if (!dr.leaving && mode !== 'chase' && d < 4) {
+      dr.wait -= dt;
+      if (dr.wait <= 0) {
+        dr.wait = 2 + Math.random() * 3;
+        const c = mode === 'patrol' && patrol ? patrol : { x: lastKnown.x, z: lastKnown.z, r: searchR * 0.8 };
+        // (over The Sunk there are no roads to look along: any point in the area)
+        dr.goal = water ? { x: c.x + (Math.random() - 0.5) * c.r * 1.6, z: c.z + (Math.random() - 0.5) * c.r * 1.6 } : searchPoint(c.x, c.z, c.r);
+      }
+    }
     dr.o.position.set(dr.x, dr.y + Math.sin(time * 1.7 + dr.x) * 0.25, dr.z);
     dr.o.rotation.set(0, dr.heading, 0);
     // the searchlight: easy to see at night, faint by day; its pool of light lies on the street below
@@ -396,25 +535,50 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     if (sightT <= 0) {
       sightT = 0.15;
       seen = false;
-      const ph = who.inCar ? 1.25 : 1.55;
+      const ph = (who.y || 0) + (who.inCar ? 1.25 : 1.55);
       const ignore = disguised && !blown && who.inCar && stars() === 0;   // a van with a new color and plate: nobody looks twice
+      const sneaking = stealth && stars() === 0;                           // (stealth: what they see fills the meter first)
       for (const u of units) {
         if (u.mode === 'leave') { u.sees = false; continue; }
         const close = Math.hypot(u.v.x - who.x, u.v.z - who.z) < 9;
         // (inside a house nobody on the street can see the player)
         u.sees = !who.inside && carSees(u, who.x, who.z, ph) && !(covered && !close);
-        if (u.sees && !ignore) seenBy('car', who.x, who.z);
+        if (u.sees && !ignore && !sneaking) seenBy('car', who.x, who.z);
       }
       for (const dr of drones) {
         dr.sees = !dr.leaving && !who.inside && droneSees(dr, who.x, who.z, ph, roofed);
-        if (dr.sees && !ignore) seenBy('drone', who.x, who.z);
+        if (dr.sees && !ignore && !sneaking) seenBy('drone', who.x, who.z);
       }
+      // the sentries of the story, and what the Guard hears: a loud boat motor close by
+      let close = 0;
+      for (const sn of sentries) {
+        sn.sees = !who.inside && sentrySees(sn, who.x, who.z, ph, roofed);
+        if (sn.sees) { close = Math.max(close, 1 - Math.hypot(sn.x - who.x, sn.z - who.z) / sn.range); if (!stealth || stars() > 0) seenBy('sentry', who.x, who.z); }
+      }
+      heard = false;
+      if (hearOn && who.loud && !who.inside) {
+        for (const u of units) if (u.mode !== 'leave' && Math.hypot(u.v.x - who.x, u.v.z - who.z) < HEAR) heard = true;
+        for (const sn of sentries) if (Math.hypot(sn.x - who.x, sn.z - who.z) < HEAR) heard = true;
+        if (heard && (!stealth || stars() > 0)) seenBy('ear', who.x, who.z);
+      }
+      // STEALTH (before anybody knows he is there): being in a cone, or heard, fills the meter; when it is full he is spotted
+      if (stealth && stars() === 0) {
+        const unitSees = units.some((u) => u.sees) || drones.some((dr) => dr.sees);
+        const anySees = close > 0 || unitSees;
+        sightClose = anySees ? Math.max(close, unitSees ? 0.5 : 0) : 0;
+        sightHeard = heard;
+      } else { sightClose = 0; sightHeard = false; }
       // a disguised van that races past a Guard car is noticed
       if (ignore && who.speed > 26 && units.some((u) => u.sees)) { blown = true; }
       // stars 0, but the face is known: a patrol that sees the player calls it in
       if (seen && stars() === 0 && known) { level = startStars; message = 'THE GUARD HAS SEEN YOU'; }
     }
     if (gates.length) checkGates(dt, who.x, who.z, who.inCar);
+    if (stealth && stars() === 0) {
+      if (sightClose > 0 || sightHeard) suspicion = Math.min(1, suspicion + dt * (sightClose > 0 ? 0.55 + 1.6 * sightClose : 0.45));
+      else suspicion = Math.max(0, suspicion - dt * 0.3);
+      if (suspicion >= 1) { suspicion = 0; spotted = true; level = Math.max(1, startStars); lastKnown.x = who.x; lastKnown.z = who.z; lostT = 0; mode = 'chase'; seen = true; message = 'SPOTTED'; }
+    } else if (stars() > 0) suspicion = 0;
 
     // ---- chase, search, hidden ----
     const s0 = stars();
@@ -422,14 +586,14 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
       if (seen) { mode = 'chase'; searchT = 0; searchR = 18; searchBase = 22; }
       else {
         lostT += dt;
-        if (mode !== 'search' && lostT > LOST_AFTER) { mode = 'search'; searchT = 0; for (const u of units) if (u.mode !== 'leave') u.goal = searchPoint(lastKnown.x, lastKnown.z, 25); }
+        if (mode !== 'search' && lostT > LOST_AFTER) { mode = 'search'; searchT = 0; for (const u of units) if (u.mode !== 'leave') u.goal = u.kind === 'boat' ? waterPoint(lastKnown.x, lastKnown.z, 25) : searchPoint(lastKnown.x, lastKnown.z, 25); }
         if (mode === 'search') { searchT += dt; searchR = Math.min(150, searchBase + searchT * 2.6); }
       }
       // hidden: parked in an alley or a garage, or covered, or in a disguised van - and nobody sees
       let nearest = 1e9;
       for (const u of units) if (u.mode !== 'leave') nearest = Math.min(nearest, Math.hypot(u.v.x - who.x, u.v.z - who.z));
       const farAway = lostT > 40 && nearest > 150;
-      hidden = !seen && mode === 'search' && ((parked && !!spot) || covered || (disguised && !blown && who.inCar) || farAway || !!who.inside);
+      hidden = !seen && mode === 'search' && ((parked && !!spot) || covered || (disguised && !blown && who.inCar) || farAway || !!who.inside || (!!spot && spot.roof && who.quiet));
       hiddenT = hidden ? hiddenT + dt : 0;
       if (hiddenT >= HIDE_SECONDS) {
         hiddenT = 0;
@@ -446,21 +610,29 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     // the player's yellow line goes around the area that is being searched (once a second)
     areaT -= dt;
     if (areaT <= 0 && gps.setAvoidArea) { areaT = 1; gps.setAvoidArea(s > 0 && mode === 'search' ? { x: lastKnown.x, z: lastKnown.z, r: searchR } : null); }
-    // ---- how many units: cars and drones ----
-    const wantCars = s > 0 ? Math.min(caps.cars, (known ? CARS : CARS_FREE)[s]) : (mode === 'patrol' ? Math.min(caps.cars, patrol.cars || 0) : 0);
+    // ---- how many units: cars (on the streets) or boats (in The Sunk), and drones ----
+    water = !!SK && (SK.inZone(who.x, who.z, 25) || (mode === 'patrol' && !!patrol && SK.inZone(patrol.x, patrol.z)));
+    const wantCars = water ? 0 : s > 0 ? Math.min(caps.cars, (known ? CARS : CARS_FREE)[s]) : (mode === 'patrol' ? Math.min(caps.cars, patrol.cars || 0) : 0);
+    const wantBoats = !water ? 0 : s > 0 ? Math.min(caps.boats, BOATS[s]) : (mode === 'patrol' ? Math.min(caps.boats, patrol.boats || 0) : 0);
     const wantDrones = s > 0 ? Math.min(caps.drones, (known ? DRONES : DRONES_FREE)[s]) : (mode === 'patrol' ? Math.min(caps.drones, patrol.drones || 0) : 0);
-    let active = 0;
-    for (const u of units) if (u.mode !== 'leave') active++;
+    let activeCars = 0, activeBoats = 0;
+    for (const u of units) if (u.mode !== 'leave') { if (u.kind === 'boat') activeBoats++; else activeCars++; }
     spawnT -= dt;
-    if (active < wantCars && spawnT <= 0) {
+    const around = s > 0 ? (mode === 'chase' ? target : lastKnown) : patrol;
+    if (activeCars < wantCars && spawnT <= 0) {
       spawnT = s >= 3 ? 2.5 : 4;
-      const near = s > 0 ? (mode === 'chase' ? target : lastKnown) : patrol;
-      const u = spawnCar(near, mode === 'patrol' ? 60 : 95, mode === 'patrol' ? Math.max(90, patrol.r) : 150);
+      const u = spawnCar(around, mode === 'patrol' ? 60 : 95, mode === 'patrol' ? Math.max(90, patrol.r) : 150);
       if (u) { u.mode = s > 0 ? mode : 'patrol'; u.goal = mode === 'patrol' ? searchPoint(patrol.x, patrol.z, patrol.r) : searchPoint(lastKnown.x, lastKnown.z, searchR); }
-    } else if (active > wantCars) {
-      // too many: the one farthest away leaves
+    } else if (activeBoats < wantBoats && spawnT <= 0) {
+      spawnT = s >= 3 ? 3 : 4.5;
+      const u = spawnBoat(around, mode === 'patrol' ? 40 : 70, mode === 'patrol' ? Math.max(70, patrol.r) : 140);
+      if (u) { u.mode = s > 0 ? mode : 'patrol'; u.goal = mode === 'patrol' ? waterPoint(patrol.x, patrol.z, patrol.r) : waterPoint(lastKnown.x, lastKnown.z, searchR); }
+    }
+    // too many of a kind: the one farthest away leaves
+    for (const [kind, act, want] of [['car', activeCars, wantCars], ['boat', activeBoats, wantBoats]]) {
+      if (act <= want) continue;
       let far = null;
-      for (const u of units) if (u.mode !== 'leave' && (!far || Math.hypot(u.v.x - who.x, u.v.z - who.z) > Math.hypot(far.v.x - who.x, far.v.z - who.z))) far = u;
+      for (const u of units) if (u.mode !== 'leave' && (u.kind || 'car') === kind && (!far || Math.hypot(u.v.x - who.x, u.v.z - who.z) > Math.hypot(far.v.x - who.x, far.v.z - who.z))) far = u;
       if (far) { far.mode = 'leave'; far.v.siren = false; far.gone = 0; }
     }
     // modes and lights of the cars that stay
@@ -468,8 +640,9 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
       const u = units[i];
       if (u.mode === 'leave') {
         u.gone += dt;
-        if (u.goal && Math.hypot(u.goal.x - u.v.x, u.goal.z - u.v.z) < 10) u.goal = searchPoint(u.v.x, u.v.z, 200);
-        if (!u.goal || u.goal === target) u.goal = searchPoint(u.v.x, u.v.z, 200);
+        const away = (x, z) => (u.kind === 'boat' ? waterPoint(x, z, 200) : searchPoint(x, z, 200));
+        if (u.goal && Math.hypot(u.goal.x - u.v.x, u.goal.z - u.v.z) < 10) u.goal = away(u.v.x, u.v.z);
+        if (!u.goal || u.goal === target) u.goal = away(u.v.x, u.v.z);
         if ((u.gone > 6 && Math.hypot(u.v.x - who.x, u.v.z - who.z) > 110) || u.gone > 45 || !vehicles.live.includes(u.v)) removeUnit(i);
         continue;
       }
@@ -483,6 +656,7 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     if (activeD < wantDrones && droneSpawnT <= 0) { droneSpawnT = 6; spawnDrone(); }
     else if (activeD > wantDrones) { const dr = drones.find((q) => !q.leaving); if (dr) dr.leaving = true; }
     droneNear = 0;
+    for (const sn of sentries) { flySentry(sn, dt); droneNear = Math.max(droneNear, clamp(1 - Math.hypot(sn.x - who.x, sn.z - who.z) / 70, 0, 1) * 0.7); }
     for (let i = drones.length - 1; i >= 0; i--) {
       const dr = drones[i];
       flyDrone(dr, dt);
@@ -527,9 +701,10 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     view.units.length = 0;
     for (const u of units) {
       if (u.mode === 'leave') continue;
-      view.units.push({ x: u.v.x, z: u.v.z, heading: u.v.heading, range: viewRange(u), fov: FOV, kind: 'car', alert: u.mode === 'chase' || u.sees });
+      view.units.push({ x: u.v.x, z: u.v.z, heading: u.v.heading, range: viewRange(u), fov: FOV, kind: u.kind || 'car', alert: u.mode === 'chase' || u.sees });
     }
     for (const dr of drones) if (!dr.leaving) view.units.push({ x: dr.x, z: dr.z, heading: dr.heading, range: (mode === 'chase' ? 34 : 27) * look, fov: Math.PI, kind: 'drone', alert: dr.sees });
+    for (const sn of sentries) view.units.push({ x: sn.x, z: sn.z, heading: sn.look, range: sn.range * look, fov: sn.fov, kind: 'drone', alert: sn.sees });
     view.search = mode === 'search' ? { x: lastKnown.x, z: lastKnown.z, r: searchR } : null;
     view.block = block ? { x: block.x, z: block.z } : null;
     return view;
@@ -557,6 +732,15 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     get roadblock() { return block; },
     get chasers() { return units.map((u) => u.v); },
     get scripted() { return !!scripted; },
+    // ---- the water and stealth (Chapter 3) ----
+    get water() { return water; },
+    get stealth() { return stealth && stars() === 0; },
+    get suspicion() { return suspicion; },
+    get spotted() { return spotted; },
+    get heard() { return heard; },
+    get sentries() { return sentries; },
+    get exposed() { return sightClose > 0 || sightHeard; },
+    addSentry, clearSentries,
     // ---- COVER: pull the parked car into the shadow of the alley / the garage ----
     cover() { if (!coverAvailable) return false; covered = true; coverAvailable = false; message = 'COVERED - STAY STILL'; return true; },
     // ---- the story ----
@@ -580,11 +764,16 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
       if ('startStars' in o) startStars = o.startStars;
       if ('freeRoam' in o) freeRoam = !!o.freeRoam;
       if ('ram' in o) ram = !!o.ram;
+      if ('boats' in o) caps.boats = clamp(o.boats, 0, 3);
+      if ('stealth' in o) { stealth = !!o.stealth; suspicion = 0; spotted = false; }
+      if ('hear' in o) hearOn = !!o.hear;
+      if ('sentries' in o) { clearSentries(); for (const sp of o.sentries || []) addSentry(sp); }
       if (!(level > 0)) mode = known && patrol ? 'patrol' : 'idle';
     },
     // back to free roam: nobody knows anybody, all units go home
     reset() {
-      known = false; disguised = false; blown = false; patrol = null; caps.cars = 4; caps.drones = 2; gatesOn = true; roadblocksOn = true; startStars = 2; freeRoam = true; ram = true;
+      known = false; disguised = false; blown = false; patrol = null; caps.cars = 4; caps.drones = 2; caps.boats = 3; gatesOn = true; roadblocksOn = true; startStars = 2; freeRoam = true; ram = true;
+      stealth = false; suspicion = 0; spotted = false; hearOn = true; clearSentries();
       if (gps.setAvoidArea) gps.setAvoidArea(null);
       clearAll();
       for (let i = units.length - 1; i >= 0; i--) removeUnit(i);

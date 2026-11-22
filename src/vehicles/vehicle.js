@@ -30,6 +30,7 @@ import { clamp, damp } from '../utils/math.js';
 const KMH = 3.6;
 const STEP = 1 / 60;                   // the physics always runs in steps of this length
 const ENTER_RANGE = 3.3;               // how close the player has to stand to get in
+const BOAT_SEAT = [0, 1.05, -2.1];     // where a passenger sits in the patrol boat (on its deck, at the back)
 
 // Soft light on the road in front of the car (white = light, see-through elsewhere).
 export function makeBeamTexture() {
@@ -322,7 +323,14 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   registerCar('street_bike', BIKE_INFO, BIKE_SPEC);
   { const bi = carInfo('street_bike'); bi.noseY = 0.95; bi.tailY = 0.98; bi.lampW = 0.025; }
   const SHORE = L.bounds.minZ - 1.6;   // the boat cannot come closer to the beach than this
-  const seaWorld = { waterLevel: L.ocean.level, shoreZ: SHORE, minX: B.minX - 250, maxX: B.maxX + 250, minZ: B.minZ - 1100 };
+  // the sea, and the canals of The Sunk (Chapter 3): there the boat may pass the shore line, and the
+  // walls, pontoons and other boats stop it (collideBoat below)
+  const SK = city.sunk;
+  const seaWorld = {
+    waterLevel: L.ocean.level, shoreZ: SHORE, minX: B.minX - 250, maxX: B.maxX + 250, minZ: B.minZ - 1100,
+    canal: SK ? (x, z) => SK.inZone(x, z, 10) && z < -86 : null,
+    collide: (v) => collideBoat(v),
+  };
 
   function makeVehicle(kind, x, y, z, rot, color, opts = {}) {
     const info = carInfo(kind), type = CAR_TYPES[kind];
@@ -373,13 +381,27 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     };
     if (role === 'boat') initBoatState(v); else if (role === 'drone') initDroneState(v); else initCarState(v);
     live.push(v);
-    if (role === 'boat') { const m = new THREE.Mesh(carLib.boat, mats.carPaint); m.castShadow = true; tilt.add(m); }
+    if (role === 'boat') { const m = new THREE.Mesh(carLib.boat, opts.tint ? boatPaint(opts.tint) : mats.carPaint); m.castShadow = true; tilt.add(m); }
     else if (role === 'drone') { const m = new THREE.Mesh(droneGeo, carLib && carLib.drone ? mats.carPaint : mats.prop); m.castShadow = true; m.position.y = 0.16; tilt.add(m); }
     else if (info.bike) partsBike(v);
     else if (info.model && carLib && carLib.geo[kind]) partsFromModel(v);
     else if (opts.simple) partsSimple(v);
     else partsFromCode(v);
     return v;
+  }
+
+  // a boat in other colors (the Guard's dark boats, Mace's rusty old one): the same shader, one color over the whole model
+  const boatPaints = new Map();
+  function boatPaint(c) {
+    const key = c.join(',');
+    if (!boatPaints.has(key)) {
+      const m = mats.carPaint.clone();
+      m.color.setRGB(c[0], c[1], c[2]);
+      m.onBeforeCompile = mats.carPaint.onBeforeCompile;
+      m.customProgramCacheKey = mats.carPaint.customProgramCacheKey;
+      boatPaints.set(key, m);
+    }
+    return boatPaints.get(key);
   }
 
   function removeVehicle(v) {
@@ -470,7 +492,12 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   }
   // where the driver stands next to the vehicle (left side first)
   function doorSpot(v) {
-    if (v.role === 'boat') return { x: clamp(v.x, B.minX + 1, B.maxX - 1), z: B.minZ + 0.6 }; // step onto the beach
+    if (v.role === 'boat') {
+      // a dock of The Sunk next to the boat, else the beach
+      const d = SK && SK.dockNear(v.x, v.z, 6);
+      if (d) return { x: d.x, z: d.z };
+      return { x: clamp(v.x, B.minX + 1, B.maxX - 1), z: B.minZ + 0.6 };     // step onto the beach
+    }
     const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
     const lx = fz, lz = -fx; // the car's left
     const side = v.info.halfWidth + 0.75;
@@ -516,7 +543,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     if (state !== 'driving') return;
     const v = active;
     if (v.lockExit) { if (typeof v.lockExit === 'string') message = v.lockExit; return; }
-    if (v.role === 'boat' && v.z < SHORE - 9) { message = 'BRING THE BOAT BACK TO THE BEACH TO GET OUT'; return; }
+    if (v.role === 'boat' && v.z < SHORE - 9 && !(SK && SK.dockNear(v.x, v.z, 6))) { message = SK && SK.inZone(v.x, v.z, 20) ? 'STEER THE BOAT TO A DOCK TO GET OUT' : 'BRING THE BOAT BACK TO THE BEACH TO GET OUT'; return; }
+    if (v.role === 'boat' && SK && SK.inZone(v.x, v.z) && !SK.dockNear(v.x, v.z, 6)) { message = 'STEER THE BOAT TO A DOCK TO GET OUT'; return; }
     if (v.role === 'drone' && v.alt > 1.5) { message = 'LAND THE DRONE FIRST (DOWN BUTTON)'; return; }
     exitWanted = true;
   }
@@ -596,6 +624,51 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     if (impact < 0.05) return null;
     hitOut.impact = impact; hitOut.lever = lever;
     return hitOut;
+  }
+  // A BOAT in the canals: walls, pontoons and other boats push it back gently (it bumps, it does not crash).
+  // Returns how hard it hit (m/s into the wall).
+  function collideBoat(v) {
+    let impact = 0;
+    const fx = Math.sin(v.heading), fz = Math.cos(v.heading), R = Math.min(v.radius, 1.45);
+    for (const off of v.circles) {
+      const cx = v.x + fx * off, cz = v.z + fz * off;
+      let px = 0, pz = 0;
+      for (const b of city.colliders.near(cx, cz).boxes) {
+        if (b.h < 0.3 && !b.boatOnly) continue;
+        const qx = clamp(cx, b.minX, b.maxX), qz = clamp(cz, b.minZ, b.maxZ);
+        const dx = cx - qx, dz = cz - qz, d2 = dx * dx + dz * dz;
+        if (d2 >= R * R) continue;
+        if (d2 > 1e-8) { const d = Math.sqrt(d2); px += (dx / d) * (R - d); pz += (dz / d) * (R - d); }
+        else { const l = cx - b.minX, r = b.maxX - cx, n = cz - b.minZ, f = b.maxZ - cz, m = Math.min(l, r, n, f); if (m === l) px -= l + R; else if (m === r) px += r + R; else if (m === n) pz -= n + R; else pz += f + R; }
+      }
+      // other boats (the Guard, the boats of the story)
+      for (const q of live) {
+        if (q === v || q.role !== 'boat' || q.away) continue;
+        if (Math.abs(q.x - v.x) > 14 || Math.abs(q.z - v.z) > 14) continue;
+        const qfx = Math.sin(q.heading), qfz = Math.cos(q.heading), qR = Math.min(q.radius, 1.45);
+        for (const qo of q.circles) {
+          const dx = cx + px - (q.x + qfx * qo), dz = cz + pz - (q.z + qfz * qo), min = R + qR, d2 = dx * dx + dz * dz;
+          if (d2 >= min * min) continue;
+          const d = Math.sqrt(d2) || 0.01, push = (min - d) * 0.5;
+          px += (dx / d) * push; pz += (dz / d) * push;
+          q.x -= (dx / d) * push; q.z -= (dz / d) * push;
+          // the hit pushes the other boat a little
+          const vn = (v.vx - q.vx) * (dx / d) + (v.vz - q.vz) * (dz / d);
+          if (vn < 0) { q.vx += (dx / d) * vn * 0.45; q.vz += (dz / d) * vn * 0.45; if (-vn > 2) events.push({ type: 'hitBoat', strength: -vn, police: !!q.guard }); }
+        }
+      }
+      const len = Math.hypot(px, pz);
+      if (len < 1e-5) continue;
+      v.x += px; v.z += pz;
+      const nx = px / len, nz = pz / len, vn = v.vx * nx + v.vz * nz;
+      if (vn < 0) {
+        // a soft bump: most of the speed into the wall is lost, a little comes back; it slides along
+        v.vx -= 1.25 * vn * nx; v.vz -= 1.25 * vn * nz;
+        v.vx *= 0.97; v.vz *= 0.97;
+        if (-vn > impact) { impact = -vn; v.hitX = cx - nx * R; v.hitZ = cz - nz * R; }
+      }
+    }
+    return impact;
   }
   // the drone only hits buildings it is lower than
   function collideAir(v) {
@@ -715,7 +788,14 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     if (v.driver) v.driver.visible = !riggedDriver && v === active && camMode !== 'cockpit' && (state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3));
     if (!v.isCar) {
       // boat and drone: two small position lights at night
-      if ((driven || v.npc) && night > 0.05) { effects.lamp(v.x + Math.sin(v.heading) * v.info.frontZ, v.y + v.info.roof * 0.6, v.z + Math.cos(v.heading) * v.info.frontZ, 1.4, 1.4, 1.2, 0.5); effects.lamp(v.x - Math.sin(v.heading) * v.info.frontZ, v.y + v.info.roof * 0.6, v.z - Math.cos(v.heading) * v.info.frontZ, 1.6, 0.1, 0.08, 0.4); }
+      if ((driven || v.npc) && night > 0.05 && v.lights !== 'off') { effects.lamp(v.x + Math.sin(v.heading) * v.info.frontZ, v.y + v.info.roof * 0.6, v.z + Math.cos(v.heading) * v.info.frontZ, 1.4, 1.4, 1.2, 0.5); effects.lamp(v.x - Math.sin(v.heading) * v.info.frontZ, v.y + v.info.roof * 0.6, v.z - Math.cos(v.heading) * v.info.frontZ, 1.6, 0.1, 0.08, 0.4); }
+      // a Guard boat: red and blue lights that flash in turn on the cabin roof
+      if (v.siren && v.role === 'boat') {
+        const lx = Math.cos(v.heading), lz = -Math.sin(v.heading), y = v.y + v.info.roof + 0.1, phase = Math.floor(time * 7) % 4;
+        if (phase < 2) effects.lamp(v.x + lx * 0.5, y, v.z + lz * 0.5, 3.4, 0.15, 0.1, 0.85); else effects.lamp(v.x - lx * 0.5, y, v.z - lz * 0.5, 0.15, 0.3, 3.4, 0.85);
+        const pp = curPlayer ? curPlayer.position : v;
+        if (!flasher.on || Math.hypot(flasher.x - pp.x, flasher.z - pp.z) > Math.hypot(v.x - pp.x, v.z - pp.z)) { flasher.on = true; flasher.x = v.x; flasher.y = y + 0.6; flasher.z = v.z; flasher.red = phase < 2; }
+      }
       return;
     }
     // ---- lamps: light dots at the ends of the car's box (see effects.js) ----
@@ -759,7 +839,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     const top = v.type.topSpeed / KMH;
     impactCool -= dt; bumpCool -= dt;
     if (v.role === 'boat') {
-      sound.setEngine(true, clamp(0.15 + Math.abs(v.forward) / top * 0.6 + fx.throttle * 0.25, 0, 1), fx.throttle);
+      // (the QUIET motor: a low murmur)
+      sound.setEngine(true, clamp(0.15 + Math.abs(v.forward) / top * 0.6 + fx.throttle * 0.25, 0, 1) * (v.quiet ? 0.6 : 1), fx.throttle * (v.quiet ? 0.3 : 1), v.quiet ? 0.32 : 1);
       sound.setWind(speed / 40); sound.setRoad(fx.wake * 0.8, 'wet');
       // wake: foam at the stern and two white trails on the water
       if (fx.wake > 0.08) {
@@ -769,7 +850,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         if (v.wheelPrev) for (let i = 0; i < 2; i++) effects.addStrip(v.wheelPrev[i][0], v.wheelPrev[i][1], p[i][0], p[i][1], seaWorld.waterLevel + 0.07, 0.35 + fx.wake * 0.5, [0.9, 0.95, 0.96], 0.34 * fx.wake, 4);
         v.wheelPrev = p;
       } else v.wheelPrev = null;
-      if (fx.impact > 1 && impactCool < 0) { impactCool = 0.4; sound.crash('scrape', fx.impact / 8); shake = Math.min(1, shake + fx.impact * 0.04); haptic = 60; }
+      if (fx.impact > 1 && impactCool < 0) { impactCool = 0.4; sound.thump(Math.min(1, fx.impact / 6)); if (fx.impact > 3) sound.crash('scrape', fx.impact / 10); shake = Math.min(1, shake + fx.impact * 0.03); haptic = 40; }
       return;
     }
     if (v.role === 'drone') {
@@ -836,7 +917,9 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   let riggedDriver = false;   // true: the real player character sits in the car (main.js puts it there), the simple driver stays hidden
   let forceDriver = null;     // film scenes: true = always show the driver's body, false = never (the camera is in their eyes), null = as usual
   // input: what the player does, player: the player object, night: 0..1 (lamps on), time: seconds
+  let curPlayer = null;
   function update(dt, input, player, night, time) {
+    curPlayer = player;
     shake = Math.max(0, shake - dt * 2.6);
     flasher.on = false;
     const drive = input.drive;
@@ -879,7 +962,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
           let inp = drive;
           // the EXIT button first stops the vehicle, then the door opens
           if (exitWanted) inp = { steer: drive.steer, gas: v.forward < -0.5 ? 1 : 0, brake: v.forward > 0.5 ? 1 : 0, handbrake: Math.abs(v.forward) <= 4 || drive.handbrake, up: false, down: true };   // (rolling backwards: the gas pedal is the brake)
-          if (v.role === 'boat') fxLast = stepBoat(v, inp, STEP, seaWorld);
+          if (v.role === 'boat') { v.quiet = !!drive.quiet && !exitWanted; fxLast = stepBoat(v, inp, STEP, seaWorld); }
           else if (v.role === 'drone') fxLast = stepDrone(v, inp, STEP, world);
           else { fxLast = stepCar(v, inp, STEP, world); v.spin += (v.forward * STEP) / v.info.wheelR; }
           pkImpact = Math.max(pkImpact, fxLast.impact || 0); pkBump = Math.max(pkBump, fxLast.bump || 0); pkScrape = Math.max(pkScrape, fxLast.scrape || 0); pkShift = pkShift || !!fxLast.shifted;
@@ -975,12 +1058,14 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
 
   // (a plain object with "get" functions: the values are read fresh every time)
   return {
-    live, nearest, tryEnter, requestExit, update, prefetch, spawn, spawnInFront, buildGarage, repair, removeVehicle, world, events, flasher,
+    live, nearest, tryEnter, requestExit, update, prefetch, spawn, spawnInFront, buildGarage, repair, removeVehicle, world, events, flasher, seaWorld,
     enterNow, leaveNow, showDamage, clearParked, repaint,
     // story: only vehicles this function says yes to can be entered (null = all)
     set enterFilter(fn) { enterFilter = fn; },
     // where the passenger sits (null until the inside of the car exists)
     passengerSeat(v) {
+      // a boat: somebody sits on the deck at the back (Lena in Chapter 3)
+      if (v && v.role === 'boat') return { node: v.tilt, x: -0.55, y: BOAT_SEAT[1], z: BOAT_SEAT[2], scale: 1, boat: true };
       if (!v || !v.isCar || !v.driver) return null;
       const s = seatOf(v.info);
       return { node: v.tilt, x: -s.x, y: s.y + 0.02, z: s.z - 0.05, scale: clamp((v.info.roof - 0.1 - (s.y + 0.12)) / 0.93, 0.62, 1) };

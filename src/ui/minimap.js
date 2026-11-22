@@ -13,13 +13,16 @@
 // walkable city with the district names; a tap sets a waypoint.
 // ---------------------------------------------------------------------------
 
+import { SUNK, WATER, BUILDINGS, SPECIAL, DECKS, SPANS, PLACES } from '../city/sunkPlan.js';
+
 const SCALE = 0.5;   // pixels per meter in the hidden picture
 const VIEW0 = 0.62;  // screen pixels per meter in the minimap (zoom)
 
 export function createMinimap(canvas, layout) {
   const L = layout;
   // area covered by the hidden picture
-  const minX = L.city.minX - 60, maxX = L.city.maxX + 60;
+  // (west: the city, or The Sunk of Chapter 3 - whichever reaches farther)
+  const minX = L.city.minX - 60, maxX = Math.max(L.city.maxX, SUNK.maxX) + 60;
   const minZ = L.beach.minZ - 60, maxZ = L.city.maxZ + 60;
   const W = Math.ceil((maxX - minX) * SCALE), H = Math.ceil((maxZ - minZ) * SCALE);
   // world -> picture. East (-x) is on the right, north (+z) is at the top.
@@ -71,11 +74,41 @@ export function createMinimap(canvas, layout) {
   g.strokeStyle = '#8d9199';
   g.lineWidth = 1;
   g.strokeRect(PX(L.highway.maxX) + 0.5, -1, L.highway.width * SCALE - 1, PY(L.highway.rampBottomZ) + 1);
-  // edge of the play area
+  // THE SUNK (Chapter 3): canals, the old buildings standing in them, pontoons, the tunnel, bridges
+  {
+    const rect = (r, inset = 0) => g.fillRect(PX(r.maxX) + inset, PY(r.maxZ) + inset, (r.maxX - r.minX) * SCALE - inset * 2, (r.maxZ - r.minZ) * SCALE - inset * 2);
+    g.fillStyle = '#1b2427';
+    rect(SUNK);
+    g.fillStyle = '#16464c';
+    for (const w of WATER) rect(w);
+    for (const b of BUILDINGS) { g.fillStyle = '#23272b'; rect(b); g.fillStyle = '#2a2f34'; rect(b, 1.2); }
+    // the story buildings a little brighter: Lena's flat, the Guard post, the pump hall
+    g.fillStyle = '#3a3330';
+    rect(SPECIAL.lena);
+    g.fillStyle = '#2e3640';
+    rect(SPECIAL.postA); rect(SPECIAL.postB);
+    g.fillStyle = '#30302c';
+    rect(SPECIAL.pump); rect(SPECIAL.terrace);
+    // pontoons and ramps
+    g.fillStyle = '#8a6f4a';
+    for (const d of DECKS) if (d.kind !== 'roof' && d.kind !== 'floor') rect(d);
+    // the drain under the pump hall (a dashed line: the tunnel)
+    const t = PLACES.tunnel;
+    g.strokeStyle = '#2d7e86'; g.lineWidth = 3; g.setLineDash([3, 2]);
+    g.beginPath(); g.moveTo(PX((t.minX + t.maxX) / 2), PY(t.minZ - 2)); g.lineTo(PX((t.minX + t.maxX) / 2), PY(t.maxZ + 2)); g.stroke();
+    g.setLineDash([]);
+    // bridges and rope walkways
+    g.strokeStyle = 'rgba(150,120,90,0.8)'; g.lineWidth = 1.2;
+    for (const [ax, az, bx, bz] of SPANS) { g.beginPath(); g.moveTo(PX(ax), PY(az)); g.lineTo(PX(bx), PY(bz)); g.stroke(); }
+  }
+  // edge of the play area (the old city, and The Sunk south-west of it)
   g.strokeStyle = 'rgba(255,255,255,0.22)';
   g.lineWidth = 1;
-  const B = L.bounds;
-  g.strokeRect(PX(B.maxX), PY(B.maxZ), (B.maxX - B.minX) * SCALE, (B.maxZ - B.minZ) * SCALE);
+  const B = L.bounds, oldX = L.raw.oldWestEdge || B.maxX;
+  g.beginPath();
+  for (const [x, z] of [[B.minX, B.minZ], [B.maxX, B.minZ], [B.maxX, SUNK.maxZ], [oldX, SUNK.maxZ], [oldX, B.maxZ], [B.minX, B.maxZ]]) g.lineTo(PX(x), PY(z));
+  g.closePath();
+  g.stroke();
 
   const ctx = canvas.getContext('2d');
   let size = 0, dpr = 1;
@@ -220,9 +253,9 @@ export function createMinimap(canvas, layout) {
       if (g.axis === 'z') { c.moveTo(gx - half, gy); c.lineTo(gx + half, gy); } else { c.moveTo(gx, gy - half); c.lineTo(gx, gy + half); }
       c.stroke(); c.lineCap = 'butt';
     }
-    // what each of them sees. (Never drawn smaller than 18 pixels: on a phone the cones must be easy to read.)
+    // what each of them sees. (Never drawn smaller than 26 pixels: on a phone the cones must be easy to read.)
     for (const u of W.units) {
-      const ux = MX(u.x), uy = MY(u.z), r = Math.max(u.range * k, 18 * dpr);
+      const ux = MX(u.x), uy = MY(u.z), r = Math.max(u.range * k, 26 * dpr);
       if (out(ux, uy, r)) continue;
       const a = Math.atan2(-Math.cos(u.heading), -Math.sin(u.heading));
       c.beginPath();
@@ -266,6 +299,7 @@ export function createMinimap(canvas, layout) {
     { text: 'THE GRID', x: -120, z: 110 },
     { text: 'NEON MILE', x: -20, z: L.neon.centerZ + 40 },
     { text: 'THE CROWN', x: 360, z: 400 },
+    { text: 'THE SUNK', x: 640, z: -280 },
   ];
   function drawBig(cv, x, z, heading, extra = {}) {
     const d = Math.min(window.devicePixelRatio || 1, 2);

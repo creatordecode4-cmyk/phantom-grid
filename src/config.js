@@ -110,6 +110,8 @@ export const CONFIG = {
       cameraFar: 2600,
       rainStreaks: 700,
       skyClouds: true,
+      water: 'simple',      // The Sunk: canal water without rain rings and boat waves
+      sunkMist: false,      // The Sunk: no drifting mist sheets
     },
     medium: {
       label: 'MEDIUM',

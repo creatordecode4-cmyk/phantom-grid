@@ -16,12 +16,16 @@
 // ---------------------------------------------------------------------------
 
 import { clipConvex, polygonArea, polygonBounds, pointInConvex } from '../utils/math.js';
+import { SUNK, inSunk, topAt } from './sunkPlan.js';
 
 export const LAYOUT = {
   seed: 2090, // change this number to get different (but still repeatable) buildings
 
   // The player cannot walk outside this rectangle (about 1000 m x 1000 m).
-  bounds: { minX: -497, maxX: 472.4, minZ: -476, maxZ: 495.4 },
+  // (Chapter 3: the play area reaches west over The Sunk, the drowned quarter - only south of z = -86;
+  //  north of it an invisible wall keeps the old edge at x = 472.4, see src/city/sunk.js)
+  bounds: { minX: -497, maxX: 780, minZ: -476, maxZ: 495.4 },
+  oldWestEdge: 472.4,
 
   // ----- TRAFFIC ---------------------------------------------------------------
   // Cars drive on the right, in the inner lane of every street.
@@ -389,6 +393,13 @@ export function buildLayout(L = LAYOUT) {
     }
   }
 
+  // ---- THE SUNK (Chapter 3): the old blocks of the south-west corner are under water now ----
+  // (src/city/sunkPlan.js has the canals and the drowned buildings that stand there instead)
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const bb = blocks[i].bounds;
+    if (bb.maxX > SUNK.minX + 0.5 && bb.minZ < SUNK.maxZ - 0.5) blocks.splice(i, 1);
+  }
+
   // ---- Intersections (where a north-south street crosses an east-west street) ------
   const intersections = [];
   for (const ns of streetsNS) {
@@ -454,7 +465,7 @@ export function buildLayout(L = LAYOUT) {
     minZ: neon.centerZ - nm.medianWidth / 2,
     maxZ: neon.centerZ + nm.medianWidth / 2,
     minX: cityMinX - 20,
-    maxX: cityMaxX,
+    maxX: Math.min(cityMaxX, SUNK.minX),   // (it ends where The Sunk begins)
   };
   function beachHeight(z) {
     // 0.1 m at the promenade, down to the water level at the water line,
@@ -463,6 +474,7 @@ export function buildLayout(L = LAYOUT) {
     return 0.1 + (L.ocean.level - 0.1) * Math.min(t, 1) - Math.max(0, t - 1) * 3.5;
   }
   function groundHeight(x, z) {
+    if (inSunk(x, z)) return topAt(x, z);               // The Sunk: a pontoon, a roof ... or the water
     if (z < beach.maxZ) return beachHeight(z);
     if (z < neon.promenadeMaxZ) return curb; // promenade
     if (z < neon.roadMaxZ) {
@@ -506,6 +518,8 @@ export function buildLayout(L = LAYOUT) {
 
   // ---- District name at a position (for the HUD) -----------------------------------------
   function districtAt(x, z) {
+    if (inSunk(x, z)) return 'THE SUNK';
+    if (x > 456 && z < SUNK.maxZ) return 'RUSTWATER';
     if (z < beach.maxZ) return 'MERIDIAN BEACH';
     if (z < rows[0].maxZ + S.width / 2) return 'NEON MILE';
     if (x < cols[0].minX) return 'IRONHILL UNDERPASS';

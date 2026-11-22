@@ -33,6 +33,12 @@
 //     police (the real wanted system of src/ai/wanted.js), news (the news line on the screen), video (the
 //     look of a recording), tarp (the cloth over Theo's car), shutter (Mace's door), fill (light on faces)
 //   CHAPTER 2 STEPS THAT WAIT: paint (the paint shop: a color, hold to spray, a new number plate)
+//   CHAPTER 3: hack (the mini-game of src/story/hack.js: { title, sub, seconds, length, optional, ok: [steps],
+//     fail: [steps], flag }), sunk ({ lena: 'wrecked' | 'intact' }: Lena's flat in The Sunk).
+//     police also takes: boats, stealth (a meter fills before he is spotted), hear (a loud boat motor is heard),
+//     sentries: [{ path: [[x, z], ...], y, speed, range, fov, sweep, stop }] (drones on a fixed path that look forward),
+//     patrol: { at, r, cars, drones, boats }
+//     More conditions: { spotted } (the stealth meter was full), { tunnel } (in the drain tunnel), { boat } (in a boat)
 //   BUSTED: when the real Guard catches the player, a short line, a fine, and the last checkpoint again.
 //   STEPS THAT HOLD OTHER STEPS
 //     if (cond, then, else), seq (steps in order), meanwhile (steps in order, beside the main story)
@@ -56,6 +62,8 @@ import { compassToAngle } from './actors.js';
 import { GARAGE, PARKING } from '../city/heroBuildings.js';
 import { FINE } from '../ai/wanted.js';
 import { lin } from '../city/models.js';
+import { createHack } from './hack.js';
+import { stepBoat } from '../vehicles/physics.js';
 
 const KMH = 3.6;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -65,7 +73,7 @@ export const chapterFile = (n) => (n === 0 ? 'prologue' : 'chapter' + String(n).
 export function createStory(G) {
   const { scene, camera, city, layout, vehicles, player, actors, drivers, director, props, ui, music, sound, save, police, lighting, weather, hud, rig, carLib } = G;
   const angle = compassToAngle;
-  const _v = new THREE.Vector3(), P = {};
+  const _v = new THREE.Vector3(), P = {}, _bq = new THREE.Quaternion();
 
   // ------------------------------------------------------------------ state
   let active = false, loading = false, failed = false;
@@ -86,6 +94,7 @@ export function createStory(G) {
   let realPolice = false, announce = false, paNext = 0, paCount = 0, newsText = null, fillPower = null, starsWas = 0, seenWas = false;
   const ambient = { radio: 0, street: 0, drone: 0 };
   const world = G.world || {};
+  const hack = createHack();                                 // the hacking mini-game of Chapter 3
   const objective = { text: '', info: '' };
   let marker = null;
   // what main.js reads every frame
@@ -202,6 +211,10 @@ export function createStory(G) {
     if (c.hidden !== undefined && police.hidden !== !!c.hidden) return false;
     if (c.searching !== undefined && (police.stars > 0 && police.mode === 'search') !== !!c.searching) return false;
     if (c.droneOver !== undefined && !(police.droneNear > c.droneOver)) return false;
+    // The Sunk (Chapter 3)
+    if (c.spotted !== undefined && !!police.spotted !== !!c.spotted) return false;
+    if (c.tunnel !== undefined && !!(city.sunk && city.sunk.inTunnel(p.x, p.z)) !== !!c.tunnel) return false;
+    if (c.boat !== undefined && (vehicles.state === 'driving' && !!vehicles.active && vehicles.active.role === 'boat') !== !!c.boat) return false;
     return true;
   }
   // rules: conditions with something to do. Returns the text key of a rule that fails the mission (or null).
@@ -435,6 +448,7 @@ export function createStory(G) {
     if (s.type) { v.type = { ...v.type, ...s.type }; if (s.type.label) v.label = s.type.label; }
     if (s.speed) { v.forward = s.speed / KMH; v.vx = Math.sin(face) * v.forward; v.vz = Math.cos(face) * v.forward; }   // (it is already rolling)
     if (s.detail && v.needDetail) v.needDetail();              // (the detailed model now: glass you can see through, the inside)
+    if (s.rusty) v.rusty = true;                               // an old boat: slower to pick up, a rough motor (Chapter 3)
     STEP.vehicleSet(s);
   };
   STEP.vehicleSet = (s) => {
@@ -458,6 +472,25 @@ export function createStory(G) {
     const v = car(s.id);
     if (!v) return;
     const mode = s.mode || 'path';
+    // A BOAT (Chapter 3): it steers along a list of places on the water (path), at "speed" km/h; event when it is there
+    if (v.role === 'boat') {
+      if (mode === 'stop' || !s.path) { v.ai = null; v.forward = 0; return; }
+      const pts = s.path.map((q) => { const w = pt(q); return { x: w[0], z: w[2] }; });
+      const want = (s.speed || 18) / KMH, inp = { steer: 0, gas: 0, brake: 0, handbrake: false };
+      let i = 0;
+      v.ai = (b, dt) => {
+        let aim = pts[Math.min(i, pts.length - 1)];
+        if (i < pts.length && Math.hypot(aim.x - b.x, aim.z - b.z) < (i === pts.length - 1 ? 3 : 7)) { i++; if (i >= pts.length) fire(s.event); aim = pts[Math.min(i, pts.length - 1)]; }
+        const end = i >= pts.length;
+        const d = Math.atan2(Math.sin(Math.atan2(aim.x - b.x, aim.z - b.z) - b.heading), Math.cos(Math.atan2(aim.x - b.x, aim.z - b.z) - b.heading));
+        const w = end ? 0 : Math.abs(d) > 0.7 ? Math.min(want, 4) : want, fwd = b.forward || 0;
+        inp.steer = end ? 0 : clamp(-d * 2.4, -1, 1);
+        inp.gas = fwd < w ? clamp((w - fwd) / 3, 0.1, 1) : 0;
+        inp.brake = fwd > w + 0.8 ? 1 : 0;
+        stepBoat(b, inp, dt, vehicles.seaWorld);
+      };
+      return;
+    }
     if (mode === 'stop') drivers.stopCar(v);
     else if (mode === 'path' || mode === 'race') {
       drivers.path(v, {
@@ -492,7 +525,8 @@ export function createStory(G) {
     if (!a) return;
     if (s.pose) actors.setPose(a, s.pose, s.seconds === undefined ? 0.4 : s.seconds);
     if ('look' in s) a.look = lookOf(s.look);
-    if (s.at) { const p = pt(s.at); actors.place(a, p[0], p[1], p[2], s.face === undefined ? null : angle(s.face)); a.root.position.set(p[0], p[1], p[2]); }
+    // (a plain [x, z] place: from now on the person follows the ground, the decks, the stairs; a point with a height is a floor)
+    if (s.at) { const p = pt(s.at); actors.place(a, p[0], p[1], p[2], s.face === undefined ? null : angle(s.face)); a.root.position.set(p[0], p[1], p[2]); a.keepY = !(Array.isArray(s.at) && s.at.length === 2); }
     else if (s.face !== undefined) a.heading = angle(s.face);
     // turn the back to somebody (people who do not want to meet Nate's eyes)
     if (s.faceAway) { const q = s.faceAway === 'player' ? player.position : (() => { const w = pt(s.faceAway); return { x: w[0], z: w[2] }; })(); a.heading = Math.atan2(a.x - q.x, a.z - q.z); }
@@ -637,8 +671,9 @@ export function createStory(G) {
   STEP.police = (s) => {
     if (s.real !== undefined) { realPolice = !!s.real; police.setScripted(realPolice ? null : { stars: 0 }); }
     const o = {};
-    for (const k of ['known', 'disguised', 'cars', 'drones', 'gates', 'roadblocks', 'startStars', 'ram']) if (k in s) o[k] = s[k];
-    if ('patrol' in s) o.patrol = s.patrol ? (() => { const q = xz(s.patrol.at); return { x: q[0], z: q[1], r: s.patrol.r || 120, cars: s.patrol.cars || 0, drones: s.patrol.drones || 0 }; })() : null;
+    for (const k of ['known', 'disguised', 'cars', 'drones', 'gates', 'roadblocks', 'startStars', 'ram', 'boats', 'stealth', 'hear']) if (k in s) o[k] = s[k];
+    if ('patrol' in s) o.patrol = s.patrol ? (() => { const q = xz(s.patrol.at); return { x: q[0], z: q[1], r: s.patrol.r || 120, cars: s.patrol.cars || 0, drones: s.patrol.drones || 0, boats: s.patrol.boats || 0 }; })() : null;
+    if ('sentries' in s) o.sentries = s.sentries || [];
     if (realPolice) o.freeRoam = false;
     if (Object.keys(o).length) police.configure(o);
     if (s.stars !== undefined) police.setStars(s.stars, { search: s.search ? xz(s.search) : null, seen: !!s.seen, radius: s.radius });
@@ -944,6 +979,36 @@ export function createStory(G) {
     }, () => { ui.limiter(null); music.setHeartbeat(0); allowDrive = true; });
   };
 
+  // ---------------------------------------------------------------- Chapter 3
+  // THE HACK (src/story/hack.js): a grid of nodes, one swipe through the path before the time runs out.
+  //   { title, sub, hint (keys), seconds (max 20), length, optional (a SKIP button), ok: [steps], fail: [steps], flag }
+  //   (failing is never the end: the "fail" steps give a short penalty and the story goes on)
+  STEP.hack = (s) => {
+    let done = false, result = null;
+    const my = gen;
+    choosing = true;                                      // (hands off the car and the stick while the fingers draw)
+    hack.start({
+      title: s.title ? t(s.title) : '', sub: s.sub ? t(s.sub) : '', hint: s.hint ? t(s.hint) : t('c3.hack.hint'),
+      seconds: s.seconds || 14, length: s.length || 5, optional: !!s.optional,
+      labels: { ok: t('c3.hack.ok'), fail: t('c3.hack.fail'), skip: t('c3.hack.skip') },
+    }).then((ok) => {
+      if (my !== gen) return;
+      result = ok; done = true;
+    });
+    return {
+      update() {
+        if (!done) return false;
+        if (s.flag) flags[s.flag] = !!result;
+        fire(result ? 'hack:ok' : 'hack:fail');
+        run(result ? s.ok : s.fail);
+        return true;
+      },
+      end() { choosing = false; if (!done) hack.cancel(); },
+    };
+  };
+  // Lena's flat in The Sunk: { lena: 'wrecked' | 'intact' } (the screens go dark)
+  STEP.sunk = (s) => { if (city.sunk && s.lena) city.sunk.setLena(s.lena); };
+
   // ---------------------------------------------------------------- the story itself
   // the game saves here. id: a number > 0. setup: steps that put the world right when the game STARTS at this point.
   STEP.checkpoint = (s) => { checkpoint(s.id, true); };
@@ -1017,7 +1082,7 @@ export function createStory(G) {
   function fail(key) {
     if (failed) return;
     failed = true; gen++;
-    ui.clearSubs(); quietTalk(); ui.limiter(null); ui.prompt(null); ui.tip(null);
+    ui.clearSubs(); quietTalk(); ui.limiter(null); ui.prompt(null); ui.tip(null); hack.cancel();
     music.setHeartbeat(0);
     ui.failCard(t(key), (a) => { ui.hideMenus(); failed = false; if (a === 'retry') restart(); else G.onExit('title'); });
   }
@@ -1027,7 +1092,7 @@ export function createStory(G) {
     if (failed || !active || loading) return;
     failed = true; gen++;
     const my = gen;
-    ui.clearSubs(); quietTalk(); ui.limiter(null); ui.prompt(null); ui.tip(null); ui.paint(null);
+    ui.clearSubs(); quietTalk(); ui.limiter(null); ui.prompt(null); ui.tip(null); ui.paint(null); hack.cancel();
     music.setHeartbeat(0); sound.setSpray(false);
     const left = save.pay(FINE);
     const n = 1 + Math.floor(Math.random() * 3);
@@ -1064,6 +1129,8 @@ export function createStory(G) {
     if (world.tarp) { world.tarp.userData.setLift(0); world.tarp.visible = true; }
     if (world.shutter) world.shutter.userData.setOpen(1);
     sound.setSpray(false);
+    hack.cancel();
+    if (city.sunk) city.sunk.setLena('intact');
     city.traffic.setCap(Infinity); city.people.setCap(Infinity);
     allowDrive = allowMove = true; light = null; mirrorOn = false; tapeShown = false; indoors = false; fovWant = 0; limitedFor = 0;
     player.mood = 'neutral';
@@ -1211,6 +1278,9 @@ export function createStory(G) {
     for (const o of things.values()) {
       props.animate(o.inner, time);
       if (o.inner.userData.billboard) o.inner.quaternion.copy(camera.quaternion);
+      // (a glow inside a prop always faces the camera)
+      const bp = o.inner.userData.billboardPart;
+      if (bp && bp.parent) { bp.parent.getWorldQuaternion(_bq); bp.quaternion.copy(_bq.invert().multiply(camera.quaternion)); }
       if (o.fly) {
         const f = o.fly, L2 = f.path.total * 2;
         f.s = (f.s + f.speed * dt) % L2;
@@ -1269,7 +1339,7 @@ export function createStory(G) {
     get indoors() { return indoors; },     // true: rain is heard on a roof
     get flags() { return flags; },
     // ---- for tests ----
-    cars, things, fire, test, pt,
+    cars, things, fire, test, pt, hack,
     get where() { return { chapter: chapter ? chapter.id : null, mission: mi, missionId: mission ? mission.id : null, step: runner ? runner.i - 1 : -1, stepDo: runner && runner.i > 0 && runner.steps[runner.i - 1] ? runner.steps[runner.i - 1].do : null, cine, modal, checkpoint: cpIndex, failed, text: objective.text }; },
     // finish the step that is waiting right now
     skipStep() { if (runner && runner.cur) { if (runner.cur.end) runner.cur.end(); runner.cur = null; } },

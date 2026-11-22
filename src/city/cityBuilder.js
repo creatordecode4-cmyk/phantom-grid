@@ -20,6 +20,7 @@ import { createPedestrians } from '../ai/pedestrians.js';
 import { makeBeamTexture } from '../vehicles/vehicle.js';
 import { buildProps, makeHoloMaterial } from './props.js';
 import { buildBackdrop } from './backdrop.js';
+import { buildSunk } from './sunk.js';
 
 // Used to free the normal-memory copy of a big mesh after it was sent to the graphics card.
 function dropArray() {
@@ -78,7 +79,8 @@ function makeCollisionGrid(boxes, circles) {
 function makeLampLightMap(ctx) {
   const L = ctx.layout;
   const SIZE = 1024;
-  const minX = L.bounds.minX - 40, maxX = L.bounds.maxX + 220;
+  // (west: the old edge of the city plus the scenery behind it, or The Sunk - whichever reaches farther)
+  const minX = L.bounds.minX - 40, maxX = Math.max((L.raw.oldWestEdge || L.bounds.maxX) + 220, L.bounds.maxX + 20);
   const minZ = L.bounds.minZ - 30, maxZ = L.bounds.maxZ + 230;
   const sx = SIZE / (maxX - minX), sz = SIZE / (maxZ - minZ);
   const cv = document.createElement('canvas');
@@ -201,6 +203,12 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
   lap('buildings');
   await pause();
 
+  // ---- Chapter 3: THE SUNK, the drowned quarter (canals, old buildings, the market, Lena's flat) ----
+  onProgress(0.45, 'Flooding The Sunk');
+  const sunk = buildSunk(ctx);
+  lap('sunk');
+  await pause();
+
   onProgress(0.5, 'Building skyline and highway');
   const backdrop = buildBackdrop(ctx);
   lap('backdrop');
@@ -293,6 +301,7 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
     groundHeight: layout.groundHeight,
     counts: ctx.buildingCounts,
     timing,
+    sunk,
     // LOW quality switches the 3D window detail off
     setQuality(q) {
       const on = q.buildingDetail !== false;
@@ -300,6 +309,9 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
       traffic.setQuality(q);
       people.setQuality(q);
       if (meshes.hedge) meshes.hedge.visible = on; // LOW: no plants on the facades
+      // LOW: the simple canal water (no rain rings, no boat waves), no mist
+      sunk.water.material = q.water === 'simple' ? ctx.mats.canalLow : ctx.mats.canal;
+      sunk.quality = q;
     },
     // called every frame
     update(dt, time, x, z, propDistance) {

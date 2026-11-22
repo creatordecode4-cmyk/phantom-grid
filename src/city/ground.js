@@ -7,6 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { CONFIG } from '../config.js';
+import { SUNK } from './sunkPlan.js';
 import { MARK, decalUV } from './textures.js';
 
 const T = CONFIG.textures;
@@ -131,17 +132,22 @@ export function buildGround(ctx) {
 
   // ---- 1. asphalt everywhere north of the beach walk --------------------------------
   ctx.mb.asphalt.color(1, 1, 1, 1);
-  ctx.mb.asphalt.groundRect(-1500, L.neon.roadMinZ, 1800, 1700, 0, T.asphalt.size);
+  // (not where The Sunk is: the old streets there are under water)
+  ctx.mb.asphalt.groundRect(-1500, L.neon.roadMinZ, SUNK.minX, 1700, 0, T.asphalt.size);
+  ctx.mb.asphalt.groundRect(SUNK.minX, SUNK.maxZ, 1800, 1700, 0, T.asphalt.size);
+  ctx.mb.asphalt.groundRect(SUNK.maxX, L.neon.roadMinZ, 1800, SUNK.maxZ, 0, T.asphalt.size);
 
   // ---- 2. sidewalk slabs (one per block) ----------------------------------------------
   for (const b of L.blocks) {
     addSlab(ctx, b.poly, curb, 1, rng.int(0, 3) * 0.25, rng.int(0, 3) * 0.25);
   }
   // beach promenade
-  addSlab(ctx, [
-    { x: -1500, z: L.neon.promenadeMinZ }, { x: 1800, z: L.neon.promenadeMinZ },
-    { x: 1800, z: L.neon.promenadeMaxZ }, { x: -1500, z: L.neon.promenadeMaxZ },
-  ], curb, 1.04);
+  for (const [x0, x1] of [[-1500, SUNK.minX], [SUNK.maxX, 1800]]) {
+    addSlab(ctx, [
+      { x: x0, z: L.neon.promenadeMinZ }, { x: x1, z: L.neon.promenadeMinZ },
+      { x: x1, z: L.neon.promenadeMaxZ }, { x: x0, z: L.neon.promenadeMaxZ },
+    ], curb, 1.04);
+  }
   // median of Neon Mile (a little darker: packed earth between the palms)
   for (const [x0, x1] of L.medianPieces) {
     addSlab(ctx, [
@@ -156,10 +162,9 @@ export function buildGround(ctx) {
     const tile = T.sand.size;
     const zs = [L.beach.maxZ, (L.beach.maxZ + L.beach.minZ) / 2, L.beach.minZ, L.beach.minZ - 60];
     mb.color(1, 1, 1, 1);
-    for (let i = 0; i < zs.length - 1; i++) {
+    for (let i = 0; i < zs.length - 1; i++) for (const [x0, x1] of [[-1500, SUNK.minX], [SUNK.maxX, 1800]]) {
       const zN = zs[i], zS = zs[i + 1];
       const yN = L.beachHeight(zN), yS = L.beachHeight(zS);
-      const x0 = -1500, x1 = 1800;
       mb.quad(
         [x0, yS, zS], [x0, yN, zN], [x1, yN, zN], [x1, yS, zS],
         [0, 1, 0],
@@ -284,9 +289,13 @@ export function buildGround(ctx) {
   // Go along every street and split it at the crossings.
   function paintStreet(street, crossings) {
     // crossings: list of [from, to] ranges taken by intersections, sorted
-    let cur = street.start;
+    let cur = street.start, end = street.end;
+    // (The Sunk: a north-south street there starts north of it; an east-west street south of its edge ends at it)
+    if (street.axis === 'ns' && street.center > SUNK.minX && street.center < SUNK.maxX) cur = Math.max(cur, SUNK.maxZ + half);
+    if (street.axis === 'ew' && street.center < SUNK.maxZ) end = Math.min(end, SUNK.minX - 0.5);
+    crossings = crossings.filter((c) => c[1] <= end + 0.01 && c[0] >= cur - 0.01);
     let curIsCross = true; // the street begins at a crossing (Neon Mile / frontage road)
-    const stops = crossings.concat([[street.end, street.end]]);
+    const stops = crossings.concat([[end, end]]);
     for (const [c0, c1] of stops) {
       const a = cur, b = c0;
       if (b - a > 4) {
@@ -353,7 +362,7 @@ export function buildGround(ctx) {
   // ---- 6. Neon Mile: two roads with a median --------------------------------------------------
   {
     const N = L.neon;
-    const x0 = L.highway.maxX + 6, x1 = L.city.maxX + 480;
+    const x0 = L.highway.maxX + 6, x1 = SUNK.minX - 0.5;          // (it ends at The Sunk)
     for (const side of [-1, 1]) {
       const inner = N.centerZ + side * (N.medianWidth / 2); // median curb
       const z = (o) => inner + side * o;
@@ -372,6 +381,7 @@ export function buildGround(ctx) {
     }
     // crosswalks over the boulevard where the grid streets arrive
     for (const s of L.streetsNS) {
+      if (s.center > SUNK.minX) continue;               // (no street mouth where The Sunk is)
       const cx = s.center + half + 2.6; // on the west side of each street mouth
       for (const side of [-1, 1]) {
         const zA = N.centerZ + side * (N.medianWidth / 2 + 0.4), zB = N.centerZ + side * (N.width / 2 - 0.3);

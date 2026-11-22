@@ -977,11 +977,139 @@ race ticket: WREN and the news screen say it), `mace_kind` (the hot drink or the
 - **Performance:** at most 4 Guard cars (they never load the detailed model) and 2 drones; the
   scanner gates are 3 instanced meshes for all of them; all posters are one instanced mesh.
 
-### How to add Chapter 3 (only a data file)
+### How to add the next chapter (only a data file)
 
-The same as before: copy `chapter02.js` to `chapter03.js`, set `id: 'chapter03'`, `number: 3`, write
+The same as before: copy `chapter03.js` to `chapter04.js`, set `id: 'chapter04'`, `number: 4`, write
 the missions, put the texts into `strings.js`. The engine finds it by itself; until it exists the end
-card of Chapter 2 says "CHAPTER 3 IS LOCKED".
+card of Chapter 3 says "CHAPTER 4 IS LOCKED".
+
+## Chapter 3: THE SUNK (version 7.0)
+
+The next night. Mace has a plan: the KEYSTONE chip needs a hacker called **Static**, and the way to
+her is through **The Sunk** - the old south-west quarter of Port Meridian, half under the sea.
+Serious, quiet, rainy, grounded: short plain lines, feelings through objects (a key on a cork float,
+a storm lantern, an old company badge, a tape put away in a pocket).
+
+### The missions, and how to start each one
+
+| # | Mission | What happens | Address option |
+|---|---|---|---|
+| 3.0 | **INTO THE SUNK** | Mace's garage at night: "The chip needs someone who knows how Phantoms think." He gives Nate the key to an old boat. Drive the van to **Rustwater Dock** (the west end of the street at z = -198). A quiet moment in the van with Theo's tape. Walk down the gangway, take Mace's rusty boat (60 km/h at most, a rough old motor) and go into The Sunk by water. The first sight of the drowned city: a slow film scene with only a soft pad. Follow the lanterns to the Tidewalker market and talk to Wick. | `?story=chapter03.0` |
+| 3.1 | **THE TIDEWALKER TEST** | Wick wants a Guard surveillance drone from the roof of the Guard post on the south ring. **Choice:** go in quiet, or ask for a distraction (red flares at the sea gate pull the drones away). Stealth: the drones fly fixed paths and look forward in a cone, a Guard boat patrols, a loud motor is heard - hold **QUIET**. Up the steel ramp, over the rope walkway, take the drone, cut its link (**hack**, optional), back to the boat. If they spot you: a chase with at most 2 stars - lose them before you go back. Wick's answer depends on how you did it. | `?story=chapter03.1` |
+| 3.2 | **STATIC** | Lena's flat behind a broken loading door. She lights a lantern. Dry, guarded. The chip goes into her reader - and the screen says what the Phantoms are (no music, a long look at the screen). Lena reads the driving code, goes quiet, looks at her old KVI badge. **Choice:** tell her about Theo, or not. She listens to WREN: "That part is not mine." | `?story=chapter03.2` |
+| 3.3 | **THE RAID** | The Guard tracks Nate's HALO. **Hack:** hold the line while Lena cuts the tracker (failing it gives the Guard a fix: 3 stars instead of 2). Out over the roofs (stairs down to two lower roofs), a moment that nobody can change: Captain Harrow finds a little girl behind the crates and looks away. Down the fire escape, into the Tidewalker boat, a chase on the canals, and into the dark drain tunnel under the pump hall, where the drones lose you. | `?story=chapter03.3` |
+| 3.4 | **THE COST** | Dawn. Lena's flat is wrecked, half of the ceiling down. She sits in the boat, soaked: "You cost me my home. Now you will pay me back." **Choice:** give her the chip, or keep it. | `?story=chapter03.4` |
+| 3.5 | **INTO THE MIST** | The end picture: Lena looks at the Phantom code on her tablet while the boat goes away into the mist, the old badge swinging on its cord. End card. | `?story=chapter03.5` |
+
+### Chapter 3 choices and flags
+
+| Flag | Set when |
+|---|---|
+| `drone_method` | `'quiet'` or `'distraction'` (the drone test). Wick's line after it changes (and if you were chased: `test_chased`) |
+| `drone_link_cut` | the drone's link was cut in time (the optional hack) |
+| `lena_code_seen` | Lena read the Phantom driving code and went silent (it matters later: the code is hers) |
+| `told_lena_theo` | Nate told Lena about Theo |
+| `wren_locked_found` | Lena found the part of WREN that she cannot open ("That part is not mine.") |
+| `tracker_cut` | the tracker hack in the raid was done in time |
+| `harrow_let_girl_go` | Captain Harrow saw the girl behind the crates and let her go |
+| `chip_holder` | `'lena'` or `'nate'`: who keeps the KEYSTONE chip (Chapter 4 reads it) |
+
+It reads Chapter 2's `limiter_off`, `van_color` and `van_plate` (the van keeps its paint and plate).
+
+### THE SUNK (`src/city/sunkPlan.js` = where things are, `src/city/sunk.js` = what is built)
+
+- **Where:** south-west of The Grid, x 476..780, z -470..-86 (it replaced scenery that nobody could
+  reach). The old streets are canals 2 to 4 m deep; the bottom is the old street (rubble, a road line,
+  old cars, one sticking out of the water nose-down).
+- **Layout:** a canal **ring**, three side canals (**Rustwater** from the city's quay, the **sea
+  gate** out to the ocean, the narrow **market cut**), the Tidewalker **market** basin, the **drain
+  tunnel** under the old pump hall, **Lena's flat** (a half-sunk warehouse on the north side), the
+  **Guard post** (two low roofs, a ramp, a rope walkway, a drone pad) on the south ring.
+- **The buildings:** about 170 old brick and plaster buildings standing in the water: dark, green,
+  stained walls below the water line, sash windows above (real 3D windows close by), cornices, flat
+  tar roofs with huts of salvaged sheets, patched solar sheets, antenna clusters and water tanks,
+  plants in tubs, rusty balconies with laundry, boarded windows, car tires as fenders, rusty ladders,
+  small boats tied up, boats people live on (with a little cabin and a lit window).
+- **Bridges:** rusty steel truss bridges and sagging rope walkways between the roofs; strings of
+  lanterns over the water (warm, some teal) - each is a light at night.
+- **Collision:** every building is a box; pontoons, ramps and moored boats only stop boats; people can
+  only walk where there is a deck (pontoons, gangways, ramps, stairs, the roofs that are meant to be
+  walked on, Lena's floor). Where two decks lie over each other (a ramp over a pontoon) the one
+  closest to the feet counts.
+- **The water (`PG_CANAL` in `src/city/materials.js`):** dark and a little see-through when you look
+  down, a mirror at a low angle; three moving normal maps, rain drops as small rings, foam along the
+  walls, a **V-shaped wake** and churned water behind every boat (also small ripples where you walk
+  on a pontoon), **glowing green-teal algae** near the walls at night (brighter where a boat stirs
+  the water), the lanterns mirrored and broken up by the waves. **LOW quality:** one normal map, no
+  rain rings, no wake waves, no mist sheets.
+- **Mist and rain:** in The Sunk the fog is 2.3 times thicker and a little green-grey, soft mist
+  sheets drift slowly over the canals, and it always rains there. In the drain tunnel: a dark teal
+  haze, still water, dim lamps, dripping.
+- **The map:** the canals, the buildings, the pontoons (brown), the tunnel (dashed), the bridges are
+  drawn on the small map and on the full-screen map ("THE SUNK"). **GPS for boats:** in a boat the
+  yellow line follows the canals (the canal map in `sunkPlan.js`: `NODES` and `EDGES`); on foot in
+  The Sunk the arrow points straight at the goal.
+
+### The boat (`stepBoat` in `src/vehicles/physics.js`, `collideBoat` in `src/vehicles/vehicle.js`)
+
+- It floats: it bobs on the waves (smaller waves in the canals), pitches and rolls, leaves a foam
+  trail and a wake, throws a little spray. Walls, pontoons and other boats push it back **gently**
+  (a soft thump, not a crash).
+- **Mace's old boat:** rusty, a rough knocking motor, slower to pick up, never faster than 60 km/h.
+- **Get in and out at a dock:** stand on a pontoon next to the boat and press the CAR button; to get
+  out, stop next to a pontoon or a gangway and press EXIT (out on the open water: "Steer the boat to
+  a dock to get out"). The beach still works for the free-roam boat.
+- **QUIET (hold, key Q):** the motor turns to a low murmur, the boat goes slowly (42 % of its top
+  speed) and leaves almost no wake. The Guard **hears** a loud motor within 24 m; the quiet one it
+  does not hear. A boat that waits QUIET under a roof (the tunnel, a bridge) counts as hidden.
+- **Phone buttons for the boat:** the arrows (or TILT) to steer, GAS, BRAKE (reverse), QUIET (where the
+  handbrake is for cars), EXIT, CAM.
+
+### The Guard on the water and stealth (`src/ai/wanted.js`)
+
+- In The Sunk the Guard comes in **boats** (at most 3; they follow the canal map and slow down for the
+  corners) and **drones** (at most 2). Guard boats flash red and blue.
+- **Sentries:** drones on a fixed path that look forward in a cone (the story puts them up; a soft
+  searchlight cone and a pool of light show where they look).
+- **Stealth:** before anybody knows he is there, a big label says **HIDDEN** (green). In a cone, or
+  heard, it says **SEEN** / **HEARD** (orange) and a meter fills - faster the closer he is. When it is
+  full he is **SPOTTED** and the chase starts. Out of sight the meter goes down again.
+- The cones on the small map are never smaller than 26 pixels (they were 18).
+
+### The hack (`src/story/hack.js`)
+
+A grid of 4 x 4 round nodes that pulse. The path is numbered 1, 2, 3 ...: put a thumb on 1 and draw
+the whole path in **one swipe** before the bar runs out (12 to 15 seconds; never more than 20). A wrong
+node: a red flash and 2.5 seconds less. Failing is never a game over: the story gives a short
+penalty (the drone calls home / the Guard gets a fix on you). Optional hacks have a SKIP button.
+Story step: `{ do: 'hack', title, sub, seconds, length, optional, ok: [steps], fail: [steps], flag }`.
+
+### The people and the sound
+
+- **Lena "Static" Marchetti** (`Lena_Marchetti.glb`) with her old KVI badge on a cord;
+  **Captain Sloane Harrow** (`Sloane_Harrow.glb`); Mace.
+- **The Tidewalkers:** quiet people in salvaged clothes (a new look for extras: trousers, a coat with
+  patches of other cloth, a scarf, a hood - one shader for all of them) on the pontoons and the roofs.
+  They watch Nate go by, and the murmur of the market goes quiet when he comes close. Wick, their old
+  man, at his table. A little girl draws a boat on a wall with chalk. A market boat drifts slowly
+  through the basin.
+- **Sound (all made in code, `src/audio/music.js`):** rain on tin roofs and cans, water dripping
+  (much more in the tunnel), water slapping against hulls, the murmur of the market, a low hum of old
+  pumps; a tense pad only in the raid; silence at the reveal; footsteps on wet boards.
+
+### What was built for it
+
+- New files: `src/city/sunkPlan.js`, `src/city/sunk.js`, `src/story/hack.js`, `src/story/propsSunk.js`,
+  `src/story/chapters/chapter03.js`.
+- New engine steps `hack`, `sunk`; `drive` can steer a **boat** along a list of places; `police` takes
+  `boats`, `stealth`, `hear`, `sentries` and `patrol.boats`; new conditions `spotted`, `tunnel`, `boat`.
+- Props: the boat key, the storm lantern (lit or not), the KVI badge, the chip reader, a screen with
+  readable lines, Lena's tablet, the Guard's surveillance drone, crates, the chalk drawing, the floating
+  market boat, the wreck of the flat, red flares.
+- **Performance:** everything that does not move in The Sunk is added to the city's shared meshes (no
+  new draw calls). New draw calls: the water (1), the mist (1), sunken cars (2), small boats (1), tanks,
+  antennas and dishes (3), Lena's screens (2). Measured in the software renderer at MEDIUM: 90 to 170
+  draw calls in The Sunk (the limit is 250).
 
 ## Every door opens (version 6.0)
 
@@ -1145,7 +1273,7 @@ give a geometry that can go into any room (see `bed()` in `src/interiors/furnitu
 - Not done from the wish list: the Doppler effect for passing traffic, mirror-like headlight
   reflections on wet roads and separate fog lamps (the wet road only gets the normal light patch).
   The cockpit is the same simple dashboard in every car, without working dials.
-- The boat cannot leave the water and you can only get out at the beach. The drone has no camera
+- The boat cannot leave the water; you get out at the beach or at a dock in The Sunk. The drone has no camera
   of its own and does not collide with trees or lamps, only with buildings.
 - The police only chase by car; they do not get out and there is no shooting (on purpose).
 - Chapter 2: the voices of the news screens, the radio and the drone loudspeakers are made in code

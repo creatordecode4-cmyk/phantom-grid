@@ -25,6 +25,8 @@ const TONES = {
   rumble: { f0: 30, f1: 85, w1: 'sawtooth', w2: 'square', mix: 0.6, lp: 700, vol: 1.2 },
   sharp: { f0: 46, f1: 215, w1: 'sawtooth', w2: 'sawtooth', mix: 0.55, lp: 2600, vol: 1.1 },
   boat: { f0: 34, f1: 70, w1: 'sawtooth', w2: 'square', mix: 0.7, lp: 520, vol: 1.2 },
+  // Mace's old boat (Chapter 3): a rough, knocking outboard motor
+  rusty: { f0: 27, f1: 58, w1: 'square', w2: 'sawtooth', mix: 0.9, lp: 760, vol: 1.4, rough: 0.07 },
   drone: { f0: 150, f1: 210, w1: 'triangle', w2: 'sawtooth', mix: 0.3, lp: 2200, vol: 0.55 },
 };
 
@@ -168,14 +170,16 @@ export function createSound() {
       engine.o1.type = tone.w1; engine.o2.type = tone.w2;
       glide(engine.g2.gain, tone.mix, 0.05);
     },
-    // rev: 0..1 engine speed, load: 0..1 how hard the driver pushes, on: is the engine running
-    setEngine(on, rev = 0, load = 0) {
+    // rev: 0..1 engine speed, load: 0..1 how hard the driver pushes, on: is the engine running,
+    // loud: 1 = normal (the quiet motor of a boat: less)
+    setEngine(on, rev = 0, load = 0, loud = 1) {
       if (!engine) return;
-      const f = tone.f0 + rev * (tone.f1 - tone.f0);
+      // (an old motor does not run evenly: its pitch shakes a little)
+      const f = (tone.f0 + rev * (tone.f1 - tone.f0)) * (tone.rough ? 1 + (Math.random() - 0.5) * tone.rough : 1);
       glide(engine.o1.frequency, f, 0.04);
       glide(engine.o2.frequency, f * 2.01, 0.04);
       glide(engine.lp.frequency, tone.lp * (0.25 + rev * 0.75 + load * 0.45), 0.07);
-      glide(engine.g.gain, on ? (0.055 + 0.085 * load + 0.05 * rev) * tone.vol * (isInside ? 1.25 : 1) : 0, 0.1);
+      glide(engine.g.gain, on ? (0.055 + 0.085 * load + 0.05 * rev) * tone.vol * loud * (isInside ? 1.25 : 1) : 0, 0.1);
     },
     // amount: 0..1 how much the tires slide
     setScreech(amount) {
@@ -223,6 +227,8 @@ export function createSound() {
     footstep(surface, running = false) {
       const k = running ? 1.25 : 1;
       if (surface === 'sand') burst(650, 0.5, 0.11 * k, 0.012, 0.16, 'lowpass');
+      // wet boards of a pontoon (The Sunk): a hollow knock and a little splash
+      else if (surface === 'wood') { burst(420 + Math.random() * 80, 2.5, 0.1 * k, 0.002, 0.07, 'lowpass'); burst(2400, 1.2, 0.025 * k, 0.004, 0.08); }
       else { burst(1900 + Math.random() * 500, 1.6, 0.075 * k, 0.002, 0.045); burst(240, 0.8, 0.09 * k, 0.003, 0.06, 'lowpass'); }
     },
     // door: 'open' = a click and a soft creak, 'close' = a dull slam

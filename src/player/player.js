@@ -133,7 +133,15 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   // ---- inside a house (src/interiors): its own floor, walls and furniture instead of the city's ----
   // room = { floor, minX, maxX, minZ, maxZ, boxes: [{ minX, maxX, minZ, maxZ }] } or null (outdoors)
   let room = null;
-  const groundAt = (x, z) => (room ? room.floor : city.groundHeight(x, z));
+  // THE SUNK (Chapter 3): only the decks can be walked on (pontoons, ramps, roofs); where two decks lie
+  // over each other (a ramp over a pontoon) the one nearest to the feet counts
+  const sunk = city.sunk || null;
+  const inSunk = (x, z) => !!sunk && sunk.inZone(x, z);
+  const groundAt = (x, z) => {
+    if (room) return room.floor;
+    if (inSunk(x, z)) { const h = sunk.walk(x, z, pos.y); if (h !== null) return h; }
+    return city.groundHeight(x, z);
+  };
   const NO_CIRCLES = [];
 
   // Push the player out of anything solid. Returns nothing, changes x/z in "p".
@@ -143,7 +151,10 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     for (let pass = 0; pass < 3; pass++) {
       const cell = room ? room : city.colliders.near(p.x, p.z);
       let hit = false;
+      const deck = !room && inSunk(p.x, p.z);
       for (const b of cell.boxes) {
+        if (b.boatOnly) continue;                                  // (pontoons and ramps only stop boats)
+        if (deck && b.h <= pos.y + 0.06) continue;                 // (The Sunk: standing on this roof)
         const cx = clamp(p.x, b.minX, b.maxX), cz = clamp(p.z, b.minZ, b.maxZ);
         let dx = p.x - cx, dz = p.z - cz;
         const d2 = dx * dx + dz * dz;
@@ -204,6 +215,15 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     p.x = pos.x + vel.x * dt;
     p.z = pos.z + vel.y * dt;
     collide();
+    // The Sunk: no deck there = water or a drop: slide along the edge (or stay)
+    if (!room && (inSunk(p.x, p.z) || inSunk(pos.x, pos.z))) {
+      const ok = (x, z) => !inSunk(x, z) || sunk.walk(x, z, pos.y) !== null;
+      if (!ok(p.x, p.z)) {
+        if (ok(p.x, pos.z)) p.z = pos.z;
+        else if (ok(pos.x, p.z)) p.x = pos.x;
+        else { p.x = pos.x; p.z = pos.z; }
+      }
+    }
     // if a wall stopped us, forget the blocked part of the speed
     if (dt > 0) {
       const ax = (p.x - pos.x) / dt, az = (p.z - pos.z) / dt;

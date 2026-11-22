@@ -71,8 +71,46 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     return shadeMats.get(key);
   }
 
+  // SALVAGED CLOTHES (the Tidewalkers of Chapter 3): extra = { pants, coat, patch, scarf, head } colors [r, g, b].
+  // One material colors the body by height (trousers, a coat with patches of other cloth, a scarf, a hood);
+  // all of them share one shader program.
+  function outfit(o) {
+    const key = 'o:' + JSON.stringify(o);
+    if (shadeMats.has(key)) return shadeMats.get(key);
+    const geo = player.rig.mesh.geometry;
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    const C = (c, d) => new THREE.Color(...(c || d));
+    const u = {
+      uMinY: { value: bb.min.y }, uSpanY: { value: Math.max(0.01, bb.max.y - bb.min.y) },
+      uPants: { value: C(o.pants, [0.08, 0.08, 0.09]) }, uCoat: { value: C(o.coat, [0.18, 0.16, 0.13]) }, uPatch: { value: C(o.patch, [0.1, 0.16, 0.2]) },
+      uScarf: { value: C(o.scarf, [0.35, 0.12, 0.08]) }, uHead: { value: C(o.head, [0.12, 0.11, 0.1]) },
+    };
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0.02 });
+    m.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, u);
+      sh.vertexShader = 'varying vec3 vTideP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvTideP = position;');
+      sh.fragmentShader = 'uniform float uMinY, uSpanY;\nuniform vec3 uPants, uCoat, uPatch, uScarf, uHead;\nvarying vec3 vTideP;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+	{
+		float h = ( vTideP.y - uMinY ) / uSpanY;
+		vec3 c = mix( uPants, uCoat, smoothstep( 0.44, 0.47, h ) );
+		// patches of other cloth on the coat (squares a hand wide), seams in between
+		vec2 q = floor( vTideP.xy / ( uSpanY * 0.09 ) + vec2( vTideP.z / ( uSpanY * 0.09 ), 0.0 ) );
+		float r = fract( sin( dot( q, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
+		c = mix( c, uPatch, step( 0.72, r ) * smoothstep( 0.46, 0.5, h ) * ( 1.0 - smoothstep( 0.8, 0.82, h ) ) );
+		c = mix( c, uScarf, smoothstep( 0.79, 0.81, h ) * ( 1.0 - smoothstep( 0.85, 0.87, h ) ) );
+		c = mix( c, uHead, smoothstep( 0.86, 0.88, h ) );
+		diffuseColor.rgb *= c;
+	}`);
+    };
+    m.customProgramCacheKey = () => 'tideOutfit';
+    shadeMats.set(key, m);
+    return m;
+  }
+
   // ------------------------------------------------------------------ spawn
-  // spec: { model: 'Mace_Doyle' | null, extra: [r, g, b] (a dark copy of the player's body), name: text for the tag,
+  // spec: { model: 'Mace_Doyle' | null, extra: [r, g, b] (a dark copy of the player's body) or { pants, coat, patch, scarf, head }
+  //         (a copy in salvaged clothes), name: text for the tag,
   //         at: [x, y, z], heading (radians), pose, scale, tag: always show the name, fixed: never steps aside,
   //         mood: the expression of the face }
   function spawn(id, spec) {
@@ -111,7 +149,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       root.add(m);
       a.mannequin = true; a.tag = true; a.ready = true;
     };
-    if (spec.extra && player.rig) finish(cloneRig(THREE, player.rig, shade(spec.extra)));
+    if (spec.extra && player.rig) finish(cloneRig(THREE, player.rig, Array.isArray(spec.extra) ? shade(spec.extra) : outfit(spec.extra)));
     else if (spec.model) {
       rigOf(spec.model).then((entry) => {
         if (!entry) return fallback();

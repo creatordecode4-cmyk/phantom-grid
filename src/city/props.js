@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
+import { SUNK, PLACES } from './sunkPlan.js';
 import { InstancedSet, MeshBuilder } from '../utils/geometry.js';
 import { blockEdges, addDecal } from './ground.js';
 import * as M from './models.js';
@@ -754,13 +755,13 @@ export function buildProps(ctx) {
     }
     // beach walk: palms, lights, benches that look at the sea, bins
     const pz = N.promenadeMinZ;
-    for (let x = L.highway.maxX + 14; x < L.city.maxX + 60; x += 17) {
+    for (let x = L.highway.maxX + 14; x < SUNK.minX - 4; x += 17) {          // (the beach walk ends at The Sunk)
       addPalm(x, curb, pz + 1.3, rng.range(0.85, 1.15));
       addDecal(dc, 'treePit', x, pz + 1.3, 1.4, 1.4, 0, curb + 0.013, 1);
       circles.push({ x, z: pz + 1.3, r: 0.3 });
     }
-    for (let x = L.highway.maxX + 22; x < L.city.maxX + 60; x += 30) addStreetLight(1, x, curb, N.promenadeMaxZ - 0.6, 0);
-    for (let x = L.highway.maxX + 30; x < B.maxX; x += 26) {
+    for (let x = L.highway.maxX + 22; x < SUNK.minX - 4; x += 30) addStreetLight(1, x, curb, N.promenadeMaxZ - 0.6, 0);
+    for (let x = L.highway.maxX + 30; x < Math.min(B.maxX, SUNK.minX - 6); x += 26) {
       sets.bench.add(x, curb, pz + 0.9, Math.PI);
       circles.push({ x: x - 0.5, z: pz + 0.9, r: 0.4 }, { x: x + 0.5, z: pz + 0.9, r: 0.4 });
       if (rng.chance(0.5)) {
@@ -848,8 +849,10 @@ export function buildProps(ctx) {
       }
       ctx.colliders.boxes.push({ minX: Math.min(x0, x1) - 0.4, maxX: Math.max(x0, x1) + 0.4, minZ: Math.min(z0, z1) - 0.4, maxZ: Math.max(z0, z1) + 0.4, h: 1.2 });
     };
-    const wx = B.maxX - 1.0, nz = B.maxZ - 1.0;
-    for (const ew of L.streetsEW) if (ew.playable) row(wx, ew.center - half, wx, ew.center + half);
+    // (the west edge of the old play area: since Chapter 3 the bounds reach over The Sunk, which has its own walls)
+    const wx = (L.raw.oldWestEdge || B.maxX) - 1.0, nz = B.maxZ - 1.0;
+    // (the street that ends at Rustwater Dock stays open: the van drives to the dock)
+    for (const ew of L.streetsEW) if (ew.playable && Math.abs(ew.center - PLACES.rustwater.street[1]) > 2) row(wx, ew.center - half, wx, ew.center + half);
     for (const ns of L.streetsNS) if (ns.playable) row(ns.center - half, nz, ns.center + half, nz);
     row(wx, L.neon.roadMinZ, wx, L.neon.roadMaxZ);          // Neon Mile, west end
     row(wx, L.neon.promenadeMinZ, wx, L.neon.promenadeMaxZ); // beach walk, west end

@@ -92,13 +92,15 @@ export function createWeather(scene, lighting) {
   scene.add(mesh);
 
   let raining = false;
+  let zoneRain = false; // The Sunk: it always rains there (Chapter 3)
   let rain = 0;     // how hard it rains right now (0..1)
   let wet = 0;      // how wet the ground is (0..1)
 
   function update(dt) {
     // rain starts and stops over a few seconds
-    rain = damp(rain, raining ? 1 : 0, raining ? 0.5 : 0.8, dt);
-    if (rain < 0.002 && !raining) rain = 0;
+    const on = raining || zoneRain;
+    rain = damp(rain, on ? (raining ? 1 : 0.75) : 0, on ? 0.5 : 0.8, dt);
+    if (rain < 0.002 && !on) rain = 0;
     // the ground gets wet in about 10 seconds and dries much more slowly
     if (rain > wet) wet = Math.min(1, wet + dt * 0.11 * rain);
     else wet = Math.max(0, wet - dt * 0.022);
@@ -119,6 +121,8 @@ export function createWeather(scene, lighting) {
     // skip the slow start (used by the test tools): rain and wet ground at once
     setInstant(v) { raining = !!v; rain = v ? 1 : 0; wet = v ? 1 : 0; },
     get raining() { return raining; },
+    // The Sunk: a steady rain while the player is there
+    setZoneRain(v) { zoneRain = !!v; },
     get amount() { return rain; },
     setQuality(q) { geo.instanceCount = Math.min(MAX_STREAKS, q.rainStreaks); },
     // the roof the camera is under: { minX, maxX, minZ, maxZ, top } or null

@@ -13,11 +13,12 @@ import { CONFIG } from '../config.js';
 import { RNG } from '../utils/math.js';
 import { makeFbm } from '../utils/noise.js';
 import { MeshBuilder } from '../utils/geometry.js';
-import { simpleBuilding } from './buildings.js';
+import { simpleBuilding as simpleBuildingRaw } from './buildings.js';
 import { buildHero } from './heroBuildings.js';
 import { makeTrain } from './models.js';
 import { addMark } from './ground.js';
 import { MARK } from './textures.js';
+import { SUNK } from './sunkPlan.js';
 
 const T = CONFIG.textures;
 const CONCRETE = [0.74, 0.78, 0.86]; // turns the warm plaster picture into grey concrete
@@ -28,7 +29,13 @@ const CONCRETE = [0.74, 0.78, 0.86]; // turns the warm plaster picture into grey
 function buildOcean(ctx) {
   const L = ctx.layout;
   const mb = new MeshBuilder();
-  mb.groundRect(-9000, -9000, 9000, L.beach.minZ + 8, L.ocean.level, 1);
+  // (not over The Sunk: its canals have their own water, see sunk.js)
+  const edge = L.beach.minZ + 8;
+  mb.groundRect(-9000, -9000, 9000, Math.min(edge, SUNK.minZ), L.ocean.level, 1);
+  if (edge > SUNK.minZ) {
+    mb.groundRect(-9000, SUNK.minZ, SUNK.minX, edge, L.ocean.level, 1);
+    mb.groundRect(SUNK.maxX, SUNK.minZ, 9000, edge, L.ocean.level, 1);
+  }
   const mesh = new THREE.Mesh(mb.build(false), ctx.mats.ocean);
   mesh.name = 'ocean';
   mesh.receiveShadow = false;
@@ -360,6 +367,12 @@ function buildEdgeRows(ctx) {
   const L = ctx.layout;
   const rng = new RNG(L.seed + 991);
   const city = L.city;
+  // (nothing where The Sunk is: the drowned quarter has its own old buildings, see sunk.js)
+  const simpleBuilding = (c, r, ...more) => {
+    if (r.maxX > SUNK.minX - 4 && r.minX < SUNK.maxX + 4 && r.minZ < SUNK.maxZ + 4 && r.maxZ > SUNK.minZ - 4) return;
+    simpleBuildingRaw(c, r, ...more);
+  };
+
   // west: a wall of buildings at the end of the east-west streets
   for (let z = L.neon.roadMaxZ + 36; z < city.maxZ + 60; ) {
     const len = rng.range(28, 62);

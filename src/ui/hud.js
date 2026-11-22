@@ -107,7 +107,7 @@ export function createHUD() {
       zoneLook: $('zone-look'), zoneMove: $('zone-move'),
       joyBase: $('joy-base'), joyKnob: $('joy-knob'), runButton: $('btn-run'),
       minimap: $('minimap'), bigmapCanvas: $('bigmap-canvas'),
-      drive: { left: $('drv-left'), right: $('drv-right'), gas: $('drv-gas'), brake: $('drv-brake'), hand: $('drv-hand'), horn: $('drv-horn'), tilt: $('drv-tilt'), nitro: $('drv-nitro'), up: $('drv-up'), down: $('drv-down') },
+      drive: { left: $('drv-left'), right: $('drv-right'), gas: $('drv-gas'), brake: $('drv-brake'), hand: $('drv-hand'), horn: $('drv-horn'), tilt: $('drv-tilt'), nitro: $('drv-nitro'), up: $('drv-up'), down: $('drv-down'), quiet: $('drv-quiet') },
     },
     // ---- driving ----
     // role: car / police / boat / drone (some buttons only exist for some vehicles)
@@ -148,7 +148,11 @@ export function createHUD() {
     //   SEEN (red) while somebody sees the player, SEARCHING while they look, HIDDEN + a bar while a star goes away
     setWantedState(w) {
       let text = '', kind = '';
-      if (w.stars > 0) {
+      // STEALTH (Chapter 3, before anybody knows he is there): HIDDEN, or SEEN / HEARD with the meter filling up
+      if (w.stealth && !(w.stars > 0)) {
+        if (w.exposed) { text = w.heard && !(w.suspicion > 0 && w.seenNow) ? 'HEARD' : 'SEEN'; kind = 'exposed big'; }
+        else { text = 'HIDDEN'; kind = 'sneak big'; }
+      } else if (w.stars > 0) {
         if (w.mode === 'chase') { text = 'SEEN'; kind = 'seen'; }
         else if (w.hidden) { text = w.covered ? 'COVERED' : 'HIDDEN'; kind = 'hidden'; }
         else { text = 'SEARCHING'; kind = 'search'; }
@@ -160,7 +164,7 @@ export function createHUD() {
         el.wstateText.textContent = text;
         el.wstate.className = kind;
       }
-      const bar = kind === 'hidden' ? Math.round(w.progress * 100) : 0;
+      const bar = kind === 'hidden' ? Math.round(w.progress * 100) : kind.startsWith('exposed') || kind.startsWith('sneak') ? Math.round((w.suspicion || 0) * 100) : 0;
       if (bar !== lastBar) { lastBar = bar; el.wstateBar.style.width = bar + '%'; }
       // red and blue light at the edges of the screen during a chase (soft, it breathes; no hard flashing)
       const e = Math.round((w.light || 0) * 40) / 40;

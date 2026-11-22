@@ -278,10 +278,17 @@ export function initBoatState(v) {
   Object.assign(v, { vx: 0, vz: 0, forward: 0, slide: 0, steer: 0, roll: 0, pitch: 0, wave: Math.random() * 10, damage: 0, fx: { throttle: 0, slip: 0, impact: 0, wake: 0 } });
 }
 export function stepBoat(v, input, dt, world) {
-  const T = v.type, top = T.topSpeed / 3.6, fx = v.fx;
+  const T = v.type, fx = v.fx;
+  // in the canals of The Sunk (Chapter 3) the water is calm and the walls stop the boat
+  const canal = !!(world.canal && world.canal(v.x, v.z));
+  // top speed: an old boat can have its own limit (v.limit, m/s); the QUIET motor makes it slow and soft
+  let top = T.topSpeed / 3.6;
+  if (v.limit > 0) top = Math.min(top, v.limit);
+  if (v.quiet) top *= 0.42;
+  const accel = T.accel * (v.quiet ? 0.55 : 1) * (v.rusty ? 0.82 : 1);
   let fxv = Math.sin(v.heading), fzv = Math.cos(v.heading);
   let fwd = v.vx * fxv + v.vz * fzv;
-  const thrust = (input.gas - input.brake * 0.6) * T.accel;
+  const thrust = (input.gas - input.brake * 0.6) * accel;
   fx.throttle = Math.abs(input.gas - input.brake);
   v.steer = approach(v.steer, input.steer, 1.6, dt);
   // the rudder only works when water flows past it
@@ -290,24 +297,26 @@ export function stepBoat(v, input, dt, world) {
   const rx = -fzv, rz = fxv;
   fwd = v.vx * fxv + v.vz * fzv;
   let slide = v.vx * rx + v.vz * rz;
-  fwd += thrust * dt - (fwd * Math.abs(fwd) * (T.accel / (top * top)) + fwd * 0.25) * dt;
+  fwd += thrust * dt - (fwd * Math.abs(fwd) * (accel / (top * top)) + fwd * 0.25) * dt;
   slide *= Math.exp(-1.6 * dt);                                  // a boat slides sideways for a while
   v.vx = fxv * fwd + rx * slide; v.vz = fzv * fwd + rz * slide;
   v.forward = fwd; v.slide = slide;
   v.x += v.vx * dt; v.z += v.vz * dt;
   fx.impact = 0;
-  // the beach and the edges of the sea
-  if (v.z > world.shoreZ) { v.z = world.shoreZ; if (v.vz > 0) { fx.impact = v.vz; v.vz *= -0.2; v.vx *= 0.6; } }
+  // the beach and the edges of the sea (in The Sunk: its walls and pontoons, see vehicle.js)
+  if (!canal && v.z > world.shoreZ) { v.z = world.shoreZ; if (v.vz > 0) { fx.impact = v.vz; v.vz *= -0.2; v.vx *= 0.6; } }
+  if (world.collide) { const hit = world.collide(v); if (hit > fx.impact) fx.impact = hit; }
   if (v.z < world.minZ) { v.z = world.minZ; v.vz = Math.abs(v.vz) * 0.3; }
   if (v.x < world.minX) { v.x = world.minX; v.vx = Math.abs(v.vx) * 0.3; }
   if (v.x > world.maxX) { v.x = world.maxX; v.vx = -Math.abs(v.vx) * 0.3; }
   // waves: three slow swells with different rhythms
   v.wave += dt;
-  const t = v.wave, k = clamp(1 - Math.abs(fwd) / (top * 1.5), 0.4, 1);
+  const t = v.wave, k = clamp(1 - Math.abs(fwd) / (top * 1.5), 0.4, 1) * (canal ? 0.4 : 1);
   v.y = world.waterLevel - 0.5 + (Math.sin(t * 1.25 + v.x * 0.08) * 0.13 + Math.sin(t * 0.8 + v.z * 0.06) * 0.1) * k + Math.abs(fwd) * 0.006;
   v.pitch += (-clamp(fwd / top, -0.3, 1) * 0.085 - thrust * 0.004 + Math.sin(t * 1.25 + 1.1) * 0.03 * k - v.pitch) * Math.min(1, dt * 3);
   v.roll += (v.steer * clamp(fwd / top, 0, 1) * 0.2 + Math.sin(t * 0.95) * 0.04 * k - v.roll) * Math.min(1, dt * 3);
-  fx.wake = clamp(Math.abs(fwd) / top, 0, 1);
+  // (the wake is measured against the boat's real top speed: the quiet motor leaves almost none)
+  fx.wake = clamp(Math.abs(fwd) / (T.topSpeed / 3.6 * 0.8), 0, 1);
   return fx;
 }
 
