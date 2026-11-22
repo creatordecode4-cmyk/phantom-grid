@@ -444,6 +444,7 @@ export function createAnimator(THREE, rig, opts = {}) {
   let drive = null;
   function drivingPose(dt) {
     const d = drive || {}, t = st.time;
+    if (d.bike) { ridingPose(d.bike, clamp(d.steer || 0, -1, 1), t); return; }
     const steer = clamp(d.steer || 0, -1, 1);
     bodyQ.setFromEuler(euler.set(-10 * DEG, 0, -steer * 2 * DEG, 'YXZ'));          // leaning back into the seat
     // the hips sit where the seat is: the caller puts the character's root on the seat cushion
@@ -468,6 +469,35 @@ export function createAnimator(THREE, rig, opts = {}) {
       setDelta('hand_' + SIDES[q].tag, 0, 0, s * 12 * DEG);
       fingers(q, 68, 42, 0);                                                         // gripping the wheel, thumb around it
       setDelta('clavicle_' + SIDES[q].tag, -6 * DEG, 0, 0);
+    }
+  }
+
+  // ---------------------------------------------------------------- riding a sports bike
+  // b: { grip: [x, y, z] the left grip, peg: [x, y, z] the left footpeg (character space; the right ones are
+  // mirrored), turn: how far the handlebars are turned (radians, + = to the left) }
+  // The body leans forward over the tank, the head comes up to look down the road, the knees hold the tank,
+  // the feet stand on the pegs and the hands hold the grips (they go with the bars when you steer).
+  function ridingPose(b, steer, t) {
+    bodyQ.setFromEuler(euler.set(16 * DEG, 0, -steer * 3 * DEG, 'YXZ'));
+    const seatY = 0.1 * k;
+    hipsPos.set(0, seatY + (hipsRest.y - R.thigh_L.head[1]), 0);
+    setDelta('spine', 9 * DEG, 0, 0); setDelta('spine1', 7 * DEG, -steer * 3 * DEG, 0); setDelta('chest', 4 * DEG + Math.sin(t * 1.4) * 0.4 * DEG, -steer * 3 * DEG, 0);
+    setDelta('neck', -15 * DEG, steer * 5 * DEG, 0); setDelta('head', -13 * DEG, steer * 7 * DEG, 0);
+    for (let q = 0; q < 2; q++) {
+      const { s } = SIDES[q], F = foot[q];
+      // the ball of the foot on the peg: the ankle a little behind and above it, toes down
+      F.ankle.set(s * b.peg[0], b.peg[1] + ankleH * 0.75, b.peg[2] - 0.05 * k);
+      F.yaw = s * 0.22; F.pitch = 0.42; F.toe = 0;
+    }
+    const c = Math.cos(b.turn || 0), sn = Math.sin(b.turn || 0);
+    for (let q = 0; q < 2; q++) {
+      const { s } = SIDES[q];
+      // the grip turns with the bars about the steering head: the left one comes back when the bars turn left
+      const gx = s * b.grip[0], gz = b.grip[2];
+      handAt(q, gx * c, b.grip[1], gz - gx * sn, s * 0.75, -0.6, -0.25);
+      setDelta('hand_' + SIDES[q].tag, 0, 0, s * 8 * DEG);
+      fingers(q, 70, 44, 0);
+      setDelta('clavicle_' + SIDES[q].tag, -4 * DEG, 0, 0);
     }
   }
 

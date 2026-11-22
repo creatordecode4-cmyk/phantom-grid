@@ -353,6 +353,12 @@ async function boot() {
     if (film) S.applyCamera(dt);
     else if (driving && vehicles.active) rig.updateChase(dt, vehicles.active, vehicles.shake, view);
     else rig.update(dt, player);
+    // a wall pushed the camera right up to the player: the character fades out instead of being cut open
+    if (!film && vehicles.state === 'none' && !player.staged) {
+      const cp = camera.position, pp = player.position;
+      const hy = clamp(cp.y, pp.y + 0.9, pp.y + 1.8);
+      player.setFade(clamp((Math.hypot(cp.x - pp.x, cp.y - hy, cp.z - pp.z) - 0.4) / 0.45, 0, 1));
+    } else player.setFade(1);
     {
       // the faster, the wider the view (and a little speed blur at the very top, see postfx.js)
       // (the story can take the player out of the car in the middle of a frame: "driving" may be old here)
@@ -421,7 +427,7 @@ async function boot() {
     else if (routeTimer <= 0) { routeTimer = 0.6; route = gps.route(px, pz, goal.x, goal.z); }
     // the CAR button shows up next to a car
     nearTimer -= dt;
-    if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !inside && !!vehicles.nearest(px, pz)); vehicles.prefetch(px, pz, active === 'low' ? 2 : active === 'medium' ? 3 : 8); }
+    if (nearTimer <= 0) { nearTimer = 0.2; hud.showCarButton(onFoot && !inside && !!vehicles.nearest(px, pz)); vehicles.prefetch(px, pz, active === 'low' ? 2 : active === 'medium' ? 4 : 8); }
     // ---- rain, traffic hum, waves near the beach, the tape (all made in code: src/audio/music.js) ----
     const amb = story.ambient;
     music.update(dt, {
@@ -652,7 +658,7 @@ async function boot() {
     hud.toast(on ? 'HIGH BEAM' : 'LOW BEAM', 900);
   };
   // ---- CARS menu (for testing): put any vehicle in front of the player ----
-  hud.setVehicleMenu(['small_city_car', 'tech_patrol_car', 'police_coupe', 'chrome_supercar', 'armored_van', 'patrol_boat', 'drone', 'sedan', 'suv', 'coupe']
+  hud.setVehicleMenu(['street_bike', 'small_city_car', 'tech_patrol_car', 'police_coupe', 'chrome_supercar', 'armored_van', 'patrol_boat', 'drone', 'sedan', 'suv', 'coupe']
     .filter((k) => CAR_TYPES[k] && (CAR_TYPES[k].role !== 'boat' || carLib.boat)).map((k) => [k, CAR_TYPES[k].label]));
   hud.actions.spawn = (kind) => {
     if (vehicles.state !== 'none') { hud.toast('GET OUT OF THE VEHICLE FIRST', 1500); return; }

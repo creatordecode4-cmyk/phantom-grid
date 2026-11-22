@@ -125,7 +125,8 @@ export function createCameraRig(camera, city) {
   function updateChase(dt, car, shake = 0, mode = 'chase') {
     idle += dt;
     const speed = Math.hypot(car.vx, car.vz);
-    const big = car.role === 'boat' ? 1.8 : car.role === 'drone' ? 0.6 : Math.max(1, car.info.length / 4.7);
+    // (a motorbike is small: the camera comes closer, so the bike and its rider fill the picture)
+    const big = car.role === 'boat' ? 1.8 : car.role === 'drone' ? 0.6 : car.info.bike ? 0.72 : Math.max(1, car.info.length / 4.7);
     // at speed and on rough ground the camera trembles a little
     shake += Math.min(0.1, speed * 0.0016) + (car.fx && car.fx.bump ? car.fx.bump * 0.12 : 0);
     if ((mode === 'hood' || mode === 'cockpit') && car.isCar) {

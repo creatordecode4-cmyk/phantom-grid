@@ -41,6 +41,8 @@ const torque = (n) => clamp(0.58 + 1.5 * n - 1.22 * n * n, 0, 1.05);
 export function initCarState(v) {
   Object.assign(v, {
     vx: 0, vz: 0, forward: 0, slide: 0, steer: 0, yawSpin: 0,
+    spin: 0,      // how far the wheels have turned (radians). It must start at 0: "undefined" plus a number is
+                  // NaN, and a wheel turned by NaN disappears (the detailed cars then stood on empty wheel arches)
     gear: 1, rpm: IDLE_RPM, shiftT: 0, reverse: false, stopped: 0,
     roll: 0, pitch: 0, heave: 0, heaveV: 0, lastGround: null,
     damage: 0, nitro: 1, nitroOn: false, braking: false,

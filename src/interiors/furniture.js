@@ -186,7 +186,7 @@ export function windowIn(b, o, o2 = {}) {
   for (let i = 1; i < cols; i++) P.box('paint', -hw + (o.width * i) / cols, o.y0, zs, 0.035, hgt, 0.045, wood, { r: 0.006 });
   for (let j = 1; j < rows; j++) P.box('paint', 0, o.y0 + (hgt * j) / rows - 0.0175, zs, o.width, 0.035, 0.045, wood, { r: 0.006 });
   // glass (a little reflection) and the view outside, two meters away
-  P.geo('glass', new THREE.PlaneGeometry(o.width - 0.04, hgt - 0.04), 0, o.y0 + hgt / 2, zs - 0.01, 0, C('#a9b6bf'));
+  P.geo('pane', new THREE.PlaneGeometry(o.width - 0.04, hgt - 0.04), 0, o.y0 + hgt / 2, zs - 0.01, 0, [1, 1, 1]);
   const vw = Math.max(3.2, o.width * 3.4), vh = Math.max(2.6, hgt * 2.6);
   const vg = new THREE.PlaneGeometry(vw, vh);
   P.geo('view', vg, (o2.viewShift || 0), o.y0 + hgt / 2 + 0.35, -T - 1.6, 0, [1, 1, 1]);

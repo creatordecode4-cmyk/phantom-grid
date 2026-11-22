@@ -525,6 +525,7 @@ read the dialog. Add `?mission=0` to the address to play without it.
 | `chrome_supercar` | CHROME SUPERCAR | 4.6 m | 230 km/h | the fastest; `NITRO` button with a blue flame, turbo whoosh |
 | `patrol_boat` | PATROL BOAT | 8 m | 75 km/h | floats at the beach of Neon Mile; bobs, leans, leaves a wake |
 | `drone` | DRONE | 1.8 m wide | 70 km/h | flies up to 150 m high |
+| (made in code) | STREET BIKE | 2.1 m | 235 km/h | a sports motorbike; leans into corners, stands on a kickstand - see "version 6.1" below |
 
 The loader (`src/vehicles/vehicleLoader.js`) looks for `<name>.glb` (detailed) and
 `<name>_lo.glb` (light version). A missing file is skipped, the game still starts. A plain
@@ -1058,6 +1059,63 @@ for the whole city.
 
 ---
 
+## Fixes, detailed wheels and a motorbike (version 6.1)
+
+**Three things the player saw, and why they happened:**
+
+| What you saw | Why | The fix |
+|---|---|---|
+| Some cars looked broken: wheels missing, holes in the wheel arches | the number that turns the wheels started as "nothing"; "nothing + a number" is not a number, so the wheels of the detailed car models were placed nowhere and disappeared | the wheel turn starts at 0, and a bad number is reset before it ever reaches a wheel (`src/vehicles/physics.js`, `vehicle.js`) |
+| Parts of the character disappeared in some places | when a wall pushes the camera very close, the camera's "near cut" (20 cm in front of the lens) sliced through the body: an arm or half the head was cut away | when the camera comes closer than about 85 cm, the character now fades out smoothly (a fine dither) instead of being cut; going through a door always shows the player again (`src/player/player.js`, `src/main.js`) |
+| At night, windows showed a morning view | the window glass was a light grey, half see-through sheet that looked bright and milky; the moonlight through it was as strong as morning sun | the glass is now almost clear and dark, the moonlight is much weaker, and the picture outside gets darker in the evening, at night and in the rain (`src/interiors/kit.js`, `interiors.js`) |
+
+### Detailed wheels (`src/vehicles/wheelDetail.js`)
+
+Every wheel made in code is now built like the wheel of a good car model (the player's reference
+pictures): a round tyre with soft shoulders, grooves and a ring on the side wall; a deep rim with a
+dark barrel and a bright lip; spokes that dish inward to a hub with a cap and five wheel nuts; behind
+the spokes a **brake disc with drilled holes** that turns with the wheel; and a coloured **brake
+caliper** that holds the disc and does NOT turn. The whole turning wheel is one piece (one draw call),
+the caliper a second small one.
+
+| Rim | On | Look |
+|---|---|---|
+| `twin5` | coupes (and any car made in code without its own) | five double spokes, silver, red caliper |
+| `mesh10` | SUV | ten thin dark spokes, yellow caliper |
+| `blade6` | sedan, van | six wide blades, black caliper |
+| `bikeF`, `bikeR` | the street bike | spokes in the middle of the wheel, a red stripe on both rim edges, two ring discs at the front, one at the back plus the chain sprocket, gold calipers |
+
+The car model files keep their own rims; a drilled disc and a red caliper are now added behind them,
+so you no longer see through the wheel into nothing. A detailed wheel is about 3,600 triangles.
+
+### THE STREET BIKE (`src/vehicles/bike.js`)
+
+A sports motorbike, an original design of this game (no real make; the reference picture of a sports
+bike was used for the level of detail only). It is the **first vehicle in the garage row** at the start
+point, and the first in the `CARS` menu.
+
+- **Body:** the panels are made as a "skin" through cross sections (like the hull of a boat): a sharp
+  nose with two slim LED headlights and LED brows, a smoked screen whose edges lie exactly on the
+  nose's crease lines, winglets, side fairings with slanted vents and a step line, a dark belly pan, a
+  tank with a crisp shoulder line, a rider seat, a black pillion pad, and a tail that rises to a point
+  with LED tail lights. Lights and vents are laid onto the curved panels, a few millimetres out.
+- **Parts:** aluminium frame beams and swing arm, a red-spring shock, the engine and its covers (seen
+  through the open back of the fairing), a chain, footpegs, mirrors with indicators, a glowing dash,
+  a short titanium exhaust on the right, the number plate holder with indicators, a hugger over the
+  back wheel.
+- **The front turns** about a steering head that leans back (the "rake"): golden upside-down fork,
+  triple clamps, clip-on bars with grips, levers and bar-end weights, the front fender.
+- **It leans into corners** by the real sideways force (the angle a rider would need), up to about 40
+  degrees. Nobody on it and standing still: it **leans on its kickstand**; the stand folds away when
+  you get on.
+- **The rider:** the player sits on the seat, leans forward over the tank, head up, knees at the
+  tank, feet on the pegs, hands on the grips - the hands go with the bars when you steer. The cockpit
+  view is from the rider's eyes (you see the dash, the screen and the mirrors). The chase camera comes
+  closer for the bike.
+- **Cost:** about 7 draw calls (body, front, two wheels with calipers, kickstand).
+
+---
+
 ## Known limits
 
 - Traffic cars drive on rails: when hit they stop and honk, but they are not pushed away. Parked
@@ -1092,4 +1150,7 @@ for the whole city.
   The story people are the scanned models with an automatic skeleton: clothes do not swing.
   Extras (the two under the awning, the customer, the Guard
   officer) are dark copies of one body. The two story alleys are only 5 m wide: drive in slowly.
+- THE STREET BIKE drives with the car physics: the lean is only for the eye. It cannot do wheelies or
+  stoppies and does not fall over in a crash; it is not used by traffic or the story (yet). The rider's
+  pose is made by code and was only checked in pictures from a software renderer.
 - Shop names, signs and adverts are invented. No real brands are used.

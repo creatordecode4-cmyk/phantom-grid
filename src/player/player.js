@@ -259,7 +259,29 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
 
   // ---- used by the cars: hide the player, put them somewhere, walk them to a door ----
   let hidden = false;
-  function setHidden(h) { hidden = h; root.visible = !h; blob.visible = !h; }
+  function setHidden(h) { hidden = h; root.visible = !h && fadeK > 0.02; blob.visible = !h; }
+
+  // ---- the camera pressed very close to the player (against a wall, in a small room) ----
+  // Instead of the camera cutting through the head and the bag (you would see inside the model),
+  // the character fades out with a fine pattern of dots, and comes back when the camera moves away.
+  // (alphaHash: no sorting problems, and with opacity 1 the character looks exactly as before)
+  let fadeK = 1;
+  const fadeMats = [];
+  root.traverse((o) => {
+    if (!o.material) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (fadeMats.includes(m) || m.transparent || m.alphaTest > 0) continue;
+      m.alphaHash = true;
+      fadeMats.push(m);
+    }
+  });
+  function setFade(k) {
+    k = clamp(k, 0, 1);
+    if (k === fadeK || (Math.abs(k - fadeK) < 0.01 && k > 0 && k < 1)) return;
+    fadeK = k;
+    for (const m of fadeMats) m.opacity = k;
+    root.visible = !hidden && k > 0.02;
+  }
   function place(x, z, angle) {
     if (mover && Math.hypot(pos.x - x, pos.z - z) > 0.5) mover.reset();
     pos.set(x, groundAt(x, z), z);
@@ -298,7 +320,10 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     const sc = seat.scale;
     rig.root.position.set(seat.x, seat.y, seat.z);
     rig.root.scale.setScalar(sc);
-    mover.drive = { steer: seat.steer, wheel: [(seat.wheel[0] - seat.x) / sc, (seat.wheel[1] - seat.y) / sc, (seat.wheel[2] - seat.z) / sc], radius: 0.17 / sc, tilt: -0.45 };
+    const rel = (p) => [(p[0] - seat.x) / sc, (p[1] - seat.y) / sc, (p[2] - seat.z) / sc];
+    mover.drive = { steer: seat.steer, wheel: rel(seat.wheel), radius: (seat.radius || 0.17) / sc, tilt: seat.tilt === undefined ? -0.45 : seat.tilt,
+      // a motorbike: where the left grip and the left footpeg are (the right ones are their mirror image), how far the bars are turned
+      bike: seat.bike ? { grip: rel(seat.bike.grip), peg: rel(seat.bike.peg), turn: seat.bike.turn } : null };
     mover.update(dt, {});
   }
 
@@ -353,6 +378,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     // walking inside a house: its floor, its walls and furniture (null = back in the city)
     setRoom(r) { room = r; },
     get room() { return room; },
+    setFade,
     blob,
     get staged() { return staged; },
     set talk(v) { if (mover) mover.talk = v; },

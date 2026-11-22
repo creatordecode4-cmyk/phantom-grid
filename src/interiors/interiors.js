@@ -337,18 +337,19 @@ export function createInteriors({ scene, renderer, camera, player, rig, ui, hud,
       const sun = sunK > moonK * 0.2;
       const col = sun ? sunCol : moonCol;
       s.spot.color.setRGB(col[0], col[1], col[2]);
-      s.spot.intensity = sun ? 620 * sunK * (0.75 + 0.25 * (1 - warm)) : 26 * moonK;
+      // (the moon is a faint, cold light: at night the window must not look like morning)
+      s.spot.intensity = sun ? 620 * sunK * (0.75 + 0.25 * (1 - warm)) : 7 * moonK;
       // where it lands on the floor: a warm light bounces back from there
       const tt = (s.mid.y - 0.05) / Math.max(0.15, -s.dir.y);
       _a.copy(s.mid).addScaledVector(s.dir, Math.min(tt, 6));
       s.bounce.position.set(_a.x, 0.55, _a.z);
       s.bounce.color.setRGB(col[0] * 1.0, col[1] * 0.86, col[2] * 0.7);
-      s.bounce.intensity = sun ? 3.2 * sunK : 0.25 * moonK;
+      s.bounce.intensity = sun ? 3.2 * sunK : 0.06 * moonK;
       // the beam and the dust
       const key = `${s.dir.x.toFixed(3)}|${s.dir.y.toFixed(3)}|${s.dir.z.toFixed(3)}`;
       if (key !== s.lastKey) { s.lastKey = key; beamShape(s); }
-      const beamK = sun ? 0.2 * sunK : 0.06 * moonK;
-      s.du.uOpacity.value = (sun ? 0.85 * sunK : 0.25 * moonK);
+      const beamK = sun ? 0.2 * sunK : 0.02 * moonK;
+      s.du.uOpacity.value = (sun ? 0.85 * sunK : 0.08 * moonK);
       s.du.uColor.value.setRGB(col[0], col[1], col[2]);
       s.du.uTime.value = time;
       s.beamK = beamK; s.col = col;
@@ -365,7 +366,7 @@ export function createInteriors({ scene, renderer, camera, player, rig, ui, hud,
     const dayW = sunK * (1 - warm), eveW = Math.max(0, Math.min(1, (sunK + 0.4 * (1 - nightK)) * warm)), nightW = nightK;
     const sum = dayW + eveW + nightW || 1;
     viewMix.uViewW.value.set(dayW / sum, eveW / sum, nightW / sum);
-    M.view.color.setScalar(lerp(0.9, 1.7, smooth(-4, 20, el)) * (1 - 0.35 * rain));
+    M.view.color.setScalar(lerp(0.5, 1.7, smooth(-4, 20, el)) * (1 - 0.35 * rain));
     // the "camera" of the eye: a little more open at night
     const exposure = lerp(1.0, 0.9, smooth(-6, 18, el));
     lighting.interior = { sky: hs, ground: [0.3, 0.25, 0.2], hemi: house.hemi.intensity, exposure, env: 0.35 };
@@ -420,6 +421,7 @@ export function createInteriors({ scene, renderer, camera, player, rig, ui, hud,
   // (the screen is black now) put everything inside
   function switchIn() {
     house = build(via.house);
+    showPlayer();                     // (every part of the character, also a part added after the game started)
     house.root.visible = true;
     setRoomShade(house);
     camera.layers.set(INTERIOR_LAYER);
@@ -562,6 +564,7 @@ export function createInteriors({ scene, renderer, camera, player, rig, ui, hud,
     kinds() { const out = {}; for (const d of doors) { const k = HOUSES[d.house] ? d.house : kindOf(d.e); out[k] = out[k] || { n: 0, first: d.e.id, x: +d.e.x.toFixed(1), z: +d.e.z.toFixed(1) }; out[k].n++; } return out; },
     leaveNow() { leave(); },
     get state() { return state; },
+    viewWeights() { const v = viewMix.uViewW.value; return [+v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2)]; },
     get house() { return house; },
     // while the game loads: build every house and draw it once, hidden behind the loading screen, so the
     // graphics card has prepared its materials and the first visit does not start with a long black screen

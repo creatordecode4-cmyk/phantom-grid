@@ -23,6 +23,8 @@ import { makeInterior, makeDriver, splitBody, seatOf } from './carParts.js';
 import { VEHICLE_SPECS } from './vehicleLoader.js';
 import { initCarState, stepCar, initBoatState, stepBoat, initDroneState, stepDrone, IDLE_RPM, RED_RPM } from './physics.js';
 import { makeDrone, lin } from '../city/models.js';
+import { mountDetailedWheel, addBrake } from './wheelDetail.js';
+import { BIKE_INFO, BIKE_SPEC, BIKE_HEAD, BIKE_RAKE, BIKE_BAR, BIKE_GRIP, BIKE_PEG, BIKE_EYE, BIKE_R, BIKE_PARK_LEAN, bikeBodyIn } from './bike.js';
 import { clamp, damp } from '../utils/math.js';
 
 const KMH = 3.6;
@@ -55,6 +57,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   const mats = materials.mats;
   const L = city.layout, B = L.bounds;
   const geo = { body: {}, wheel: {} };
+  // which detailed rim each car made in code gets (wheelDetail.js)
+  const RIMS = { sedan: 'blade6', suv: 'mesh10', van: 'blade6', coupe: 'twin5', police_coupe: 'twin5' };
   const beamTex = makeBeamTexture();
   const live = [];        // real car objects
   let active = null;      // the car the player sits in (or is getting into / out of)
@@ -134,10 +138,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       for (const sx of [1, -1]) {
         const steerNode = new THREE.Group();
         steerNode.position.set(sx * info.wheelX, info.wheelR, wz);
-        const w = new THREE.Mesh(geo.wheel[kind], mats.carPaint);
-        w.castShadow = true;
-        if (sx < 0) w.rotation.y = Math.PI; // the same wheel, turned around for the other side
-        steerNode.add(w);
+        // a detailed wheel: spokes, lug nuts, a drilled brake disc and a caliper (wheelDetail.js)
+        const w = mountDetailedWheel(steerNode, info.wheelR, 0.24, RIMS[kind] || 'twin5', sx, mats.carPaint, 0.66);
         v.group.add(steerNode);
         v.wheels.push({ steerNode, mesh: w, front: wz > 0, spin: sx > 0 ? 1 : -1 });
       }
@@ -185,22 +187,21 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         paint(o);
         const steerNode = new THREE.Group();
         steerNode.position.copy(o.position);
+        const side = o.position.x >= 0 ? 1 : -1;
         o.position.set(0, 0, 0);
         steerNode.add(o);
+        // a brake disc and a caliper behind the spokes of the model's own rim
+        addBrake(o, steerNode, info.wheelR, info.wheelR * 0.6, side, mats.carPaint);
         v.group.add(steerNode);
         v.wheels.push({ steerNode, mesh: o, front, spin: 1 });
       }
       // this scan had no usable wheels: mount clean wheels made in code
       if (info.codeWheels && info.wheels) {
-        if (!geo.wheel[v.kind]) geo.wheel[v.kind] = makeWheel(null, info.wheelR);
         for (const [name, front, sx] of [['wheel_fl', true, 1], ['wheel_fr', true, -1], ['wheel_rl', false, 1], ['wheel_rr', false, -1]]) {
           const p = info.wheels[name];
           const steerNode = new THREE.Group();
           steerNode.position.set(p[0], info.wheelR, p[2]);
-          const w = new THREE.Mesh(geo.wheel[v.kind], mats.carPaint);
-          w.castShadow = true;
-          if (sx < 0) w.rotation.y = Math.PI;
-          steerNode.add(w);
+          const w = mountDetailedWheel(steerNode, info.wheelR, 0.26, RIMS[v.kind] || 'twin5', sx, mats.carPaint, 0.7);
           v.group.add(steerNode);
           v.wheels.push({ steerNode, mesh: w, front, spin: sx });
         }
@@ -216,6 +217,45 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       v.setDetail = (want) => { if (want === on) return; on = want; simple.visible = !want; for (const o of nodes) o.visible = want; };
     }).catch((e) => console.warn('[vehicles] could not show the detailed model of', v.kind, e)); };
   }
+  // THE STREET BIKE (bike.js): the body, a front that turns about the raked steering head, two detailed wheels.
+  // Both wheels sit inside "tilt", so the whole bike leans into a corner.
+  function partsBike(v) {
+    const g = bikeBodyIn(v.color || [0.45, 0.025, 0.02]);
+    const body = new THREE.Mesh(g.body, mats.carPaint);
+    body.castShadow = true; body.receiveShadow = true;
+    v.tilt.add(body);
+    // the front: a head that leans back by the rake, the turning part inside it, the wheel at the bottom of the fork
+    const head = new THREE.Group();
+    head.position.set(BIKE_HEAD[0], BIKE_HEAD[1], BIKE_HEAD[2]);
+    head.rotation.x = -BIKE_RAKE;
+    const steer = new THREE.Group();
+    head.add(steer);
+    const front = new THREE.Mesh(g.front, mats.carPaint);
+    front.castShadow = true;
+    steer.add(front);
+    const axle = new THREE.Group();
+    axle.position.set(0, -g.forkLen, 0);
+    axle.rotation.x = BIKE_RAKE;                        // (the wheel itself stands upright again)
+    steer.add(axle);
+    const fw = mountDetailedWheel(axle, BIKE_R, 0.12, 'bikeF', -1, mats.carPaint, 0.72);
+    v.tilt.add(head);
+    v.wheels.push({ steerNode: steer, mesh: fw, front: true, spin: -1 });
+    const rearNode = new THREE.Group();
+    rearNode.position.set(0, BIKE_R, BIKE_INFO.wheelZ[0]);
+    const rw = mountDetailedWheel(rearNode, BIKE_R, 0.18, 'bikeR', -1, mats.carPaint, 0.72);
+    v.tilt.add(rearNode);
+    v.wheels.push({ steerNode: rearNode, mesh: rw, front: false, spin: -1 });
+    // (no seats or dashboard inside: the rider sits on the bike; the cockpit view is the rider's eyes)
+    v.driver = new THREE.Object3D();
+    v.tilt.add(v.driver);
+    v.eye = BIKE_EYE;
+    v.paintMeshes = [];
+    // the kickstand: out while nobody rides the bike (then the bike leans on it)
+    v.kick = new THREE.Mesh(g.kick, mats.carPaint);
+    v.tilt.add(v.kick);
+    v.lean = BIKE_PARK_LEAN;
+  }
+
   // model files bring their own picture; we add a clear coat and the street lamp light at night
   // tint: [r, g, b] darkens / colors the whole car (story: the black Phantom)
   const paintCache = new Map();   // picture of the model -> (tint -> the 4 damage levels)
@@ -278,6 +318,9 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     droneGeo.scale(1.7, 1.7, 1.7);
     registerCar('drone', { length: 1.8, halfWidth: 0.9, boxHalfWidth: 0.9, roof: 0.45, backZ: -0.9, frontZ: 0.9, wheelR: 0.1, wheelX: 0.5, wheelZ: [-0.5, 0.5], door: { z0: 0, z1: 0, y0: 0, y1: 0 }, seat: null }, VEHICLE_SPECS.drone);
   }
+  // the street bike is made in code (bike.js)
+  registerCar('street_bike', BIKE_INFO, BIKE_SPEC);
+  { const bi = carInfo('street_bike'); bi.noseY = 0.95; bi.tailY = 0.98; bi.lampW = 0.025; }
   const SHORE = L.bounds.minZ - 1.6;   // the boat cannot come closer to the beach than this
   const seaWorld = { waterLevel: L.ocean.level, shoreZ: SHORE, minX: B.minX - 250, maxX: B.maxX + 250, minZ: B.minZ - 1100 };
 
@@ -332,6 +375,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     live.push(v);
     if (role === 'boat') { const m = new THREE.Mesh(carLib.boat, mats.carPaint); m.castShadow = true; tilt.add(m); }
     else if (role === 'drone') { const m = new THREE.Mesh(droneGeo, carLib && carLib.drone ? mats.carPaint : mats.prop); m.castShadow = true; m.position.y = 0.16; tilt.add(m); }
+    else if (info.bike) partsBike(v);
     else if (info.model && carLib && carLib.geo[kind]) partsFromModel(v);
     else if (opts.simple) partsSimple(v);
     else partsFromCode(v);
@@ -399,7 +443,14 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     }
     // the real vehicles nearest to the player show their detailed model, the others the light one
     byDist.length = 0;
-    for (const v of live) if (v.needDetail && !v.noDetail && !v.away) { v.lodD = v === active ? -1 : Math.hypot(v.x - px, v.z - pz); byDist.push(v); }
+    for (const v of live) {
+      if (!v.needDetail || v.away) continue;
+      const d = v === active ? -1 : Math.hypot(v.x - px, v.z - pz);
+      // computer drivers (the Guard, the racers) show their detailed model only right next to the player
+      // (when they ram you, they do not look like soft blobs any more)
+      if (v.noDetail && d > 14) { if (v.setDetail) v.setDetail(false); continue; }
+      v.lodD = d; byDist.push(v);
+    }
     byDist.sort((a, b) => a.lodD - b.lodD);
     byDist.forEach((v, i) => {
       const want = v === active || (i < budget && v.lodD < 20);
@@ -640,10 +691,22 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     v.group.rotation.y = v.heading;
     // engine start: a short shake
     const shakeStart = v.startT > 0 ? Math.sin(v.startT * 70) * 0.006 * Math.min(1, v.startT * 3) : 0;
-    v.tilt.rotation.set(v.pitch + shakeStart, 0, v.roll + shakeStart);
+    if (v.info.bike) {
+      // a bike leans INTO the corner (a car's body rolls out of it): by atan(sideways force / g).
+      // Nobody on it and standing still: it leans on its kickstand.
+      const ridden = v === active && state !== 'none';
+      const parked = !ridden && Math.abs(v.forward || 0) < 0.5 && !v.npc;
+      const want = v.dead ? 0 : parked ? BIKE_PARK_LEAN : clamp(-Math.atan(((v.fx && v.fx.ay) || 0) / 9.81), -0.72, 0.72);
+      v.lean += (want - v.lean) * (parked ? 0.06 : 0.16);
+      if (v.kick) v.kick.visible = parked && Math.abs(v.lean - BIKE_PARK_LEAN) < 0.05;
+      v.tilt.rotation.set(v.pitch * 0.4 + shakeStart, 0, v.lean);
+    } else v.tilt.rotation.set(v.pitch + shakeStart, 0, v.roll + shakeStart);
+    // (a bad number must never reach a wheel: it would vanish)
+    if (!Number.isFinite(v.spin)) v.spin = 0;
+    if (!Number.isFinite(v.steer)) v.steer = 0;
     for (const w of v.wheels) {
       if (w.front) w.steerNode.rotation.y = -v.steer * 0.8;
-      w.mesh.rotation.x = v.spin * w.spin;
+      w.mesh.rotation.x = (v.spin % (Math.PI * 2)) * w.spin;
     }
     if (v.steerWheel) v.steerWheel.rotation.z = v.steer * 2.6;
     // the driver's door swings open around its front edge (the other door stays shut)
@@ -667,7 +730,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         if (i % 2 === 0) effects.lamp(v.x + fx * (v.info.backZ - 0.05) + lx * hw * (i / 6), y * 1.0 + 0.12, v.z + fz * (v.info.backZ - 0.05) + lz * hw * (i / 6), v.braking ? 2.4 : 1.0, 0.05, 0.04, 0.14);
       }
     } else if (on) {
-      effects.carLamps(v.x, v.y + v.heave, v.z, v.heading, v.info.halfWidth, v.info.frontZ, v.info.backZ, v.info.noseY, {
+      effects.carLamps(v.x, v.y + v.heave, v.z, v.heading, v.info.lampW || v.info.halfWidth, v.info.frontZ, v.info.backZ, v.info.noseY, {
         head: lampOn > 0.05 ? (v.hiBeam ? 2 : 1) : 0, tail: lampOn, brake: v.braking && !v.reverse, reverse: v.reverse && Math.abs(v.forward) > 0.2, blink: v.blink, blinkOn,
       });
     }
@@ -877,13 +940,13 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     const gx = L.spawn.x + 3.1, z0 = L.spawn.z + 20, rot = 0;            // at the east curb, noses to the north
     clearParked((rec) => Math.abs(rec.x - gx) < 3 && rec.z > z0 - 62 && rec.z < z0 + 8);
     const paint = { sedan: [0.3, 0.31, 0.33], coupe: [0.08, 0.13, 0.26] };
-    const list = ['small_city_car', 'tech_patrol_car', 'police_coupe', 'chrome_supercar', 'armored_van'].filter((k) => CAR_TYPES[k]);
+    const list = ['street_bike', 'small_city_car', 'tech_patrol_car', 'police_coupe', 'chrome_supercar', 'armored_van'].filter((k) => CAR_TYPES[k]);
     let z = z0;
     const made = [];
     for (const kind of list) {
       const len = carInfo(kind).length;
       z -= len / 2 + 1.4;
-      made.push(spawn(kind, gx, z, rot, [1, 1, 1], { keep: true, tag: true }));
+      made.push(spawn(kind, gx, z, rot, kind === 'street_bike' ? [0.45, 0.025, 0.02] : [1, 1, 1], { keep: true, tag: true }));
       z -= len / 2 + 1.4;
     }
     // the drone waits on the sidewalk, the boat at the coast
@@ -954,6 +1017,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       if (!(state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3))) return null;
       const s = seatOf(v.info);
       // low cars: a smaller driver, so the head stays under the roof
+      if (v.info.bike) return { node: v.tilt, x: s.x, y: s.y, z: s.z, scale: 1, wheel: BIKE_BAR, steer: v.steer, radius: 0.3, tilt: 0.25, bike: { grip: BIKE_GRIP, peg: BIKE_PEG, turn: -v.steer * 0.8 } };
       return { node: v.tilt, x: s.x, y: s.y + 0.02, z: s.z - 0.05, scale: clamp((v.info.roof - 0.1 - (s.y + 0.12)) / 0.93, 0.62, 1), wheel: interiors[v.kind].userData.wheel, steer: v.steer };
     },
     set riggedDriver(on) { riggedDriver = !!on; },

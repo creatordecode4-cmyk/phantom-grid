@@ -324,6 +324,8 @@ export function materials(renderer) {
     // thin cloth with the sun behind it: it glows a little (interiors.js turns the glow up and down)
     curtain: shaded(new THREE.MeshStandardMaterial({ vertexColors: true, map: tex(clothCv), roughness: 1, side: THREE.DoubleSide, transparent: true, opacity: 0.9, emissive: new THREE.Color(0, 0, 0) })),
     glass: new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, opacity: 0.55, roughness: 0.05, metalness: 0.1, depthWrite: false }),
+    // the glass of a window: almost clear, so what is outside (day, evening, night) is what you see through it
+    pane: new THREE.MeshStandardMaterial({ color: 0x0c1014, transparent: true, opacity: 0.12, roughness: 0.04, metalness: 0, depthWrite: false }),
     view: viewShader(new THREE.MeshBasicMaterial({ map: tex(mk(drawView, 768, 256), false), toneMapped: true })),
     glow: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),          // lamp bulbs (dim by day, when they are off)
     screen: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),        // screens, fridge and ceiling lights (always on)
@@ -431,10 +433,10 @@ export function createBuilder(origin = [0, 0, 0], seed = 1) {
       if (!m.count) continue;
       const geo = m.build(false);
       const mesh = new THREE.Mesh(geo, M[name]);
-      mesh.castShadow = !['blob', 'glass', 'view', 'glow', 'screen', 'beam', 'papers'].includes(name);
+      mesh.castShadow = !['blob', 'glass', 'pane', 'view', 'glow', 'screen', 'beam', 'papers'].includes(name);
       mesh.receiveShadow = !['glow', 'screen', 'view', 'beam'].includes(name);
       if (name === 'blob') mesh.renderOrder = 2;
-      if (name === 'glass') mesh.renderOrder = 5;
+      if (name === 'glass' || name === 'pane') mesh.renderOrder = 5;
       group.add(mesh);
       meshes[name] = mesh;
     }
