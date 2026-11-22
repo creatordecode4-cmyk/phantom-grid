@@ -148,7 +148,9 @@ src/
                            film scenes, choices, checkpoints, fail and retry). Its top explains every step
     chapters/prologue.js   THE PROLOGUE AS DATA ("LAST LAP")
     chapters/chapter01.js  CHAPTER 1 AS DATA ("RAIN DELIVERY")
-    chapters/chapter02.js  CHAPTER 2 AS DATA ("WANTED") - chapter03.js goes next to it
+    chapters/chapter02.js  CHAPTER 2 AS DATA ("WANTED")
+    chapters/chapter03.js  CHAPTER 3 AS DATA ("THE SUNK")
+    chapters/chapter04.js  CHAPTER 4 AS DATA ("CHROME WOLVES") - chapter05.js goes next to it
     strings.js             EVERY TEXT of the story and its menus (translate the game here)
     save.js                the saved game: chapter, mission, checkpoint, choices, unlocked characters
     actors.js              the people of the story: loading, poses, walking, sitting in cars, looking
@@ -157,7 +159,18 @@ src/
     props.js               the small things: mixtape, photo, ticket, phone, sticker "80", parcel ...
     propsWanted.js         the things of Chapter 2: WANTED posters, news screens, Guard drones, the tarp
                            over Theo's car, the roller door, radio, mug, KEYSTONE chip, number plate ...
+    propsRace.js           the things of Chapter 4: Theo's jacket, the wolf on Dante's hood, food stalls,
+                           soft holographic signs, the guardrail of the last turn, the jump ramp, the finish arch
+  race/
+    races.js               THE RACES AS DATA: routes, laps, rivals, crowds, the jump, the shortcut, the last turn
+    raceLine.js            the racing line and the fastest safe speed at every meter
+    rivalAI.js             a computer driver (same physics as you): line, brakes, passes, blocks, mistakes
+    raceManager.js         a race: grid, countdown, checkpoint gates, places, laps, rubber band,
+                           slipstream, drift boost, jumps, replay, RETRY / SKIP
+    raceHud.js             the race screen (place, lap, time, gauge, countdown, RESTART, result cards)
+    spectators.js          the crowds along the course (one draw call), phone lights, cheering
   ai/
+    zero.js                ZERO: follows you in free roam after Chapter 4; the strike in the final race
     traffic.js             the other cars: lanes, traffic lights, turns, braking, honking, pulling over
     wanted.js              THE WANTED SYSTEM: 0-5 stars, Meridian Guard cars and drones that see and
                            search, hiding, COVER, scanner gates, roadblocks, disguise, BUSTED
@@ -1318,6 +1331,96 @@ Mission 3.3 (the raid) got three fixes on the way:
 
 ---
 
+## Chapter 4: CHROME WOLVES (version 8.0)
+
+Two nights later. The race ticket from Theo's last night says the host was **Dante Rios**, the leader of
+the **Chrome Wolves**. Dante does not talk to people; he races them. And Nate needs a car fast enough to
+chase Zero - only Dante has one. Serious, rainy, tense but human: short plain lines, feelings through
+objects (a ticket under a lamp, a cloth over a car, a bottle of water poured on the road, a blue jacket).
+
+### The missions, and how to start each one
+
+Start any of them from the title screen (**MISSIONS**) or with the address option.
+
+| # | Mission | What happens | Address option |
+|---|---|---|---|
+| 4.0 | **THE TICKET** | Quiet. Mace's garage at night: Nate holds the race ticket under the lamp; Mace sees it and says nothing. Lena (if she kept the chip) sits at the bench with her laptop: "Dante will not talk to you. He will race you." Nate asks for a car. Mace looks at the cloth over Theo's car: "Not that one." He gives him his old street car (a worn bronze body, quick, with nitro). Drive to Neon Mile. | `?story=chapter04.0` |
+| 4.1 | **NEON MILE QUALIFIER 1** | A sprint through the city with a 3 minute clock (not last). It teaches the race screen (place, lap, checkpoint gauge) and the **drift boost**. | `?story=chapter04.1` |
+| 4.2 | **NEON MILE QUALIFIER 2** | Three laps **in the rain**: a hairpin by the sea and a **jump** over the road works on the hill. | `?story=chapter04.2` |
+| 4.3 | **NEON MILE QUALIFIER 3** | Three laps through the **night market**: people on the road step back to the sidewalk when the cars come; **Rigg**, a Chrome Wolf, tries to push Nate into a wall. Only a win counts. | `?story=chapter04.3` |
+| 4.4 | **FACE TO FACE** | Quiet. Dante arrives (a wolf engraved on the hood of his chrome car), wearing **Theo's old blue jacket**, a little small on him. "You have his eyes. You also killed him." **Choice** (with a timer - waiting is also an answer): say nothing, "I am sorry", or "Race me." | `?story=chapter04.4` |
+| 4.5 | **IRONHILL NIGHT RUN** | Quiet moments on the grid: Nate wipes the rain off the windshield, Dante pours a little water on the road. Two laps: up the ramp onto the raised highway, round at the top, down again, and back to **the turn of the prologue**. **Choice:** the risky shortcut (the old diagonal: faster, but it hurts the car) or stay on the road. The last turn is only won on **Theo's line** (stay wide, brake late, cut in at the corner, run out wide); after two misses a faint ghost line shows it. Theo's voice: "Don't slow down, Nate." Then **Zero** comes out of the dark, passes Nate without touching him and stops every other car (they spin and stop, the drivers climb out), stands in front of him with its lights on, and drives away. | `?story=chapter04.5` |
+| 4.6 | **THE ROOF** | Quiet. Dante's car smokes below. On a roof he takes off the jacket: "He did not come for the race, Nate. He was running from someone." **Choice:** hold out your hand for the jacket, or let him keep it. A long fade on the rain. | `?story=chapter04.6` |
+
+### Chapter 4 choices and flags
+
+| Flag | Set when |
+|---|---|
+| `mace_gave_car` | Mace gave Nate his old street car (4.0) |
+| `dante_response` | `'silence'`, `'sorry'` or `'race'` (4.4). The Chrome Wolves' lines on the grid and Dante's lines on the roof follow it |
+| `took_shortcut` | the old diagonal was taken in the final race (the car is hurt; Dante says so on the roof) |
+| `zero_found_race` | Zero showed itself in the final race. **From now on, in free roam:** drive at full speed for more than 10 seconds and Zero can come out of the dark behind you |
+| `jacket_taken` | Nate took Theo's jacket. From now on it lies folded on the seat next to him in every car, and a small sign of it is on the screen |
+
+It reads Chapter 3's `chip_holder` (Lena is in the garage only when she kept the chip; else WREN speaks).
+
+### The races (`src/race/`)
+
+- **`races.js`** - only data: the route (points on the road network), laps, start grid, the five rivals (name,
+  car, skill, aggression, nitro, a tuned car), the crowds, the jump, the shortcut and the last turn.
+- **`raceLine.js`** - works out the **racing line** (outside - inside - outside through every corner) and the
+  fastest safe speed at every meter (it brakes in time for the corners).
+- **`rivalAI.js`** - a computer driver drives the **same car physics** as the player. It follows the racing
+  line, brakes before corners, takes the slipstream, passes on the side with more room, **blocks** (aggressive
+  drivers), **pushes** (the crew car in qualifier 3) and makes small **mistakes** (brakes too late, lifts off).
+  **Rubber band:** a driver far ahead of you is a little slower, one far behind a little faster - a few
+  percent only, so it never looks like cheating.
+- **`raceManager.js`** - the race itself: the grid, **3, 2, 1, GO** (the engine revs with the gas pedal),
+  invisible **checkpoint gates** that must be passed in order (cutting a corner misses one: "MISSED
+  CHECKPOINT - GO BACK"), places, laps, **slipstream**, **drift boost**, **jumps**, the last 3 seconds again as
+  a **replay** after the finish line, **wet roads** (in the rain the drivers brake earlier: less grip), and the
+  result card. **WRECKED** or **LAST** (or not good enough): RETRY from the line; after two fails also **SKIP**.
+  The parked cars of the city are taken off the race road; there is no traffic during a race. Race cars take a
+  knock better than street cars (bumping is part of racing).
+- **`raceHud.js`** - the race screen, thumb-safe: big place (2/6) at the top middle, the lap and the time, the
+  gauge to the next gate, the countdown in the middle, a **RESTART** button on the left. Subtitles get a
+  darker plate while racing.
+- **`spectators.js`** - small crowds along the course in **one draw call**, with **phone lights** (one more
+  draw call), red **flares** with smoke, and cheering when a car flies past (sound made in code).
+- **Driving difficulty** (SETTINGS → DRIVING): EASY, NORMAL, HARD - changes the rivals' skill and how strong
+  the rubber band is.
+
+### Zero (`src/ai/zero.js`)
+
+- **The proximity system** (free roam, after `zero_found_race`): full speed (140 km/h or more, or nearly the top
+  speed of a slower car) for more than 10 seconds and a
+  black car with one thin cold bar of light can appear about 100 m behind you, on your own track. It stays
+  about 40 m back, never comes closer, never touches you. A deep slow heartbeat is heard while it is near.
+  Slow down below 80 km/h and it lets go: it brakes, its light goes out, it is gone (and stays away at least a
+  minute and a half).
+- **The strike** (the final race): it comes down the dark street, passes Nate close on his left, goes through
+  the field behind him in slow motion (each car it touches spins and stops - no fire, no gore), stands in front
+  of him with its headlights on, turns, and drives away.
+
+### What was built for it
+
+- Story engine (`src/story/engine.js`): new steps `race`, `raceEnd`, `slowmo`, `autoDrive` (the story brakes the
+  player's car in a film scene), `zero`; the `choice` step takes **three** answers; a flag can be compared with
+  a word (`{ flag: 'chip_holder', is: 'lena' }`); a prop can be laid on the hood of a car (`hood`); `say` can
+  pick one of several lines; `music` has `zero` (the deep heartbeat).
+- **Theo's jacket on Dante** (`src/story/actors.js`): the character models are one mesh with one picture, so
+  clothes cannot be swapped. The jacket is **painted over** the body in the shader: chest, back and arms
+  (from where the auto rig found the shoulders, elbows and wrists), the model's own folds kept as light and
+  shadow, an open front, white stripes at the cuffs and the hem - and the sleeves end a little short.
+- New things (`src/story/propsRace.js`): Theo's jacket (folded / hanging), the wolf engraved on Dante's hood,
+  food stalls, soft holographic signs (with their streak of light on the wet road), the **guardrail** of the
+  last turn (the same one now stands in the prologue), the jump ramp over the road works, the finish arch, a
+  water bottle that pours, a rag, Lena's laptop, a stool, a column of smoke.
+- **The last turn is the turn of the prologue**: the same corner, the same rain and hour, the same guardrail,
+  and the same half second of slow motion at the brake point (added to the prologue too).
+- Sound: the crowd murmur and cheers, two more engine voices for the nearest rivals, the deep slow heartbeat
+  for Zero, silence in the last turn and on the roof.
+
 ## Known limits
 
 - Traffic cars drive on rails: when hit they stop and honk, but they are not pushed away. Parked
@@ -1357,6 +1460,11 @@ Mission 3.3 (the raid) got three fixes on the way:
 - Beds and blankets do not bend under a body: a sleeping or sitting character lies ON them. Bodies are posed by
   code, so a hand or a boot can still touch the cloth a few millimetres deep. Arms that swing while walking can
   still go into a wall when you walk right along it.
+- CHAPTER 4: the races were driven to the end only by a test robot (with a stronger car than yours), in a
+  software renderer. How hard the rivals are, how often a player wrecks, the drift boost and the jump still need
+  real play on a phone (SETTINGS → DRIVING changes the rivals). Dante wears Theo's jacket as paint on his body
+  (the model has no separate clothes); in his hands and on the seat the jacket is a simple folded shape. Zero's
+  strike is moved by the story (not by the car physics) - it always ends the same way.
 - THE STREET BIKE drives with the car physics: the lean is only for the eye. It cannot do wheelies or
   stoppies and does not fall over in a crash; it is not used by traffic or the story (yet). The rider's
   pose is made by code and was only checked in pictures from a software renderer.

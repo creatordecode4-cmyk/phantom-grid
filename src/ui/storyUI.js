@@ -2,7 +2,7 @@
 // storyUI.js - everything the story puts on top of the game picture.
 //
 //   film scenes:  black bars, subtitles with the speaker's name, "hold to skip"
-//   talking:      up to two big choice buttons
+//   talking:      up to three big choice buttons
 //   cards:        black or white over the whole picture, with a title on it
 //   in the game:  the big LIMITER OFF button, WREN's small sign, the rear-view
 //                 mirror of the chase, the tape display, the TALK / TAKE button,
@@ -32,7 +32,8 @@ export function createStoryUI() {
   const button = (label, cls = 'btn') => { const b = document.createElement('button'); b.className = cls; b.textContent = label; return b; };
 
   // ------------------------------------------------------------ settings kept on the phone
-  const settings = { ctl: 'm', subs: 'm', volume: 1, muted: false, tilt: false };
+  // difficulty: how good the other drivers of a race are (e = easy, n = normal, h = hard)
+  const settings = { ctl: 'm', subs: 'm', volume: 1, muted: false, tilt: false, difficulty: 'n' };
   try { Object.assign(settings, JSON.parse(localStorage.getItem('pg-settings') || '{}')); } catch (e) { /* private mode */ }
   const saveSettings = () => { try { localStorage.setItem('pg-settings', JSON.stringify(settings)); } catch (e) { /* private mode */ } };
   function applyLook() {
@@ -90,7 +91,7 @@ export function createStoryUI() {
   function choice(prompt, options, cb, seconds = 0, def = 0) {
     el.choices.textContent = '';
     if (prompt) { const p = document.createElement('div'); p.className = 'prompt'; p.textContent = prompt; el.choices.appendChild(p); }
-    options.slice(0, 2).forEach((text, i) => { const b = button(text, ''); press(b, () => pick(i)); el.choices.appendChild(b); });
+    options.slice(0, 3).forEach((text, i) => { const b = button(text, ''); press(b, () => pick(i)); el.choices.appendChild(b); });
     if (seconds > 0) { const bar = document.createElement('div'); bar.className = 'bar'; bar.appendChild(document.createElement('i')); el.choices.appendChild(bar); }
     el.choices.hidden = false;
     choiceDone = cb; choiceLeft = choiceTotal = seconds; choiceDefault = def;
@@ -282,6 +283,7 @@ export function createStoryUI() {
     row(t('ui.quality'), [['auto', t('ui.auto')], ['low', t('ui.low')], ['medium', t('ui.med')], ['high', t('ui.high')]], values.quality, 'quality');
     row(t('ui.control_size'), [['s', t('ui.small')], ['m', t('ui.medium')], ['l', t('ui.large')]], settings.ctl, 'ctl');
     row(t('ui.tilt'), [[false, t('ui.off')], [true, t('ui.on')]], settings.tilt, 'tilt');
+    row(t('ui.difficulty'), [['e', t('ui.easy')], ['n', t('ui.normal')], ['h', t('ui.hard')]], settings.difficulty, 'difficulty');
     row(t('ui.sub_size'), [['s', t('ui.small')], ['m', t('ui.medium')], ['l', t('ui.large')]], settings.subs, 'subs');
     row(t('ui.sound'), [[false, t('ui.on')], [true, t('ui.off')]], settings.muted, 'muted');
     const vr = document.createElement('div'); vr.className = 'set-row'; vr.innerHTML = `<span>${t('ui.volume')}</span><input type="range" min="0" max="100" step="5">`;

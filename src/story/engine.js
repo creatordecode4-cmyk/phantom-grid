@@ -39,12 +39,18 @@
 //     sentries: [{ path: [[x, z], ...], y, speed, range, fov, sweep, stop }] (drones on a fixed path that look forward),
 //     patrol: { at, r, cars, drones, boats }
 //     More conditions: { spotted } (the stealth meter was full), { tunnel } (in the drain tunnel), { boat } (in a boat)
+//   CHAPTER 4: race ({ race: name in src/race/races.js, vehicle, as: { raceId: storyId }, keep, react: { event: [steps] },
+//     shortcutFlag, stop: false } - waits until the race is won, skipped, or handed over on Theo's line; every race event
+//     is also a story event 'race:<event>'), raceEnd, slowmo ({ scale, seconds }), autoDrive ({ brake, steer, gas } |
+//     { off: true }: the story drives the player's car for a moment), zero ({ strike: {...} } | { stare: true } | { stop:
+//     true }: the black car of src/ai/zero.js; its moments are events 'zero:pass', 'zero:hit', 'zero:dark', 'zero:stare',
+//     'zero:away', 'zero:gone'), jacket ({ on: true }: Theo's jacket in the car and on the screen)
 //   BUSTED: when the real Guard catches the player, a short line, a fine, and the last checkpoint again.
 //   STEPS THAT HOLD OTHER STEPS
 //     if (cond, then, else), seq (steps in order), meanwhile (steps in order, beside the main story)
 //
 //   Any step can carry  if: { condition }  and is skipped when the condition is not true.
-//   CONDITIONS: { zone: { x: [from, to], z: [from, to] } }, { near: place, radius }, { flag, is }, { time },
+//   CONDITIONS: { zone: { x: [from, to], z: [from, to] } }, { near: place, radius }, { flag, is (true, false or a word) }, { time },
 //     { event }, { inCar }, { speedOver }, { speedUnder }, { limited: seconds }, { carNear | carFar: id, radius },
 //     { damageOver: 0..1 }, { stars: n }, { starsOver: n }, { starsUnder: n }, { seen }, { hidden }, { searching },
 //     { droneOver: 0..1 (how close a Guard drone is) },
@@ -89,7 +95,7 @@ export function createStory(G) {
   let cine = false, modal = 0, choosing = false, quietOn = false;
   let allowDrive = true, allowMove = true;
   let light = null, mirrorOn = false, tapeShown = false, indoors = false, fovWant = 0, fovNow = 0;
-  let fadeColor = 'black', fadeTouched = false, limitedFor = 0, clock = 0, frame = 0, held = false;
+  let fadeColor = 'black', fadeTouched = false, limitedFor = 0, clock = 0, frame = 0, held = false, jacketOn = false;
   // chapter 2: the real Guard is on, the drones speak, the news line, the light on faces
   let realPolice = false, announce = false, paNext = 0, paCount = 0, newsText = null, fillPower = null, starsWas = 0, seenWas = false;
   const ambient = { radio: 0, street: 0, drone: 0 };
@@ -190,7 +196,8 @@ export function createStory(G) {
     const p = player.position;
     if (c.zone && !(inRange(p.x, c.zone.x) && inRange(p.z, c.zone.z))) return false;
     if (c.near) { const q = pt(c.near); if (Math.hypot(p.x - q[0], p.z - q[2]) > (c.radius || 6)) return false; }
-    if (c.flag && !!flags[c.flag] !== (c.is === undefined ? true : !!c.is)) return false;
+    // (is: a word compares the word - chip_holder is 'lena'; else true / false)
+    if (c.flag && (typeof c.is === 'string' ? flags[c.flag] !== c.is : !!flags[c.flag] !== (c.is === undefined ? true : !!c.is))) return false;
     if (c.time !== undefined && time < c.time) return false;
     if (c.event && !events.has(c.event)) return false;
     if (c.inCar !== undefined) {
@@ -403,7 +410,7 @@ export function createStory(G) {
     const id = missionCar(s);
     return (dt, st) => {
       const v = id ? car(id) : null;
-      if (v && !(vehicles.state === 'driving' && vehicles.active === v)) { st.text = t('ui.get_in'); st.marker = { car: id }; return false; }
+      if (v && !(vehicles.state === 'driving' && vehicles.active === v)) { st.text = t((chapter && chapter.getIn) || 'ui.get_in'); st.marker = { car: id }; return false; }
       st.text = null; st.marker = null;
       const p = pt(s.at), q = player.position;
       if (Math.hypot(q.x - p[0], q.z - p[2]) > (s.radius || 8)) return false;
@@ -446,7 +453,7 @@ export function createStory(G) {
     cars.set(s.id, v);
     if (s.enter) enterable.add(s.id);
     if (s.mirror) v.mirrorKind = s.mirror;
-    if (s.type) { v.type = { ...v.type, ...s.type }; if (s.type.label) v.label = s.type.label; }
+    if (s.type) { v.type = { ...v.type, ...s.type }; if (s.type.label) v.label = s.type.label; if (s.type.role && v.isCar) v.role = s.type.role; }   // (a Phantom body as a street car: not a police car)
     if (s.speed) { v.forward = s.speed / KMH; v.vx = Math.sin(face) * v.forward; v.vz = Math.cos(face) * v.forward; }   // (it is already rolling)
     if (s.detail && v.needDetail) v.needDetail();              // (the detailed model now: glass you can see through, the inside)
     if (s.rusty) v.rusty = true;                               // an old boat: slower to pick up, a rough motor (Chapter 3)
@@ -462,6 +469,7 @@ export function createStory(G) {
     if (s.place) { const p = pt(s.place); v.x = p[0]; v.z = p[2]; v.y = p[1]; if (s.face !== undefined) v.heading = angle(s.face); v.vx = v.vz = 0; v.forward = 0; }
     if (s.stop) { v.vx = v.vz = 0; v.forward = 0; }
     if (s.dead !== undefined) v.dead = !!s.dead;               // a wreck: the engine is silent
+    if (s.door !== undefined) v.doorOpen = s.door;             // the driver's door stands open (0..1)
     if (s.curbSide !== undefined) v.curbSide = !!s.curbSide;   // the driver gets out on the sidewalk side
     if (s.damage !== undefined && v.isCar) { v.damage = s.damage; vehicles.showDamage(v); }
     if (s.gap !== undefined && v.aiInfo) v.aiInfo.gap = s.gap;   // Zero: how far behind the player it stays
@@ -514,7 +522,7 @@ export function createStory(G) {
     const p = s.at ? pt(s.at) : seat ? [seat.x, seat.y, seat.z] : [0, 0, 0];
     const a = actors.spawn(s.id, {
       model: s.model || null, extra: s.extra || null, name: s.name ? t(s.name) : '', at: p, heading: angle(s.face || 0), pose: s.pose || 'idle', scale: s.scale || 1,
-      tag: !!s.tag, fixed: !!s.fixed, hidden: !!s.hidden, ghost: !!s.ghost, floorBelow: s.floorBelow, look: s.look === undefined ? 'auto' : lookOf(s.look), mood: s.mood,
+      tag: !!s.tag, fixed: !!s.fixed, hidden: !!s.hidden, ghost: !!s.ghost, floorBelow: s.floorBelow, look: s.look === undefined ? 'auto' : lookOf(s.look), mood: s.mood, jacket: s.jacket || null,
       // (only a plain [x, z] place follows the street; a point with a height is a floor, a roof, the highway)
       keepY: !(Array.isArray(s.at) && s.at.length === 2),
     });
@@ -536,6 +544,7 @@ export function createStory(G) {
     if ('seat' in s) actors.sitIn(a, s.seat ? car(s.seat) : null);
     if ('fixed' in s) a.fixed = !!s.fixed;
     if (s.mood) actors.setMood(a, s.mood, s.moodSeconds === undefined ? 0.45 : s.moodSeconds);
+    if ('jacket' in s) actors.setJacket(a, s.jacket);                // somebody else's jacket on (Chapter 4) or off (null)
   };
   // the faces of several people at once: { do: 'mood', set: { theo: 'sad', nate: 'tired' }, seconds }
   STEP.mood = (s) => { for (const id in s.set || {}) setMood(id, s.set[id], s.seconds === undefined ? 0.45 : s.seconds); };
@@ -558,6 +567,7 @@ export function createStory(G) {
       const c = cabinLocal(v, s.at.cabinAt || 'dash', s.at.p);
       holder.position.set(c[0], c[1], c[2]);
       v.tilt.add(holder);                                   // it travels with the car
+      if (s.hood) layOnHood(v, holder, s.hood);
     } else if (s.on === 'player') {
       // in Nate's own hand (the player character)
       const b = player.rig && player.rig.bones[s.bone || 'hand_R'];
@@ -586,6 +596,31 @@ export function createStory(G) {
     if (s.hidden) holder.visible = false;
     things.set(s.id, o);
   };
+  // a flat thing laid on the hood of a car (the wolf engraved on Dante's hood): a ray from above finds the metal
+  // in the middle of the hood (hood: meters back from the nose, default 0.8); the thing lies on it, its top toward
+  // the windshield
+  const _ray = new THREE.Raycaster(), _o = new THREE.Vector3(), _d = new THREE.Vector3(), _n = new THREE.Vector3();
+  function layOnHood(v, holder, back) {
+    const b = typeof back === 'number' ? back : 0.8;
+    v.tilt.updateWorldMatrix(true, true);
+    holder.visible = false;
+    _o.set(0, v.info.roof + 1.5, v.info.frontZ - b); v.tilt.localToWorld(_o);
+    _d.set(0, -1, 0).transformDirection(v.tilt.matrixWorld);
+    _ray.set(_o, _d); _ray.far = v.info.roof + 3;
+    const hits = _ray.intersectObject(v.tilt, true).filter((h) => h.object.visible && h.face && !(h.object.material && h.object.material.transparent));
+    holder.visible = true;
+    if (!hits.length) return;
+    const h = hits[0];
+    _n.copy(h.face.normal).transformDirection(h.object.matrixWorld);
+    // into the car's own space
+    const inv = new THREE.Matrix4().copy(v.tilt.matrixWorld).invert();
+    const p = h.point.clone().applyMatrix4(inv), n = _n.clone().transformDirection(inv);
+    holder.position.copy(p).addScaledVector(n, 0.006);
+    // the plane faces up along the normal; its top points back to the windshield (-z of the car)
+    const up = new THREE.Vector3(0, 0, -1).projectOnPlane(n).normalize();
+    const m = new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(up, n).normalize(), up, n);
+    holder.quaternion.setFromRotationMatrix(m);
+  }
   STEP.propSet = (s) => { const o = things.get(s.id); if (o && 'hidden' in s) o.holder.visible = !s.hidden; };
   STEP.remove = (s) => {
     for (const id of s.ids) {
@@ -634,6 +669,7 @@ export function createStory(G) {
     if (s.heart !== undefined) music.setHeartbeat(s.heart);
     if (s.volume !== undefined) music.setTapeVolume(s.volume);
     if (s.calm !== undefined) music.setCalm(s.calm);                 // the soft pad of the last scene of Chapter 2
+    if (s.zero !== undefined) music.setZero(s.zero);                 // the deep slow heartbeat when Zero is near (Chapter 4)
     if (s.silence) { music.silence(s.silence); sound.duck(s.silence); }
     if ('hud' in s) tapeShown = !!s.hud;
   };
@@ -662,7 +698,7 @@ export function createStory(G) {
     return { update(dt) { left -= dt; if (left <= 0 && !out) { out = true; ui.card(null); } return left <= -0.9; }, end() { ui.card(null); } };
   };
   STEP.tip = (s) => { ui.tip(s.text ? t(s.text) : null, s.seconds || 5); };
-  STEP.say = (s) => { speak(s, !!s.now); };
+  STEP.say = (s) => { if (s.texts) s = { ...s, text: s.texts[Math.floor(Math.random() * s.texts.length)] }; speak(s, !!s.now); };   // (texts: one of them, at random)
   STEP.flag = (s) => { Object.assign(flags, s.set); };
   STEP.fire = (s) => { fire(s.event); };
   STEP.light = (s) => { light = s.at ? { at: s.at, color: s.color || 0xffc890, power: s.power || 30, range: s.range || 12 } : null; };
@@ -787,7 +823,7 @@ export function createStory(G) {
       },
     };
   };
-  // up to two answers: { prompt, line, options: [{ text, set: { flag: value }, do: [steps] }], seconds, default }
+  // up to three answers: { prompt, line, options: [{ text, set: { flag: value }, do: [steps] }], seconds, default }
   STEP.choice = (s) => {
     let done = false;
     choosing = true;
@@ -1011,6 +1047,66 @@ export function createStory(G) {
   // Lena's flat in The Sunk: { lena: 'wrecked' | 'intact' } (the screens go dark)
   STEP.sunk = (s) => { if (city.sunk && s.lena) city.sunk.setLena(s.lena); };
 
+  // ---------------------------------------------------------------- Chapter 4
+  // A RACE of src/race/races.js. The player's car is the mission's car (or "vehicle"). The five others are spawned on the
+  // grid by the race; "as" gives them story names (so a film shot can look at { of: 'dante' }).
+  //   react: { go: [steps], lastTurn: [steps], push: [steps], ... }: steps that run EVERY time that race event happens
+  //   (a line of the crew when they push him; Theo's voice and the slow motion in the last turn). Not more often than
+  //   every few seconds for the same event.
+  //   The step ends when the race is won (or skipped after two fails, or handed over on Theo's line in the final race).
+  //   shortcutFlag: the flag that remembers whether the risky shortcut was taken. stop: false = the race stays (its cars
+  //   go on standing there) until raceEnd.
+  let raceOn = false;
+  function endRace(keep) {
+    if (world.races) world.races.stop(true);
+    for (const [id, v] of [...cars.entries()]) if (!vehicles.live.includes(v)) { cars.delete(id); enterable.delete(id); }
+    raceOn = false;
+  }
+  STEP.race = (s) => {
+    const races = world.races, v = car(s.vehicle || missionCar(s));
+    if (!races || !v) { console.warn('[story] a race needs a car'); return null; }
+    if (!(vehicles.state === 'driving' && vehicles.active === v)) { player.unstage(); if (vehicles.state !== 'none') vehicles.leaveNow(player); vehicles.enterNow(v, player); }
+    const last = {}, my = gen;
+    const handle = races.start(s.race, {
+      car: v, keep: s.keep,
+      onSpawn: (id, rv) => { const sid = (s.as && s.as[id]) || id; cars.set(sid, rv); rv.storyId = sid; },
+      onEvent: (e) => {
+        if (my !== gen) return;
+        fire('race:' + e);
+        const list = s.react && s.react[e];
+        if (list && (clock - (last[e] ?? -99)) > (s.reactEvery || 5)) { last[e] = clock; run(list); }
+      },
+    });
+    raceOn = true;
+    return goal({ ...s, text: null }, null, () => {
+      if (!handle.done) return false;
+      if (s.shortcutFlag) flags[s.shortcutFlag] = !!handle.shortcut;
+      fire('race:result:' + handle.result);
+      return true;
+    }, () => { if (s.stop !== false) endRace(); });
+  };
+  STEP.raceEnd = () => { endRace(); };
+  // SLOW MOTION for a moment: scale = how fast the game runs (0.4 = slow), seconds = real seconds
+  STEP.slowmo = (s) => { if (world.slow) world.slow.set(s.scale === undefined ? 0.4 : s.scale, s.seconds === undefined ? 1.25 : s.seconds); };
+  // the story drives the player's car for a moment (brakes it to a stop in a film scene): { brake, steer, gas } or { off: true }
+  STEP.autoDrive = (s) => { vehicles.autoDrive = s.off ? null : { steer: s.steer || 0, gas: s.gas || 0, brake: s.brake === undefined ? 1 : s.brake, handbrake: !!s.handbrake, nitro: false, up: false, down: false, horn: false }; };
+  // ZERO (src/ai/zero.js). strike: { speed, ahead, side, stopAhead, stareFor } - it goes through the field of the race
+  // that is running; stare: it stands in front of Nate, lights on; stop: it is taken away.
+  STEP.zero = (s) => {
+    const Z = world.zero, races = world.races;
+    if (!Z) { fire('zero:gone'); return null; }
+    if (s.strike) {
+      const ok = Z.strike({ ...s.strike, line: races && races.line, field: races ? races.field : [], playerCar: (races && races.playerCar) || vehicles.active });
+      if (!ok) fire('zero:gone');
+      else if (Z.car) { cars.set('zero', Z.car); Z.car.storyId = 'zero'; }
+    }
+    if (s.stare) Z.stare();
+    if (s.stop) { Z.stopStrike(); cars.delete('zero'); }
+    return null;
+  };
+  // THEO'S JACKET (Chapter 4, when Nate took it): it lies on the seat next to him, and a small sign on the screen
+  STEP.jacket = (s) => { jacketOn = !!s.on; if (world.jacket) world.jacket(jacketOn); };
+
   // ---------------------------------------------------------------- the story itself
   // the game saves here. id: a number > 0. setup: steps that put the world right when the game STARTS at this point.
   STEP.checkpoint = (s) => { checkpoint(s.id, true); };
@@ -1124,6 +1220,13 @@ export function createStory(G) {
     for (const id of [...cars.keys()]) removeCar(id);
     actors.clear();
     for (const id of [...things.keys()]) removeThing(id);
+    // (the race of Chapter 4 first: it removes its own cars)
+    if (world.races) world.races.stop(true);
+    if (world.zero) world.zero.stopStrike();
+    if (world.slow) world.slow.set(1, 0);
+    vehicles.autoDrive = null; raceOn = false;
+    if (jacketOn && world.jacket) world.jacket(false);
+    jacketOn = false;
     drivers.reset(); enterable.clear();
     music.reset(); music.setTapeVolume(1);
     police.reset(); police.setScripted({ stars: 0 });
@@ -1248,6 +1351,8 @@ export function createStory(G) {
       if (my !== gen) return;
     }
     drivers.update();
+    // ---- Zero's moments (Chapter 4) ----
+    if (world.zero) for (const e of world.zero.takeEvents()) fire('zero:' + e);
     // ---- the Guard: what happened (for rules and waits), and the drones' loudspeakers ----
     if (realPolice) {
       const st = police.stars, seenNow = st > 0 && police.mode === 'chase';
@@ -1339,6 +1444,7 @@ export function createStory(G) {
     get ambient() { return ambient; },                            // how near an old radio / a news screen is (0..1)
     get realPolice() { return active && realPolice; },
     get indoors() { return indoors; },     // true: rain is heard on a roof
+    get racing() { return active && raceOn; },     // a race of Chapter 4 runs (its own HUD is on the screen)
     get flags() { return flags; },
     // ---- for tests ----
     cars, things, fire, test, pt, hack,

@@ -11,6 +11,9 @@
 //   suspension thump, indicator tick, door, footsteps, engine start, chime
 // CHAPTER 2: the beep of a scanner gate (and its alarm), a phone ringing,
 //   a paint spray can, a roller shutter going up or down
+// CHAPTER 4 (races): the murmur of a crowd and its cheers (many voices = noise in a few bands that swell,
+//   and whistles), the engines of the two nearest other cars (each with its own tone; the pitch rises as
+//   one comes closer and falls as it goes away)
 // INSIDE THE CAR everything is muffled: more engine, less wind and tires.
 //
 // Browsers only allow sound after the first tap or key press, so nothing
@@ -33,6 +36,8 @@ const TONES = {
 export function createSound() {
   let ctx = null, master = null, out = null, inside = null, noiseBuf = null;
   let engine = null, screech = null, horn = null, wind = null, road = null, siren = null, scrape = null, squeal = null, spray = null;
+  let crowdN = null, crowdHi = null;
+  const rivalV = [];
   let muted = false, tone = TONES.smooth, isInside = false;
   let volume = 1;           // 0..1, the volume slider in the settings
   let held = false;         // true while the game is paused: all sound stands still
@@ -103,6 +108,20 @@ export function createSound() {
       const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 2900;
       o.connect(g); g.connect(master); o.start();
       squeal = { g };
+    }
+    // ---- a crowd: a low murmur of many voices, and a brighter layer for the excitement ----
+    crowdN = noise('bandpass', 620, 0.7);
+    crowdHi = noise('bandpass', 1650, 1.4);
+    // ---- the engines of two other cars (races): two tones + a filter each, like the player's engine ----
+    for (let i = 0; i < 2; i++) {
+      const g = ctx.createGain(); g.gain.value = 0;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 1;
+      const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 60;
+      const o2 = ctx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = 120;
+      const g2 = ctx.createGain(); g2.gain.value = 0.5;
+      o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(master);
+      o1.start(); o2.start();
+      rivalV.push({ g, lp, o1, o2, g2, tone: '' });
     }
   }
   // change a value smoothly (no clicks)
@@ -232,6 +251,40 @@ export function createSound() {
       // wet boards of a pontoon (The Sunk): a hollow knock and a little splash
       else if (surface === 'wood') { burst(420 + Math.random() * 80, 2.5, 0.1 * k, 0.002, 0.07, 'lowpass'); burst(2400, 1.2, 0.025 * k, 0.004, 0.08); }
       else { burst(1900 + Math.random() * 500, 1.6, 0.075 * k, 0.002, 0.045); burst(240, 0.8, 0.09 * k, 0.003, 0.06, 'lowpass'); }
+    },
+    // ---- races (Chapter 4) ----
+    // the murmur of a crowd: 0 = nobody .. 1 = right among them
+    crowd(level) {
+      if (!crowdN) return;
+      const k = Math.max(0, Math.min(1, level));
+      glide(crowdN.g.gain, k * 0.1, 0.3); glide(crowdN.f.frequency, 520 + k * 300, 0.4);
+      glide(crowdHi.g.gain, k * k * 0.03, 0.3);
+    },
+    // a cheer: the voices swell and fall in a second and a half, a few whistles on top
+    cheer(k = 1) {
+      if (!live()) return;
+      const v = Math.max(0.2, Math.min(1, k));
+      burst(700, 0.6, 0.16 * v, 0.25, 1.3);
+      burst(1400, 0.9, 0.08 * v, 0.3, 1.1);
+      burst(2600, 1.3, 0.035 * v, 0.35, 0.9);
+      for (let i = 0; i < 3; i++) if (Math.random() < 0.6) setTimeout(() => blip('sine', 1800 + Math.random() * 900, 2400 + Math.random() * 900, 0.025 * v, 0.35), 120 + Math.random() * 700);
+    },
+    // the engines of the nearest other cars: [{ d (meters), rpm, gas, tone, closing (m/s, + = coming nearer) }]
+    rivals(list) {
+      for (let i = 0; i < rivalV.length; i++) {
+        const R = rivalV[i], r = list[i];
+        if (!r) { glide(R.g.gain, 0, 0.25); continue; }
+        const T = TONES[r.tone] || TONES.smooth;
+        if (R.tone !== r.tone) { R.tone = r.tone; R.o1.type = T.w1; R.o2.type = T.w2; R.g2.gain.value = T.mix; }
+        const n = Math.max(0, Math.min(1, (r.rpm - 900) / 6300));
+        // (a car coming closer sounds higher, one going away lower - like on a real roadside)
+        const dop = Math.max(0.82, Math.min(1.2, 1 + (r.closing || 0) / 120));
+        const f = (T.f0 + (T.f1 - T.f0) * n) * dop;
+        glide(R.o1.frequency, f, 0.05); glide(R.o2.frequency, f * 2, 0.05);
+        glide(R.lp.frequency, T.lp * (0.45 + 0.55 * (r.gas || 0)) * (0.6 + 0.4 * n), 0.08);
+        const vol = 0.11 * T.vol * (0.45 + 0.55 * (r.gas || 0)) / (1 + (r.d * r.d) / 220);
+        glide(R.g.gain, vol, 0.08);
+      }
     },
     // ---- water (swimming) ----
     // one stroke of an arm: a soft slap and the water running off it (treading water: only a little lap)

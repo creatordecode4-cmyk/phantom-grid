@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 6.0',
+  version: 'Phase 7.0',
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {
@@ -92,6 +92,7 @@ export const CONFIG = {
   quality: {
     low: {
       label: 'LOW',
+      spectators: 0.5,      // races: half of the crowd
       pixelRatio: { scale: 0, min: 0.75, max: 0.75 },
       post: false,          // no bloom, no color grade (render straight to screen)
       vignette: false,

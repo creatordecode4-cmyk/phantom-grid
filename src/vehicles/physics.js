@@ -45,7 +45,9 @@ export function initCarState(v) {
                   // NaN, and a wheel turned by NaN disappears (the detailed cars then stood on empty wheel arches)
     gear: 1, rpm: IDLE_RPM, shiftT: 0, reverse: false, stopped: 0,
     roll: 0, pitch: 0, heave: 0, heaveV: 0, lastGround: null,
-    damage: 0, nitro: 1, nitroOn: false, braking: false,
+    damage: 0, nitro: 1, nitroOn: false, nitroCool: 0, braking: false,
+    // races (src/race): boost 0..1 = a short push after a clean drift; airborne = in the air over a jump (no grip)
+    boost: 0, airborne: false,
     // what the effects and sounds read
     fx: { throttle: 0, slip: 0, spin: 0, abs: false, surface: 'road', bump: 0, shifted: false, impact: 0, scrape: 0, ax: 0, ay: 0, limited: false },
   });
@@ -57,12 +59,12 @@ export function initCarState(v) {
 //            collide(v) -> { impact, nx, nz, lever, hard } , assist: 'off' | 'normal' | 'easy' }
 export function stepCar(v, input, dt, world) {
   const T = v.type, fx = v.fx;
-  const top = (T.topSpeed / 3.6) * (1 - 0.4 * v.damage * v.damage) * (v.nitroOn ? 1.1 : 1);
+  const top = (T.topSpeed / 3.6) * (1 - 0.4 * v.damage * v.damage) * (v.nitroOn ? 1.1 : 1) * (1 + 0.04 * (v.boost || 0));
   const L = v.info.wheelbase || 2.7;
   const assist = world.assist || 'normal';
   const surf = world.surface(v.x, v.z);
-  // grip of the ground under the car: tires x surface x rain
-  const mu = T.grip * surf.grip * lerp(1, 0.66, world.wet || 0);
+  // grip of the ground under the car: tires x surface x rain (in the air over a jump: almost none)
+  const mu = T.grip * surf.grip * lerp(1, 0.66, world.wet || 0) * (v.airborne ? 0.04 : 1);
   const aMax = mu * G * 1.02;                      // the most the tires can push the car (m/s2)
 
   let fxv = Math.sin(v.heading), fzv = Math.cos(v.heading);
@@ -101,7 +103,7 @@ export function stepCar(v, input, dt, world) {
   let drive = 0;
   if (gas > 0.02 && v.shiftT <= 0) {
     if (v.reverse) drive = -T.accel * 0.55 * gas * clamp(1 + fwd / 11, 0, 1);
-    else if (n < 1.0) drive = T.accel * gas * torque(n) * gearPush(v.gear) * (v.nitroOn ? 1.75 : 1) * (1 - 0.35 * v.damage);
+    else if (n < 1.0) drive = T.accel * gas * torque(n) * gearPush(v.gear) * (v.nitroOn ? 1.75 : 1) * (1 + 0.55 * (v.boost || 0)) * (1 - 0.35 * v.damage);
   }
   // SPEED LIMITER (story: Nate's van): at v.limit (m/s) the engine simply stops pulling
   fx.limited = false;
@@ -202,9 +204,13 @@ export function stepCar(v, input, dt, world) {
   fx.slip = clamp(Math.max((Math.abs(slide) - 1.6) / 7, under * (Math.abs(fwd) > 8 ? 1 : 0) * 0.9, fx.spin * 0.8, fx.abs ? 0.2 : 0), 0, 1);
   fx.surface = surf.name;
 
-  // nitro: empties in 3.5 s, fills again in 12 s
-  v.nitroOn = !!(input.nitro && T.nitro && v.nitro > 0.02 && gas > 0.3 && !v.reverse);
-  v.nitro = clamp(v.nitro + (v.nitroOn ? -dt / 3.5 : dt / 12), 0, 1);
+  // nitro: empties in 3.5 s, fills again in 12 s. An empty bottle cools down for 3 s before it fills, and a
+  // new burn needs at least a quarter of a bottle (no flickering on and off at the bottom)
+  if (v.nitroCool > 0) v.nitroCool -= dt;
+  const lit = v.nitroOn || v.nitro > 0.25;
+  v.nitroOn = !!(input.nitro && T.nitro && v.nitro > 0.02 && lit && gas > 0.3 && !v.reverse && !(v.nitroCool > 0));
+  v.nitro = clamp(v.nitro + (v.nitroOn ? -dt / 3.5 : v.nitroCool > 0 ? 0 : dt / 12), 0, 1);
+  if (v.nitroOn && v.nitro <= 0.02) { v.nitroOn = false; v.nitroCool = 3; }
 
   // ------------------------------------------------------------ move, hit things
   const steps = Math.max(1, Math.ceil((Math.hypot(v.vx, v.vz) * dt) / 0.6));   // small steps: no jumping through walls

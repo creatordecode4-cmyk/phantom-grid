@@ -43,7 +43,8 @@ export function createMusic(sound) {
   let A = null;                 // { ctx, out, noiseBuf } from sound.js
   let tapeBus = null, tapeLp = null, hiss = null, padBus = null, pad = null, ambBus = null, amb = null;
   let wantBus = null, droneHum = null, voice = null, calmBus = null;
-  const want = { track: 0, tension: 0, heart: 0, inCar: false, tapeVol: 1, stars: 0, hidden: false, chase: false, calm: 0 };
+  const want = { track: 0, tension: 0, heart: 0, inCar: false, tapeVol: 1, stars: 0, hidden: false, chase: false, calm: 0, zero: 0 };
+  let zeroNext = 0;
   let wantedNext = 0, voiceNext = 0, voiceLeft = 0, announceUntil = 0;
   const tape = { track: 0, bar: 0, step: 0, next: 0, startBar: 0, onEnd: null, ended: false };
   let heartNext = 0, pulseNext = 0, sirenNext = 20, silentUntil = 0, time = 0;
@@ -223,6 +224,11 @@ export function createMusic(sound) {
       heartNext = now + 60 / want.heart;
       drumLow(now + 0.02, 0.5); drumLow(now + 0.26, 0.3);
     }
+    // ZERO is near (Chapter 4): a faint, deep heartbeat under everything - slow, calm, never stopping
+    if (want.zero > 0.02 && quiet && now > zeroNext) {
+      zeroNext = now + 60 / 52;
+      drumLow(now + 0.02, 0.22 * want.zero); drumLow(now + 0.3, 0.13 * want.zero);
+    }
     // ambience
     const inCar = env.inCar ? 1 : 0;
     glide(amb.rain.g.gain, env.rain * (inCar ? 0.02 : 0.05) * quiet, 0.4);
@@ -354,6 +360,8 @@ export function createMusic(sound) {
     // ---- chase pad (0..1) and heartbeat (beats per minute, 0 = off) ----
     setTension(v) { want.tension = v; },
     setHeartbeat(bpm) { want.heart = bpm; },
+    // Zero behind the player (src/ai/zero.js): 0 = gone .. 1 = close
+    setZero(v) { want.zero = Math.max(0, Math.min(1, v)); },
     // ---- wanted (Chapter 2): stars 0..5, hidden: the pulse fades away, chase: somebody sees the player ----
     setWanted(stars, hidden = false, chase = false) { want.stars = stars; want.hidden = !!hidden; want.chase = !!chase; },
     // the loudspeaker of a drone: a two-tone call, then a few seconds of speech
@@ -368,6 +376,6 @@ export function createMusic(sound) {
     // ---- everything silent for a moment (seconds) ----
     silence(seconds) { if (ready()) { silentUntil = A.ctx.currentTime + seconds; for (const b of [tapeBus, padBus]) b.gain.setTargetAtTime(0, A.ctx.currentTime, 0.015); } },
     // stop all story sound (leaving the story)
-    reset() { want.track = 0; want.tension = 0; want.heart = 0; want.stars = 0; want.calm = 0; tape.onEnd = null; },
+    reset() { want.track = 0; want.tension = 0; want.heart = 0; want.stars = 0; want.calm = 0; want.zero = 0; tape.onEnd = null; },
   };
 }

@@ -42,7 +42,7 @@ import { createMissions } from './missions/missionManager.js';
 import { createStoryUI } from './ui/storyUI.js';
 import { createMusic } from './audio/music.js';
 import { createSave } from './story/save.js';
-import { createActors } from './story/actors.js';
+import { createActors, jacketLook } from './story/actors.js';
 import { createDrivers } from './story/drivers.js';
 import { createDirector } from './story/director.js';
 import { createProps } from './story/props.js';
@@ -53,6 +53,10 @@ import { GARAGE, PARKING } from './city/heroBuildings.js';
 import { takePortrait } from './ui/portrait.js';
 import { setCharacterFill, characterLight } from './characters/characterLook.js';
 import { createInteriors } from './interiors/interiors.js';
+import { createRaces } from './race/raceManager.js';
+import { createSpectators } from './race/spectators.js';
+import { createZero } from './ai/zero.js';
+import { raceLook } from './story/propsRace.js';
 
 const hud = createHUD();
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -190,6 +194,20 @@ async function boot() {
     world.shutter.rotation.y = GARAGE.rot;
     scene.add(world.shutter);
   }
+  // SLOW MOTION (Chapter 4: the half second at the last turn): scale = how fast time goes, for a few real seconds
+  const slow = { scale: 1, left: 0, set(scale, seconds) { this.scale = scale; this.left = seconds; } };
+  // RACES (src/race): the race of the moment, and the people who watch it
+  const spectators = createSpectators(scene);
+  const races = createRaces({ scene, camera, city, layout, vehicles, player, sound, effects, spectators, settings: ui.settings, text: t, rigStart: () => rig.startChase() });
+  world.races = races; world.slow = slow;
+  // ZERO (src/ai/zero.js): after Chapter 4 it can come out of the dark behind Nate in free roam; in the final race it
+  // goes through the field (the story calls it)
+  const zero = createZero({ vehicles, drivers, music, sound, effects, flags: () => (story && story.active ? story.flags : save.data.flags) });
+  world.zero = zero;
+  // THEO'S JACKET (Chapter 4, when Nate took it on the roof): from then on Nate wears it, and a small sign of it is
+  // on the screen
+  const jacket = { on: false, badge: null, base: null, mat: null, forced: false };
+  world.jacket = (on) => { jacket.forced = on; };
   story = createStory({
     scene, camera, city, layout, vehicles, player, actors, drivers, director, props: storyProps, ui, music, sound, save, police, lighting, weather, hud, rig, carLib, world,
     onExit: () => showTitle(),
@@ -248,6 +266,7 @@ async function boot() {
     baseFov = fovNow = camera.fov;
     pixelH = h * pr;
     effects.setViewport(camera.fov, pixelH);
+    spectators.setViewport(camera.fov, pixelH);
     interiors.setViewport(pixelH);
     camera.far = quality.cameraFar;
     camera.updateProjectionMatrix();
@@ -267,6 +286,8 @@ async function boot() {
     weather.setQuality(quality);
     city.setQuality(quality);
     interiors.setQuality(quality);
+    spectators.setQuality(quality);
+    raceLook.reflections = !!quality.post;          // (LOW: no streaks of light under the signs of Chapter 4)
     resize();
     city.props.cull(player.position.x, player.position.z, quality.propDistance, true);
     hud.setQualityButtons(mode, quality.label);
@@ -281,6 +302,33 @@ async function boot() {
   // (a little to the side, so the lit garage door is not hidden behind the menu)
   const TITLE = GARAGE.ready ? { x: GARAGE.door[0] + 18.6, z: GARAGE.door[2] - 6.5, lookX: GARAGE.door[0] } : { x: 1.6, z: 77, lookX: -17 };
   const camDir = new THREE.Vector3();
+  // ---- Theo's jacket: Nate wears it, and the sign on the screen ----
+  function updateJacket() {
+    const f = story.active ? story.flags : save.data.flags;
+    // (not while a chapter up to Chapter 4 is played: there he has not taken it yet, or holds it in his hands)
+    const early = story.active && /^(prologue|chapter0[1-4])$/.test(story.where.chapter || '');
+    const want = gameMode !== 'title' && ((!!(f && f.jacket_taken) && !early) || !!jacket.forced);
+    if (want !== jacket.on) {
+      jacket.on = want;
+      if (want && !jacket.badge) {
+        jacket.badge = document.createElement('div');
+        jacket.badge.id = 'jacket-badge';
+        jacket.badge.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 3 L12 6 L16 3 L21 6 L22 15 L19 16 L18 10 L18 21 L6 21 L6 10 L5 16 L2 15 L3 6 Z" fill="#2f7fd0" stroke="#e8edf2" stroke-width="1.1" stroke-linejoin="round"/><path d="M12 6 L12 21" stroke="#e8edf2" stroke-width="1"/></svg><span>' + t('ui.jacket') + '</span>';
+        const host = document.getElementById('hud-top-left') || document.body;
+        host.appendChild(jacket.badge);
+      }
+      if (jacket.badge) jacket.badge.hidden = !want;
+    }
+    // he WEARS it: the jacket painted over his own clothes (the model cannot change clothes; see jacketLook in
+    // src/story/actors.js), the right size for him
+    const R = player.rig;
+    if (R && R.mesh) {
+      if (!jacket.base) jacket.base = R.mesh.material;
+      if (want && !jacket.mat) jacket.mat = jacketLook(R, { color: [0.11, 0.42, 0.78], cuff: 0.9, hem: 0.04 });
+      const m = want ? jacket.mat : jacket.base;
+      if (R.mesh.material !== m) R.mesh.material = m;
+    }
+  }
   function step(dt) {
     time += dt;
     shared.uPgTime.value = time;
@@ -334,7 +382,11 @@ async function boot() {
     }
 
     // ---- the player's vehicle and the other real vehicles (after the traffic, so they can bump into it) ----
+    races.preVehicles(dt, input);                       // (the cars of a race see each other; the countdown holds them)
     vehicles.update(dt, input, player, night, time);
+    races.update(dt, time, input);
+    zero.update(dt, { free: gameMode === 'free' && !story.active, car: vehicles.state === 'driving' ? vehicles.active : null });
+    updateJacket();
     effects.endFrame(dt);
     // the player character sits in the driver's seat, hands on the wheel (only with the automatic skeleton)
     player.sit(vehicles.seat, dt);
@@ -364,6 +416,7 @@ async function boot() {
       if (inRoom !== lenaCam) { lenaCam = inRoom; rig.setRoom(inRoom ? R : null); }
     }
     if (film) S.applyCamera(dt);
+    else if (races.cameraActive) races.applyCamera(dt);   // (the replay after the finish line)
     else if (driving && vehicles.active) rig.updateChase(dt, vehicles.active, vehicles.shake, view);
     else rig.update(dt, player);
     // a wall pushed the camera right up to the player: the character fades out instead of being cut open
@@ -381,7 +434,7 @@ async function boot() {
       fovNow += (want - fovNow) * Math.min(1, dt * 3);
       if (!film && Math.abs(camera.fov - fovNow) > 0.04) { camera.fov = fovNow; camera.updateProjectionMatrix(); }
       // the light dots of the lamps are sized for the lens that is used right now (film scenes use long lenses)
-      if (Math.abs(camera.fov - fovSent) > 0.04) { fovSent = camera.fov; effects.setViewport(camera.fov, pixelH); }
+      if (Math.abs(camera.fov - fovSent) > 0.04) { fovSent = camera.fov; effects.setViewport(camera.fov, pixelH); spectators.setViewport(camera.fov, pixelH); }
       if (postfx.setSpeed) postfx.setSpeed(film ? 0 : clamp((kmh - 140) / 90, 0, 1) * 0.8 + boost * 0.25);
       hud.setWindscreen(!film && driving && rain > 0.3 && (view === 'hood' || view === 'cockpit') && !!vehicles.active && vehicles.active.isCar);
     }
@@ -578,7 +631,7 @@ async function boot() {
   const mapExtra = () => {
     // while the Guard is after the player (or knows his face): its view cones, the search area and the scanner gates, and a wider view
     const showGuard = !police.scripted && (stars > 0 || police.known);
-    return { inCar: vehicles.driving, cars: city.traffic.cars, waypoint: story.active ? null : waypoint, marker: goalState.marker, route, wanted: showGuard ? police.mapView() : null, view: showGuard ? 0.5 : 0, time };
+    return { inCar: vehicles.driving, cars: city.traffic.cars, waypoint: story.active ? null : waypoint, marker: goalState.marker, route, wanted: showGuard ? police.mapView() : null, view: showGuard ? 0.5 : 0, time, race: races.mapExtra };
   };
 
   // ---- sun glow: is the sun on the screen, and do buildings hide it? ----
@@ -897,7 +950,10 @@ async function boot() {
       if (++idleFrames % 12 === 0) draw();
       return;
     }
-    step(dt);
+    // (slow motion: the world runs slower for a few real seconds; the menus and the subtitles do not)
+    let k = 1;
+    if (slow.left > 0) { slow.left -= dt; k = slow.scale; }
+    step(dt * k);
     draw();
     ui.update(dt);
 
@@ -939,7 +995,7 @@ async function boot() {
   window.PG = {
     THREE, CONFIG, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
     vehicles, missions, gps, sound, hud, minimap, carLib, effects, police, garage, settings,
-    story, ui, music, save, actors, drivers, director, storyProps, streetLife, GARAGE, interiors,
+    story, ui, music, save, actors, drivers, director, storyProps, streetLife, GARAGE, interiors, races, spectators, slow, zero,
     applyQuality, step, draw, carAction, updateGuides, showTitle, startFree, startStory, openPause,
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },

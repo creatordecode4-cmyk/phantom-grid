@@ -26,6 +26,72 @@ const DEG = Math.PI / 180;
 export const compassToAngle = (deg) => Math.atan2(-Math.sin(deg * DEG), Math.cos(deg * DEG));
 const angleDiff = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
 
+// ------------------------------------------------------------------ a jacket of somebody else (Chapter 4)
+// The models are one mesh with one picture: their clothes cannot be changed. So a jacket is PAINTED over the body:
+// the shader colors the chest, the back and the arms (from the rest pose of the model, where the auto rig found the
+// shoulders, elbows and wrists), keeps the folds of the model's own picture as light and shadow, and leaves an open
+// front (the shirt shows). j: { color: [r, g, b] as it looks, cuff: 0..1 (where the sleeve ends between shoulder
+// and wrist: below 0.9 the sleeves are short, "a little small"), hem: meters above the hips (a short jacket) }
+// Theo's jacket: a blue bomber with white stripes at the cuffs and the hem.
+export function jacketLook(rig, j) {
+  const src = rig.mesh.material, A = rig.def, J = A && A.joints;
+  if (!src || !J || !J.upperArm_L || !J.hand_L || !A.info) return src;
+  const m = src.clone();
+  m.userData = { ...src.userData };
+  const before = src.onBeforeCompile, baseKey = src.customProgramCacheKey ? src.customProgramCacheKey() : '';
+  const V = (p) => new THREE.Vector3(p[0], p[1], p[2]);
+  const sides = A.info.sides || [];
+  const u = {
+    uJkColor: { value: new THREE.Color().setRGB(...(j.color || [0.11, 0.42, 0.78]), THREE.SRGBColorSpace) },
+    uJkTrim: { value: new THREE.Color().setRGB(0.86, 0.87, 0.88, THREE.SRGBColorSpace) },
+    uJkShL: { value: V(J.upperArm_L) }, uJkElL: { value: V(J.foreArm_L) }, uJkWrL: { value: V(J.hand_L) },
+    uJkShR: { value: V(J.upperArm_R) }, uJkElR: { value: V(J.foreArm_R) }, uJkWrR: { value: V(J.hand_R) },
+    // (the top: the neck, but always under the chin - a beard is not cloth)
+    uJkHem: { value: A.info.hipY + (j.hem === undefined ? 0.06 : j.hem) }, uJkNeck: { value: Math.min(A.info.neckY + 0.025, (A.info.chinY || 9) - 0.045) },
+    uJkArmR: { value: Math.max(0.05, ((sides[0] && sides[0].armR) || 0.05) * 1.9) }, uJkCuff: { value: j.cuff || 0.84 },
+    uJkMidX: { value: (J.upperArm_L[0] + J.upperArm_R[0]) / 2 }, uJkHalf: { value: Math.abs(J.upperArm_L[0] - J.upperArm_R[0]) / 2 + 0.015 },
+  };
+  m.onBeforeCompile = (sh, r) => {
+    if (before) before.call(src, sh, r);
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = 'varying vec3 vJkP;\nvarying vec3 vJkN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvJkP = position;\n\tvJkN = normal;');
+    sh.fragmentShader = [
+      'varying vec3 vJkP;', 'varying vec3 vJkN;',
+      'uniform vec3 uJkColor, uJkTrim, uJkShL, uJkElL, uJkWrL, uJkShR, uJkElR, uJkWrR;',
+      'uniform float uJkHem, uJkNeck, uJkArmR, uJkCuff, uJkMidX, uJkHalf;',
+      // (how far a point is from the line shoulder - elbow - wrist, and how far along it)
+      'float jkSeg( vec3 p, vec3 a, vec3 b ) { vec3 ab = b - a; float t = clamp( dot( p - a, ab ) / dot( ab, ab ), 0.0, 1.0 ); return length( p - a - ab * t ); }',
+      'float jkSleeve( vec3 p, vec3 sh, vec3 el, vec3 wr, out float trim ) {',
+      '	float d = min( jkSeg( p, sh, el ), jkSeg( p, el, wr ) );',
+      '	vec3 aw = wr - sh; float t = dot( p - sh, aw ) / dot( aw, aw );',
+      '	trim = smoothstep( uJkCuff - 0.07, uJkCuff - 0.055, t ) * ( 1.0 - smoothstep( uJkCuff - 0.03, uJkCuff - 0.015, t ) );',
+      '	return ( 1.0 - smoothstep( uJkArmR * 0.85, uJkArmR, d ) ) * ( 1.0 - smoothstep( uJkCuff - 0.01, uJkCuff, t ) ) * step( -0.2, t );',
+      '}',
+    ].join('\n') + '\n' + sh.fragmentShader.replace('#include <color_fragment>', [
+      '#include <color_fragment>',
+      '	{',
+      '		vec3 p = vJkP;',
+      '		float tl, tr;',
+      '		float sl = jkSleeve( p, uJkShL, uJkElL, uJkWrL, tl ), sr = jkSleeve( p, uJkShR, uJkElR, uJkWrR, tr );',
+      // the body of the jacket: from the hem to the neck, as wide as the shoulders
+      '		float body = smoothstep( uJkHem - 0.008, uJkHem + 0.004, p.y ) * ( 1.0 - smoothstep( uJkNeck - 0.01, uJkNeck + 0.004, p.y ) ) * ( 1.0 - smoothstep( uJkHalf - 0.01, uJkHalf + 0.01, abs( p.x - uJkMidX ) ) );',
+      // open in front: the shirt shows in a strip down the middle (not at the collar)
+      '		float open = ( 1.0 - smoothstep( 0.045, 0.06, abs( p.x - uJkMidX ) ) ) * smoothstep( 0.2, 0.45, normalize( vJkN ).z ) * ( 1.0 - smoothstep( uJkNeck - 0.06, uJkNeck - 0.03, p.y ) );',
+      '		float k = clamp( max( body * ( 1.0 - open ), max( sl, sr ) ), 0.0, 1.0 );',
+      // the stripes: at the cuffs, and a band just above the hem
+      '		float hemBand = smoothstep( uJkHem + 0.012, uJkHem + 0.018, p.y ) * ( 1.0 - smoothstep( uJkHem + 0.028, uJkHem + 0.034, p.y ) ) * body;',
+      '		float trim = clamp( max( max( tl * sl, tr * sr ), hemBand * 0.85 ), 0.0, 1.0 );',
+      // the folds of the model's own clothes stay as light and shadow on the new cloth
+      '		float lum = dot( diffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );',
+      '		vec3 cloth = mix( uJkColor, uJkTrim, trim ) * clamp( 0.78 + ( lum - 0.18 ) * 1.6, 0.5, 1.3 );',
+      '		diffuseColor.rgb = mix( diffuseColor.rgb, cloth, k );',
+      '	}',
+    ].join('\n'));
+  };
+  m.customProgramCacheKey = () => baseKey + '|jacket';
+  return m;
+}
+
 export function createActors({ scene, city, materials, player, vehicles }) {
   const list = [];
   const rigs = new Map();          // model name -> promise of the first rig (later ones are copies)
@@ -121,6 +187,15 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     return m;
   }
 
+  // put the jacket on (j) or take it off (null)
+  function setJacket(a, j) {
+    a.jacket = j || null;
+    if (!a.rig || !a.rig.mesh) return;
+    if (!a.baseMat) a.baseMat = a.rig.mesh.material;
+    if (j && !a.jacketMat) a.jacketMat = jacketLook(a.rig, j);
+    a.rig.mesh.material = j ? a.jacketMat : a.baseMat;
+  }
+
   // ------------------------------------------------------------------ spawn
   // spec: { model: 'Mace_Doyle' | null, extra: [r, g, b] (a dark copy of the player's body) or { pants, coat, patch, scarf, head }
   //         (a copy in salvaged clothes), name: text for the tag,
@@ -138,6 +213,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       hidden: !!spec.hidden, seat: null, seated: null, walk: null, speed: 0, attached: [], floorBelow: spec.floorBelow || 0.45, far: 0,
       keepY: !!spec.keepY,       // true: stands on a floor inside a building (the height is not taken from the street)
       mood: spec.mood || 'neutral', // the expression of the face (faceAnim.js)
+      jacket: spec.jacket || null,  // somebody else's jacket painted over the clothes (Chapter 4: Dante in Theo's jacket)
       ghost: !!spec.ghost,       // true: the player can walk through (far away figures)
     };
     root.position.set(a.x, a.y, a.z);
@@ -149,6 +225,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     const finish = (rig) => {
       if (!list.includes(a)) return;                    // (removed again before the model arrived)
       a.rig = rig; a.anim = createAnimator(THREE, rig);
+      if (a.jacket) setJacket(a, a.jacket);
       a.anim.setPose(a.pose, 0); a.anim.floorBelow = a.floorBelow; a.anim.setFace(a.mood, 0);
       root.add(rig.root);
       for (const at of a.attached) rig.bones[at.bone].add(at.object);
@@ -167,7 +244,8 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       rigOf(spec.model).then((entry) => {
         if (!entry) return fallback();
         // the first actor of a model uses the rig itself, later ones get a copy
-        if (!entry.used) { entry.used = true; finish(entry.rig); } else finish(cloneRig(THREE, entry.rig));
+        // (somebody in a jacket always gets a copy: the jacket is his own material)
+        if (!entry.used && !spec.jacket) { entry.used = true; finish(entry.rig); } else finish(cloneRig(THREE, entry.rig));
       }).catch((e) => { console.warn('[actors] could not load', spec.model, e); fallback(); });
     } else fallback();
     return a;
@@ -292,5 +370,5 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     }
   }
 
-  return { list, spawn, get, remove, clear, unload, preload, update, tags, attach, setPose, setMood, walkTo, place, sitIn };
+  return { list, spawn, get, remove, clear, unload, preload, update, tags, attach, setPose, setMood, walkTo, place, sitIn, setJacket };
 }

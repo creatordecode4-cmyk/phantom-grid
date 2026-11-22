@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { makeDrone } from '../city/models.js';
 import { wantedProps } from './propsWanted.js';
 import { sunkProps } from './propsSunk.js';
+import { raceProps } from './propsRace.js';
 
 // a picture with text, drawn in code. lines: [{ text, size, color, y (0..1), font, weight }]
 function textTexture(w, h, bg, lines, border = null) {
@@ -187,6 +188,8 @@ export function createProps() {
   Object.assign(MAKERS, chapter2.makers);
   // the things of Chapter 3 (the lantern, Lena's badge, the chip reader, the screens, the Guard's drone ...): propsSunk.js
   Object.assign(MAKERS, sunkProps({ std, box, tex, textTexture, glowTexture }).makers);
+  // the things of Chapter 4 (Theo's jacket, the wolf on Dante's hood, the night market, the guardrail, the ramp ...): propsRace.js
+  Object.assign(MAKERS, raceProps({ std, box, tex, textTexture, glowTexture }).makers);
   // a soft round glow (white in the middle, clear at the edge)
   function glowTexture() {
     const cv = document.createElement('canvas'); cv.width = cv.height = 64;

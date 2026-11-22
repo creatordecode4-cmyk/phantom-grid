@@ -162,6 +162,18 @@ export function createMinimap(canvas, layout) {
       ctx.lineJoin = 'round';
       ctx.stroke();
     }
+    // a race (Chapter 4): its whole line (thin white), the next checkpoint (a ring), the other cars (colored dots)
+    if (extra.race) {
+      const R = extra.race;
+      ctx.beginPath();
+      R.line.forEach((p, i) => (i === 0 ? ctx.moveTo(MX(p.x), MY(p.z)) : ctx.lineTo(MX(p.x), MY(p.z))));
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2.4 * dpr; ctx.lineJoin = 'round'; ctx.stroke();
+      if (R.gate) { ctx.strokeStyle = '#ffc94a'; ctx.lineWidth = 1.8 * dpr; ctx.beginPath(); ctx.arc(MX(R.gate.x), MY(R.gate.z), 4.5 * dpr, 0, 7); ctx.stroke(); }
+      for (const c of R.cars) {
+        ctx.fillStyle = c.color; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 1 * dpr;
+        ctx.beginPath(); ctx.arc(MX(c.x), MY(c.z), 3.2 * dpr, 0, 7); ctx.fill(); ctx.stroke();
+      }
+    }
     // the Meridian Guard: where they search, what they see, the scanner gates
     if (extra.wanted) drawWanted(ctx, extra.wanted, MX, MY, k, s, extra.time || 0);
     // the other cars: small dots

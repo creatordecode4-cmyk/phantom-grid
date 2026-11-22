@@ -558,7 +558,11 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   const hitOut = { impact: 0, lever: 0 };
   const NO_CELL = { boxes: [], circles: [] };
   let cur = null;           // the vehicle whose physics step is running (the world functions below look at it)
+  // ways into an arena: [{ arena, test(v) -> true when the car is in the gate }] (src/race adds the highway ramp)
+  const arenaGates = [];
   function collide(v) {
+    // (an arena with a way in: a car that drives into its gate joins it - a race up the ramp onto the highway)
+    if (!v.arena && arenaGates.length) for (const g of arenaGates) if (g.test(v)) { v.arena = g.arena; break; }
     let impact = 0, lever = 0;
     const fx = Math.sin(v.heading), fz = Math.cos(v.heading), R = v.radius;
     for (let pass = 0; pass < 2; pass++) {
@@ -763,7 +767,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   function place(v, night, time) {
     v.group.visible = !v.away;
     if (v.away) return;
-    v.group.position.set(v.x, v.y + (v.isCar ? v.heave : 0), v.z);
+    v.group.position.set(v.x, v.y + (v.isCar ? v.heave : 0) + (v.lift || 0), v.z);     // (lift: in the air over a jump)
     v.group.rotation.y = v.heading;
     // engine start: a short shake
     const shakeStart = v.startT > 0 ? Math.sin(v.startT * 70) * 0.006 * Math.min(1, v.startT * 3) : 0;
@@ -818,7 +822,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       });
     }
     if (v.beam) {
-      v.beam.visible = lampOn > 0.02 && driven;
+      v.beam.visible = lampOn > 0.02 && (driven || !!v.beamOn);     // (beamOn: a computer car with its light on the road - Zero facing Nate)
       v.beamMat.opacity = lampOn * (v.hiBeam ? 1.25 : 0.9);
       v.beam.scale.set(v.hiBeam ? 1.25 : 1, 1, v.hiBeam ? 1.6 : 1);
       v.beam.position.z = v.info.frontZ + (v.hiBeam ? 14.5 : 9.3);
@@ -921,6 +925,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   let enterFilter = null;     // story: which vehicles the player may get into
   let riggedDriver = false;   // true: the real player character sits in the car (main.js puts it there), the simple driver stays hidden
   let forceDriver = null;     // film scenes: true = always show the driver's body, false = never (the camera is in their eyes), null = as usual
+  let autoInput = null;       // the story drives the player's car for a moment (brakes it to a stop in a film scene): pedals and wheel, or null
+  const AUTO_HOLD = { steer: 0, gas: 0, brake: 0, handbrake: true, nitro: false, up: false, down: false, horn: false };
   // input: what the player does, player: the player object, night: 0..1 (lamps on), time: seconds
   let curPlayer = null;
   function update(dt, input, player, night, time) {
@@ -960,11 +966,13 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     while (acc >= STEP) {
       acc -= STEP;
       for (const v of live) {
-        if (v.away) continue;
+        if (v.away || v.frozen) continue;            // (frozen: a race holds it - the countdown, the replay)
         cur = v;
         if (v.startT > 0) v.startT -= STEP;
         if (v === active && state === 'driving') {
-          let inp = drive;
+          let inp = autoInput || drive;
+          // (the story brakes the car to a stop: once it stands, the brake must not turn into reverse - hold it)
+          if (autoInput && autoInput.brake > 0 && v.forward < 0.8) inp = AUTO_HOLD;
           // the EXIT button first stops the vehicle, then the door opens
           if (exitWanted) inp = { steer: drive.steer, gas: v.forward < -0.5 ? 1 : 0, brake: v.forward > 0.5 ? 1 : 0, handbrake: Math.abs(v.forward) <= 4 || drive.handbrake, up: false, down: true };   // (rolling backwards: the gas pedal is the brake)
           if (v.role === 'boat') { v.quiet = !!drive.quiet && !exitWanted; fxLast = stepBoat(v, inp, STEP, seaWorld); }
@@ -1063,7 +1071,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
 
   // (a plain object with "get" functions: the values are read fresh every time)
   return {
-    live, nearest, tryEnter, requestExit, update, prefetch, spawn, spawnInFront, buildGarage, repair, removeVehicle, world, events, flasher, seaWorld,
+    live, nearest, tryEnter, requestExit, update, prefetch, spawn, spawnInFront, buildGarage, repair, removeVehicle, world, events, flasher, seaWorld, arenaGates,
     enterNow, leaveNow, showDamage, clearParked, repaint,
     // story: only vehicles this function says yes to can be entered (null = all)
     set enterFilter(fn) { enterFilter = fn; },
@@ -1112,6 +1120,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     },
     set riggedDriver(on) { riggedDriver = !!on; },
     set forceDriver(v) { forceDriver = v; },
+    get autoDrive() { return autoInput; },
+    set autoDrive(i) { autoInput = i || null; },
     // camera: chase | close | hood | cockpit
     get camMode() { return camMode; },
     set camMode(m) { camMode = m; sound.setInside(m === 'cockpit' && state === 'driving'); },

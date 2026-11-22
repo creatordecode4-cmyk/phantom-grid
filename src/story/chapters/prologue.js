@@ -47,6 +47,9 @@ const GRID = [
   { do: 'prop', id: 'co2', kind: 'cone', at: [-480.7, DECK, 720] },
   { do: 'prop', id: 'co3', kind: 'cone', at: [-476.7, DECK, 710] },
 ];
+// THE GUARDRAIL of the last turn: steel along the corner of the street at the lights (Chapter 4 has the same rail
+// in the same place: its last turn is this turn)
+const RAIL = { do: 'prop', id: 'rail', kind: 'guardrail', at: [0.6, -336], points: [[0, 0], [0, -41.2], [1.2, -42.4], [29.4, -42.4]] };
 // the black car that ends the race
 const PHANTOM = (at, face) => ({ do: 'spawn', id: 'phantom', kind: 'tech_patrol_car', or: 'sedan', color: [0.02, 0.02, 0.025], at, face, tint: DARK, lights: 'bar', npc: true, noDetail: true });
 
@@ -137,6 +140,7 @@ export default {
         { do: 'player', inCar: 'ride', onLoad: true },
         { do: 'allow', enter: 'none', onLoad: true },
         { do: 'music', tape: 3, hud: true, onLoad: true },
+        RAIL,
       ],
       steps: [
         {
@@ -185,7 +189,11 @@ export default {
         // THE LAST TURN: a black Phantom comes down the street. Whatever the player does, it hits.
         {
           do: 'waitFor', event: 'crash', text: 'p.obj.last', marker: [-9, -366], timeout: 20,
-          on: [{ zone: { x: [-27, 1e9] }, do: [PHANTOM([-8.75, -322], 180), { do: 'drive', id: 'phantom', mode: 'ram', speed: 130, event: 'crash' }] }],
+          on: [
+            // half a second of slow motion at the brake point (Chapter 4 has the same half second in the same turn)
+            { zone: { x: [-55, 1e9] }, do: [{ do: 'slowmo', scale: 0.4, seconds: 1.25 }] },
+            { zone: { x: [-27, 1e9] }, do: [PHANTOM([-8.75, -322], 180), { do: 'drive', id: 'phantom', mode: 'ram', speed: 130, event: 'crash' }] },
+          ],
           // (the player stopped and never reached the turn: it comes for them anyway)
           onTimeout: [PHANTOM({ of: 'ride', p: [0, 0, 60] }, 90), { do: 'drive', id: 'phantom', mode: 'ram', speed: 130, event: 'crash' }],
         },
@@ -212,6 +220,7 @@ export default {
         { do: 'fade', to: 'white', seconds: 0, onLoad: true },
         { do: 'music', tape: 6, fromEnd: 24, then: 7, hud: false, onLoad: true },
         { do: 'world', indoors: true },                     // rain on the roof
+        RAIL,
         // the wreck: dark, silent, the glass cracked
         { do: 'vehicleSet', id: 'ride', damage: 0.95, stop: true, lights: 'off', dead: true },
         DECK_PROP,
