@@ -1109,8 +1109,10 @@ Story step: `{ do: 'hack', title, sub, seconds, length, optional, ok: [steps], f
   market boat, the wreck of the flat, red flares.
 - **Performance:** everything that does not move in The Sunk is added to the city's shared meshes (no
   new draw calls). New draw calls: the water (1), the mist (1), sunken cars (2), small boats (1), tanks,
-  antennas and dishes (3), Lena's screens (2). Measured in the software renderer at MEDIUM: 90 to 170
-  draw calls in The Sunk (the limit is 250).
+  antennas and dishes (3), Lena's screens (2). Measured in the software renderer at MEDIUM: at night
+  (when the chapter plays) 85 to 118 draw calls in The Sunk; in daylight, when the sun's shadow map draws
+  everything a second time, 194 to 195 in The Sunk and 245 at Rustwater Dock, where the city starts (the
+  limit is 250). The same places in the city at night: 119 to 155, only 0 to 12 more than before Chapter 3.
 
 ## Every door opens (version 6.0)
 
