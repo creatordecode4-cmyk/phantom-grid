@@ -37,6 +37,7 @@
 
 import { readFace, cleanFace } from './faceClean.js';
 import { addFaceBones } from './faceRig.js';
+import { SCULPT, sculptFace } from './faceSculpt.js';
 import { applyCharacterLook } from './characterLook.js';
 
 // ----------------------------------------------------------- small vector helpers
@@ -1045,6 +1046,13 @@ export async function autoRig(THREE, model, opts = {}) {
   let face = null;
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   try { face = readFace(geo, material, A); } catch (e) { console.warn('[autoRig] the face could not be read:', e); }
+  // a model that was made with an open, laughing mouth gets a calm face first (faceSculpt.js); then it is read again
+  if (face && opts.faceRig !== false && opts.sculpt !== false && SCULPT[opts.name]) {
+    try {
+      const done = sculptFace(THREE, A, face, geo, material, SCULPT[opts.name]);
+      if (done) { face = readFace(geo, material, A); if (opts.faceDebug) opts.faceDebug.sculpt = done; }
+    } catch (e) { console.warn('[autoRig] the face could not be sculpted:', e); }
+  }
   // small bones for the jaw, the eyelids, the eyebrows and the corners of the mouth (faceRig.js). opts.faceRig: false = off
   if (face && opts.faceRig !== false && !A.face) { try { addFaceBones(A, face); } catch (e) { console.warn('[autoRig] no face bones:', e); } }
   if (A.face) A.face.name = opts.name || '';                 // (faceAnim.js: some models get a fix of their own)

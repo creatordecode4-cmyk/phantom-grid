@@ -99,6 +99,8 @@ function boxMean(f, x, y, hw, hh) {
   for (let j = rowOf(y - hh); j <= rowOf(y + hh); j++) for (let i = colOf(x - hw); i <= colOf(x + hw); i++) { s += f[j * GX + i]; n++; }
   return s / n;
 }
+// the grid of the flat face, for other files (faceSculpt.js)
+export function flatFace() { return { GX, GY, CELL, X0, Y0, cellX, cellY, colOf, rowOf, blur }; }
 // the depth of the bare face at a place (x beside the middle of the model, y above the chin; meters at 1.8 m)
 export function bareAt(face, x, y) { return sample(face.bare, (x - X0) / CELL, (y - Y0) / CELL); }
 // the height of the line where the lips meet, at x beside the middle of the model (meters at 1.8 m, above the chin)

@@ -96,7 +96,7 @@
     // ?clean=0 shows the faces as they are in the model file, ?clean=1.4 cleans them harder (the game uses CONFIG.player.faceClean)
     const faceClean = url.has('clean') ? parseFloat(url.get('clean')) || 0 : CONFIG.player.faceClean;
     // ?fill=0.1 shows the fill light of the game's night (the test screen has its own lamps, so it is off here), ?look=0 switches the matt head off,
-    // ?facerig=0 builds no face bones (a stiff face, as before version 4.2)
+    // ?facerig=0 builds no face bones (a stiff face, as before version 4.2), ?sculpt=0 keeps a laughing model laughing (faceSculpt.js)
     setCharacterFill(parseFloat(url.get('fill')) || 0);
     const faceDebug = url.has('facedebug') ? (window.FACE_DEBUG = {}) : null;      // (for tests: what the face cleaner found)
     const $ = (id) => document.getElementById(id);
@@ -164,7 +164,7 @@
       if (rig) { scene.remove(rig.root); if (helper) scene.remove(helper); rig.mesh.geometry.dispose(); }
       const gltf = await loader.loadAsync(`assets/characters/${name}.glb`);
       const t0 = performance.now();
-      rig = await autoRig(THREE, gltf.scene, { height: 1.8, name, faceClean, faceDebug, look: url.get('look') !== '0', faceRig: url.get('facerig') !== '0', onProgress: (f, t) => progress(0.1 + f * 0.9, t) });
+      rig = await autoRig(THREE, gltf.scene, { height: 1.8, name, faceClean, faceDebug, look: url.get('look') !== '0', faceRig: url.get('facerig') !== '0', sculpt: url.get('sculpt') !== '0', onProgress: (f, t) => progress(0.1 + f * 0.9, t) });
       const ms = Math.round(performance.now() - t0);
       anim = createAnimator(THREE, rig);
       scene.add(rig.root);

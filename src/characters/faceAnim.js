@@ -42,8 +42,8 @@ export const FACES = {
 // so its "neutral" is calm. (jaw below 0 closes a mouth that was made open.) Keyed by the model file name.
 export const FIXES = {
   // Model_File_Name: { jaw: -2, up: -1.5 },     (an example: a little calmer mouth)
-  // (Tried for Theo_Calloway, whose model laughs with open teeth: closing his jaw tears the lips, and his eyes and
-  //  cheeks laugh too. His face needs a new model - see README, "Replacing a character model".)
+  // (Small changes only. A model that was made laughing with open teeth, like Theo_Calloway, gets a new calm face
+  //  before it is rigged: see faceSculpt.js.)
 };
 
 // the numbers of a face, written out for both sides

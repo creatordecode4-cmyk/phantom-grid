@@ -139,6 +139,7 @@ src/
     rigWorker.js           works out a skeleton in the background, so the game does not stop meanwhile
     faceClean.js           reads a face (nose, eyes, mouth, eyebrows) and cleans painted dark rings and smudges
     faceRig.js             adds small face bones: jaw, eyelids, eyebrows, corners of the mouth
+    faceSculpt.js          gives a model that was made laughing a calm face before it is rigged (Theo)
     faceAnim.js            moods (smile, sad, angry ...), blinking, the jaw while speaking
     characterLook.js       the characters' own soft light, a matt head, softer bumps on the face
   story/
@@ -731,9 +732,30 @@ What is not perfect: these models are scans with only 200 to 500 points in the w
 the expressions are kept moderate - bigger moves tear the painted picture. Beards hide most of a
 mouth. There is no lip sync to real words (there are no voices), the eyes do not look around
 (they are painted on), and the extras (dark copies of one body) have no picture, so their faces
-are hard to read. **Theo's model was made laughing, with open teeth**: his eyes and cheeks laugh
-too. Closing his mouth with the jaw was tried and tears his lips (`FIXES` in `faceAnim.js`), so
-his calm and sad faces still smile a little. The real fix is a new model (see below).
+are hard to read.
+
+### Theo's new face (version 4.4)
+
+Theo's model was generated **laughing**: the mouth 13 mm open with the teeth showing, the lower lip
+pulled down, the corners and the cheeks up. Expressions are added to the face a model comes with,
+so a laughing model could never look sad. So he got a new, calm face, made in code by
+`src/characters/faceSculpt.js` every time he loads (the model file itself is not changed):
+
+1. the lower edge of his open mouth was measured on the model and written into the recipe
+   (`SCULPT` at the top of the file); the upper edge is found by itself;
+2. the opening is squeezed to one line: the upper lip comes down a little, the lower lip and the
+   chin come up (like a jaw that closes);
+3. the corners of the mouth come down 3.5 mm, the cheeks 2.2 mm down and a little back;
+4. the teeth in the picture are painted the dark color of the line between closed lips, and the
+   painted laugh lines from the nose to the mouth are softened;
+5. the light directions of all moved points are worked out new.
+
+Then the face is read again and rigged like every other face: his calm face is the new "neutral",
+and worried, sad, tired, afraid, stern, smiling and speaking all work on it. A little of the laugh
+stays in his eyes and the shading of his cheeks (it is painted into the picture).
+`rigtest.html?char=Theo_Calloway&sculpt=0` shows the old laughing face. The same recipe can calm
+any other laughing model: measure its open mouth and add a line to `SCULPT` (only models with
+teeth really showing are changed, so a new calm model of Theo is left alone).
 
 ### Replacing a character model
 
