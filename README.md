@@ -1064,6 +1064,8 @@ It reads Chapter 2's `limiter_off`, `van_color` and `van_plate` (the van keeps i
   does not hear. A boat that waits QUIET under a roof (the tunnel, a bridge) counts as hidden.
 - **Phone buttons for the boat:** the arrows (or TILT) to steer, GAS, BRAKE (reverse), QUIET (where the
   handbrake is for cars), EXIT, CAM.
+- **A passenger** (Lena) sits on the edge of the right side deck near the back, legs over the side, and rocks
+  with the boat. The film cameras find her where she really sits.
 
 ### The Guard on the water and stealth (`src/ai/wanted.js`)
 
