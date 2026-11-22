@@ -162,6 +162,38 @@ export function makeDetailedWheel(r, w, style = 'twin5', rimK = 0.7) {
   return out;
 }
 
+// A LIGHT wheel for parked cars, traffic and far cars (about 200 triangles; it does not turn and it is
+// merged into the car's own model): a round tyre with soft shoulders, a dark rim
+// well, a bright rim edge, flat spokes in the style's pattern and a hub cap.
+// Same space as the detailed wheel: the axle is x, the outside looks to +x, the middle is (0, 0, 0).
+export function makeLightWheel(r, w, style = 'twin5', rimK = 0.68) {
+  const key = `L|${r.toFixed(3)}|${w.toFixed(3)}|${style}|${rimK}`;
+  if (cache.has(key)) return cache.get(key);
+  const S = RIM_STYLES[style] || RIM_STYLES.twin5, hw = w / 2, ri = r * rimK, seg = 14;
+  const parts = [];
+  // the tyre: inner wall, shoulder, tread, shoulder, outer wall
+  const prof = [[ri, -hw * 0.9], [r * 0.95, -hw], [r, -hw * 0.55], [r, hw * 0.55], [r * 0.95, hw], [ri, hw * 0.9]].map(([a, b]) => new THREE.Vector2(a, b));
+  parts.push(part(new THREE.LatheGeometry(prof, seg), [0, 0, 0], RUBBER, 0.9, 0, toX));
+  // the rim: a dark well, a bright edge (or a coloured stripe), the spokes, the hub cap
+  const rim = lin(S.rim), well = lin([0.045, 0.045, 0.05]);
+  parts.push(part(new THREE.CircleGeometry(ri, seg), [hw * 0.5, 0, 0], well, 0.5, 0.6, [0, HALF_PI, 0]));
+  parts.push(part(new THREE.RingGeometry(ri * 0.9, ri * 1.01, seg), [hw * 0.86, 0, 0], S.lip ? lin(S.lip) : rim, 0.25, 0.9, [0, HALF_PI, 0]));
+  const width = S.blade ? 0.2 : S.twin ? 0.07 : 0.06, len = ri * 0.84, mid = ri * 0.5;
+  for (let k = 0; k < S.spokes; k++) {
+    const a = (k / S.spokes) * Math.PI * 2;
+    for (const da of S.twin ? [-0.1, 0.1] : [0]) {
+      const g = new THREE.PlaneGeometry(r * width, len);
+      g.rotateY(HALF_PI);                                       // (it faces out; then it is turned round the axle)
+      parts.push(part(g, [hw * 0.7, Math.cos(a + da) * mid, Math.sin(a + da) * mid], rim, 0.25, 0.95, [a + da, 0, 0]));
+    }
+  }
+  parts.push(part(new THREE.CircleGeometry(r * 0.15, 10), [hw * 0.76, 0, 0], rim, 0.2, 1, [0, HALF_PI, 0]));
+  const g = mergeParts(parts);
+  for (const q of new Set(parts.map((p) => p.geom))) q.dispose();
+  cache.set(key, g);
+  return g;
+}
+
 // Put a detailed wheel on a car: a node that steers, the turning wheel in it, the caliper beside it.
 //   sx: +1 = the car's left side (its outside looks to +x), -1 = the right side
 export function mountDetailedWheel(steerNode, r, w, style, sx, material, rimK) {

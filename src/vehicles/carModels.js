@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { MeshBuilder, mergeParts } from '../utils/geometry.js';
 import { lin } from '../city/models.js';
+import { makeLightWheel } from './wheelDetail.js';
 
 const HALF_PI = Math.PI / 2;
 const RUBBER = [0.035, 0.035, 0.04];
@@ -239,10 +240,10 @@ export function makeCar(kind, opts = {}) {
 
   const info = carInfo(kind);
   const last = spec.rings[spec.rings.length - 1], first = spec.rings[0];
-  const extra = [];
+  const extra = [], wheelsAt = [];
   for (const z of spec.wheelZ) {
     for (const sx of [-1, 1]) {
-      if (withWheels) extra.push(...wheelParts(spec.wheelR, sx, sx * spec.wheelX, spec.wheelR, z, 9));
+      if (withWheels) wheelsAt.push([sx, z]);
       // dark half circle behind the wheel = the wheel arch
       const arch = new THREE.CircleGeometry(spec.wheelR + 0.08, 7, 0, Math.PI);
       extra.push(P(arch, [sx * (spec.wheelX + 0.097), spec.wheelR - 0.02, z], [0.02, 0.02, 0.02], 0.9, 0, { rot: [0, sx * HALF_PI, 0] }));
@@ -265,5 +266,12 @@ export function makeCar(kind, opts = {}) {
   const out = new MeshBuilder();
   out.addGeometry(body, null, true);
   out.addGeometry(mergeParts(extra), null, true);
+  // the wheels: round tyres with real rims (wheelDetail.js), the right ones turned round
+  const LIGHT_RIM = { sedan: 'blade6', suv: 'mesh10', van: 'blade6', coupe: 'twin5' };
+  const m = new THREE.Matrix4();
+  for (const [sx, z] of wheelsAt) {
+    m.makeRotationY(sx < 0 ? Math.PI : 0).setPosition(sx * spec.wheelX, spec.wheelR, z);
+    out.addGeometry(makeLightWheel(spec.wheelR, 0.24, LIGHT_RIM[kind] || 'twin5'), m, true);
+  }
   return out.build(true);
 }

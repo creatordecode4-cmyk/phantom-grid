@@ -13,6 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
+import { pillowGeometry, blanketGeometry, rollGeometry } from '../utils/softShapes.js';
 
 const TAU = Math.PI * 2;
 const _c = new THREE.Color();
@@ -667,12 +668,13 @@ export function bed(P, o = {}) {
   P.box('wood', 0, 0.12, -L / 2 - 0.02, w, 0.72, 0.04, wood, { r: 0.012 });
   for (const sx of [-1, 1]) { P.cyl('wood', sx * (w / 2 - 0.015), 0, -L / 2 - 0.02, 0.03, 0.03, 0.92, mul(wood, 0.95), 10); P.sphere('wood', sx * (w / 2 - 0.015), 0.95, -L / 2 - 0.02, 0.04, wood, 10); }
   P.box('wood', 0, 0.12, L / 2 + 0.02, w, 0.36, 0.04, wood, { r: 0.012 });
-  // mattress, blanket over it and down the sides, a folded part at the top, the pillow
+  // the mattress; a quilted blanket that lies on it and hangs down both sides (tucked in at the foot, where
+  // the footboard is), its top edge rolled back; a puffy pillow (soft shapes: src/utils/softShapes.js)
   P.box('cloth', 0, 0.32, 0, w - 0.06, 0.16, L - 0.06, C('#efece6'), { r: 0.05 });
-  P.box('cloth', 0, 0.42, 0.18, w + 0.02, 0.08, L - 0.44, blanket, { r: 0.04 });
-  for (const sx of [-1, 1]) P.box('cloth', sx * (w / 2 + 0.006), 0.2, 0.18, 0.025, 0.28, L - 0.46, mul(blanket, 0.92), { r: 0.012 });
-  P.box('cloth', 0, 0.42, -L / 2 + 0.58, w + 0.03, 0.1, 0.22, mix(blanket, WHITE, 0.55), { r: 0.045 });
-  P.box('cloth', 0, 0.47, -L / 2 + 0.24, w - 0.24, 0.13, 0.36, C('#f4f1ea'), { r: 0.06 });
+  const mt = 0.48;
+  P.geo('cloth', blanketGeometry({ w: w - 0.06, l: L - 0.56, drop: [0.17, 0.17, 0], thick: 0.035, cell: 0.3, seed: 7 }), 0, mt, -L / 2 + 0.53, 0, blanket);
+  P.geo('cloth', rollGeometry(w - 0.14, 0.035, { seed: 8 }), 0, mt + 0.03, -L / 2 + 0.56, 0, mix(blanket, WHITE, 0.55));
+  P.geo('cloth', pillowGeometry(w - 0.26, 0.42, 0.15, { seed: 9, dent: [0.04, 0.02, 0.15, 0.015] }), 0, mt, -L / 2 + 0.27, 0, C('#f4f1ea'));
   P.shadow(0, 0, w * 0.62, L * 0.54, 0.8);
   P.solid(-w / 2, -L / 2 - 0.04, w / 2, L / 2 + 0.04, 0.55);
 }

@@ -1116,6 +1116,27 @@ point, and the first in the `CARS` menu.
 
 ---
 
+## Softer beds and wheels on every car (version 6.2)
+
+| What you saw | Why | The fix |
+|---|---|---|
+| The bed looked bad, the pillow was not a pillow | Nate's bed (the start of Chapter 1) was made of five plain boxes: a hard white block as the pillow, a flat slab as the blanket | a real bed now: a low wooden platform on a dark plinth, a padded headboard with six channels, a mattress with a pale sheet, two puffy pillows with a sewn seam (Nate's has a hollow where his head lies) and a quilted blanket that hangs down the open side and the foot in folds, its top edge rolled back |
+| Hands and feet went through things | in the sleeping scene the hand under Nate's face was inside the block pillow | the hand now rests on the bed in front of the pillow, the head lies in the pillow's hollow, the boots on the blanket. This was checked by measuring where the bones are, not only by eye |
+| Some cars had no wheels | the light versions of the scanned cars (used for parked cars, traffic and cars far away) had broken wheels: the police coupe's were missing, the patrol car's hollow, the city car's smeared | when the game loads, the old wheel triangles are taken out and clean wheels made in code are put in their place (`cleanWheels` in `src/vehicles/vehicleLoader.js`). Four of the five models even got lighter: their broken wheels cost more triangles than the new ones |
+
+**More detail:**
+- The child's bed in Halden House got the same puffy pillow and a quilted blanket that hangs down both sides,
+  tucked in at the foot, with a rolled top.
+- Every sofa in the rooms the game makes has two soft throw pillows leaning on its back.
+- Parked and traffic cars made in code have round tyres with rims and spokes (`makeLightWheel` in
+  `src/vehicles/wheelDetail.js`) instead of nine-sided black discs.
+
+**Soft things for later (`src/utils/softShapes.js`):** `pillowGeometry(width, depth, height, { dent })`,
+`blanketGeometry({ w, l, drop: [left, right, foot], thick, quilt })` and `rollGeometry(length, radius)`
+give a geometry that can go into any room (see `bed()` in `src/interiors/furniture.js`).
+
+---
+
 ## Known limits
 
 - Traffic cars drive on rails: when hit they stop and honk, but they are not pushed away. Parked
@@ -1150,6 +1171,9 @@ point, and the first in the `CARS` menu.
   The story people are the scanned models with an automatic skeleton: clothes do not swing.
   Extras (the two under the awning, the customer, the Guard
   officer) are dark copies of one body. The two story alleys are only 5 m wide: drive in slowly.
+- Beds and blankets do not bend under a body: a sleeping or sitting character lies ON them. Bodies are posed by
+  code, so a hand or a boot can still touch the cloth a few millimetres deep. Arms that swing while walking can
+  still go into a wall when you walk right along it.
 - THE STREET BIKE drives with the car physics: the lean is only for the eye. It cannot do wheelies or
   stoppies and does not fall over in a crash; it is not used by traffic or the story (yet). The rider's
   pose is made by code and was only checked in pictures from a software renderer.

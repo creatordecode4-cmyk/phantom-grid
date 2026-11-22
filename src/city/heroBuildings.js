@@ -30,6 +30,8 @@ import { ENTRANCES } from './entrances.js';
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { FLOOR, GLASS_TINTS } from './buildingKit.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { pillowGeometry, blanketGeometry, rollGeometry } from '../utils/softShapes.js';
 
 // Real sizes: height (m) and the lot each hero needs (width along the street x depth).
 export const HEROES = {
@@ -711,16 +713,43 @@ function g01(kit, s) {
   paint([0.1, 0.1, 0.11], 0.6, 0.3);
   box(ps, 5.17, fy0 + 0.75, ff1 - 0.06, 5.23, fy0 + 2.15, ff1 - 0.02, 'BRL');
   box(ps, 4.1, fy0 + 1.42, ff1 - 0.06, 6.3, fy0 + 1.48, ff1 - 0.02, 'BTD');
-  // bed in the back corner: frame, mattress, pillow, blanket
-  paint([0.16, 0.12, 0.09], 0.8);
-  box(ps, 6.4, fy0, ff0 + 0.05, 8.45, fy0 + 0.3, ff0 + 2.15, 'FBRLT');
-  paint([0.55, 0.55, 0.52], 0.9);
-  box(ps, 6.45, fy0 + 0.3, ff0 + 0.1, 8.4, fy0 + 0.48, ff0 + 2.1, 'FBRLT');
-  // (the blanket covers the whole bed: Nate sleeps on top of it, in his clothes. The pillow lies on it.)
-  paint([0.16, 0.2, 0.26], 0.95);
-  box(ps, 6.45, fy0 + 0.48, ff0 + 0.1, 8.4, fy0 + 0.55, ff0 + 2.1, 'FBRLT');
-  paint([0.7, 0.7, 0.68], 0.9);
-  box(ps, 7.5, fy0 + 0.55, ff0 + 0.16, 8.36, fy0 + 0.7, ff0 + 0.84, 'FBRLT');
+  // THE BED in the back corner (the soft parts are made in src/utils/softShapes.js): a low wooden platform
+  // on a dark plinth, a padded headboard against the wall, a mattress with a pale sheet, two puffy pillows
+  // (Nate's has a hollow where his head lies) and a quilted blanket that hangs down the open side and the
+  // foot, its top edge rolled back. (Nate sleeps on top of the blanket, in his clothes: the story puts him
+  // at its height, 0.555 m above the floor.)
+  {
+    const toWorld = new THREE.Matrix4().makeBasis(new THREE.Vector3(rx, 0, rz), new THREE.Vector3(0, 1, 0), new THREE.Vector3(fx, 0, fz)).setPosition(s.x, 0, s.z);
+    const _m = new THREE.Matrix4(), _r = new THREE.Matrix4();
+    // a geometry made in the bed's own space (x = toward the right, y up, z = toward the street) put at (r, y, f)
+    const put = (g, r, y, f, c, rough = 0.92, rotY = 0, rotX = 0) => {
+      paint(c, rough);
+      _m.makeRotationY(rotY).multiply(_r.makeRotationX(rotX)).setPosition(r, y, f);
+      ps.addGeometry(g, toWorld.clone().multiply(_m));
+      g.dispose();
+    };
+    const wood = [0.16, 0.12, 0.09], top = fy0 + 0.51;
+    paint([0.03, 0.03, 0.03], 0.9);
+    box(ps, 6.5, fy0, ff0 + 0.15, 8.35, fy0 + 0.07, ff0 + 2.05, 'FBRL');                        // the dark plinth
+    paint(wood, 0.75);
+    box(ps, 6.4, fy0 + 0.07, ff0 + 0.05, 8.45, fy0 + 0.29, ff0 + 2.15, 'FBRLT');                // the platform
+    paint([0.24, 0.18, 0.13], 0.6);
+    box(ps, 6.39, fy0 + 0.27, ff0 + 0.04, 8.46, fy0 + 0.3, ff0 + 2.16, 'FBRLT');                // its lighter top edge
+    // the headboard: a wooden back, six padded channels, a rail on top
+    paint(wood, 0.75);
+    box(ps, 6.38, fy0 + 0.3, ff0 + 0.0, 8.47, fy0 + 1.18, ff0 + 0.04, 'FBRLT');
+    for (let i = 0; i < 6; i++) put(pillowGeometry(0.33, 0.78, 0.07, { nu: 8, nv: 10, seed: i + 4 }), 6.585 + i * 0.335, fy0 + 0.72, ff0 + 0.04, [0.13, 0.13, 0.145], 0.95, 0, Math.PI / 2);
+    paint([0.24, 0.18, 0.13], 0.6);
+    box(ps, 6.36, fy0 + 1.16, ff0 - 0.01, 8.49, fy0 + 1.2, ff0 + 0.08, 'FBRLT');
+    // the mattress with its sheet
+    put(new RoundedBoxGeometry(2.0, 0.21, 2.02, 3, 0.05), 7.425, fy0 + 0.405, ff0 + 1.12, [0.6, 0.6, 0.58]);
+    // two pillows on the sheet: Nate's on the wall side (a hollow where his head lies), the other one a little turned
+    put(pillowGeometry(0.74, 0.5, 0.2, { dent: [-0.2, 0.13, 0.16, 0.035], seed: 2 }), 8.04, top, ff0 + 0.42, [0.72, 0.72, 0.7]);
+    put(pillowGeometry(0.72, 0.48, 0.18, { seed: 5 }), 7.06, top, ff0 + 0.4, [0.7, 0.7, 0.68], 0.92, 0.07);
+    // the blanket: from just below the pillows to the foot; it hangs down the open side (toward the room) and the foot
+    put(blanketGeometry({ w: 2.0, l: 1.39, drop: [0.2, 0, 0.2], thick: 0.04, seed: 3 }), 7.425, top, ff0 + 0.76, [0.16, 0.2, 0.26], 0.96);
+    put(rollGeometry(1.9, 0.04, { seed: 4 }), 7.47, top + 0.035, ff0 + 0.79, [0.25, 0.29, 0.35], 0.95);
+  }
   // the shelf on the wall beside the bed (the mixtape and the photo lie on it: story props)
   paint([0.27, 0.19, 0.12], 0.8);
   box(ps, 8.16, fy0 + 1.25, ff0 + 2.5, 8.5, fy0 + 1.29, ff0 + 4.0, 'FBLTD');

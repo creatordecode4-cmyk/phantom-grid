@@ -7,6 +7,7 @@
 
 import * as THREE from 'three';
 import { C, books, plant, bottle, jar, mug, cup, plate, bowl } from './furniture.js';
+import { pillowGeometry } from '../utils/softShapes.js';
 
 const TAU = Math.PI * 2;
 const mul = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
@@ -27,9 +28,10 @@ export function sofa(P, o = {}) {
   }
   for (const sx of [-1, 1]) P.box('cloth', sx * (w / 2 - 0.09), 0.1, 0, 0.18, 0.5, d, mul(c, 0.88), { r: 0.07 });
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.cyl('wood', sx * (w / 2 - 0.1), 0, sz * (d / 2 - 0.1), 0.025, 0.02, 0.1, C('#3a2a1e'), 8);
+  // two soft throw pillows leaning on the back (puffy, with a seam: src/utils/softShapes.js)
   const pc = o.pillow || C('#d9a441');
-  P.box('cloth', -w / 2 + 0.36, 0.5, -d / 2 + 0.3, 0.38, 0.34, 0.14, pc, { r: 0.06, tilt: -0.25, rot: 0.25 });
-  P.box('cloth', w / 2 - 0.36, 0.5, -d / 2 + 0.3, 0.38, 0.34, 0.14, mul(pc, 0.8), { r: 0.06, tilt: -0.25, rot: -0.2 });
+  P.geo('cloth', pillowGeometry(0.42, 0.4, 0.15, { nu: 10, nv: 10, seed: 3 }), -w / 2 + 0.38, 0.69, -d / 2 + 0.21, 0.25, pc, [Math.PI / 2 - 0.28, 0, 0]);
+  P.geo('cloth', pillowGeometry(0.42, 0.4, 0.15, { nu: 10, nv: 10, seed: 6 }), w / 2 - 0.38, 0.69, -d / 2 + 0.21, -0.2, mul(pc, 0.8), [Math.PI / 2 - 0.3, 0, 0]);
   P.shadow(0, 0, w * 0.56, d * 0.62, 0.85);
   P.solid(-w / 2, -d / 2, w / 2, d / 2, 0.75);
 }

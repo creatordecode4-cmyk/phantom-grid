@@ -618,7 +618,8 @@ export function createAnimator(THREE, rig, opts = {}) {
       const A = hand[q], under = q === 1;
       A.on = true; A.hasPole = true;
       // the lower arm lies forward on the bed, the hand near the face. The upper arm rests in front of the chest.
-      if (under) { A.p.set(-0.3 * k, M.handUp, -(M.span + 0.2 * k)); A.pole.set(-0.7, 0.25, 0.65); }
+      // (the hand under the face rests IN FRONT of the pillow, on the bed - not inside the pillow)
+      if (under) { A.p.set(-0.42 * k, M.handUp, -(M.span + 0.2 * k)); A.pole.set(-0.7, 0.25, 0.65); }
       else { A.p.set(-0.3 * k, M.handUp + 0.01, -(M.span * 0.45)); A.pole.set(-0.3, 0.6, 0.75); }
       fingers(q, 32, 14);
     }
