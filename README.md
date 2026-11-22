@@ -1039,9 +1039,9 @@ It reads Chapter 2's `limiter_off`, `van_color` and `van_plate` (the van keeps i
 - **The water (`PG_CANAL` in `src/city/materials.js`):** dark and a little see-through when you look
   down, a mirror at a low angle; three moving normal maps, rain drops as small rings, foam along the
   walls, a **V-shaped wake** and churned water behind every boat (also small ripples where you walk
-  on a pontoon), **glowing green-teal algae** near the walls at night (brighter where a boat stirs
-  the water), the lanterns mirrored and broken up by the waves. **LOW quality:** one normal map, no
-  rain rings, no wake waves, no mist sheets.
+  on a pontoon), **glowing green-teal algae** in patches and as a faint film along the walls at night
+  (a little brighter where a boat stirs the water), the lanterns mirrored and broken up by the waves.
+  **LOW quality:** one normal map, no rain rings, no wake waves, no mist sheets.
 - **Mist and rain:** in The Sunk the fog is 2.3 times thicker and a little green-grey, soft mist
   sheets drift slowly over the canals, and it always rains there. In the drain tunnel: a dark teal
   haze, still water, dim lamps, dripping.
