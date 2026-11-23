@@ -67,6 +67,29 @@ function makeCollisionGrid(boxes, circles) {
     // something solid that is put into the world later (the posts of the scanner gates, the walls of a room)
     addCircle(c) { circles.push(c); addCircle(c); },
     addBox(b) { boxes.push(b); addBox(b); },
+    // ... and taken away again (the things of a story scene: a guardrail, a food stall)
+    removeCircle(c) {
+      const i = circles.indexOf(c);
+      if (i >= 0) circles.splice(i, 1);
+      for (let cx = Math.floor((c.x - c.r - M) / CELL); cx <= Math.floor((c.x + c.r + M) / CELL); cx++) {
+        for (let cz = Math.floor((c.z - c.r - M) / CELL); cz <= Math.floor((c.z + c.r + M) / CELL); cz++) {
+          const cell = cells.get(cx * 100000 + cz);
+          const k = cell ? cell.circles.indexOf(c) : -1;
+          if (k >= 0) cell.circles.splice(k, 1);
+        }
+      }
+    },
+    removeBox(b) {
+      const i = boxes.indexOf(b);
+      if (i >= 0) boxes.splice(i, 1);
+      for (let cx = Math.floor((b.minX - M) / CELL); cx <= Math.floor((b.maxX + M) / CELL); cx++) {
+        for (let cz = Math.floor((b.minZ - M) / CELL); cz <= Math.floor((b.maxZ + M) / CELL); cz++) {
+          const cell = cells.get(cx * 100000 + cz);
+          const k = cell ? cell.boxes.indexOf(b) : -1;
+          if (k >= 0) cell.boxes.splice(k, 1);
+        }
+      }
+    },
   };
 }
 
@@ -146,6 +169,34 @@ function makeLampLightMap(ctx) {
   tex.needsUpdate = true;
   shared.uPgLightMap.value = tex;
   shared.uPgLightRect.value.set(minX, minZ, 1 / (maxX - minX), 1 / (maxZ - minZ));
+
+  // ---- the OCCLUSION picture (the same rectangle): white = open sky, darker = close to the foot of a wall ----
+  // Every wall is drawn a few times, each time a little bigger and very faint: the darkness fades out about
+  // 2.5 m from the wall. The ground shader reads it (ambient occlusion: the soft shadow where things meet).
+  {
+    const A = 1024, ax = A / (maxX - minX), az = A / (maxZ - minZ);
+    const ca = document.createElement('canvas');
+    ca.width = ca.height = A;
+    const q = ca.getContext('2d');
+    q.fillStyle = '#fff';
+    q.fillRect(0, 0, A, A);
+    const AX = (x) => (x - minX) * ax, AY = (z) => A - (z - minZ) * az;
+    const walls = ctx.colliders.boxes.filter((b) => b.h > 2.5);
+    const round = ctx.colliders.circles.filter((c) => c.r > 1.6);
+    for (const [grow, alpha] of [[2.6, 0.1], [1.8, 0.12], [1.1, 0.14], [0.5, 0.16], [0, 0.3]]) {
+      q.fillStyle = `rgba(0,0,0,${alpha})`;
+      for (const b of walls) q.fillRect(AX(b.minX - grow), AY(b.maxZ + grow), (b.maxX - b.minX + grow * 2) * ax, (b.maxZ - b.minZ + grow * 2) * az);
+      for (const c of round) { q.beginPath(); q.ellipse(AX(c.x), AY(c.z), (c.r + grow) * ax, (c.r + grow) * az, 0, 0, Math.PI * 2); q.fill(); }
+    }
+    const ao = new THREE.CanvasTexture(ca);
+    ao.colorSpace = THREE.NoColorSpace;
+    ao.wrapS = ao.wrapT = THREE.ClampToEdgeWrapping;
+    ao.magFilter = THREE.LinearFilter;
+    ao.minFilter = THREE.LinearMipmapLinearFilter;
+    ao.generateMipmaps = true;
+    ao.needsUpdate = true;
+    shared.uPgAOMap.value = ao;
+  }
   return tex;
 }
 
@@ -284,6 +335,7 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
   makeLampLightMap(ctx);
   const colliders = makeCollisionGrid(ctx.colliders.boxes, ctx.colliders.circles);
   colliders.dynamic = traffic.dynamicCircles; // moving cars near the player
+  people.setColliders(colliders);              // the people walk around poles, trees, benches and walls
   lap('lightMap');
   scene.add(group);
   onProgress(1, 'City ready');

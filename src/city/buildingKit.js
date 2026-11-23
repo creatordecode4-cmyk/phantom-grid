@@ -119,7 +119,7 @@ export function createKit(ctx) {
   const solar = S('solarField', M.makeSolarField(), mats.panel, { maxDistance: 320 });
   const solarRack = S('solar', M.makeSolarPanels(), mats.prop, { maxDistance: 170 });
   const shrub = S('shrub', M.makeShrub(5), mats.leaf, { maxDistance: 115, group: 'plants' });
-  const vine = S('vine', M.makeVine(9), mats.frond, { maxDistance: 100, group: 'plants' });
+  const vine = S('vine', M.makeVine(9), mats.ivy, { maxDistance: 100, group: 'plants' });
   const planter = S('planter', M.makePlanter(), mats.prop, { maxDistance: 110, castShadow: true });
   const roofAC = S('roofAC', M.makeRoofAC(), mats.prop, { maxDistance: 110 });
   const charger = S('charger', M.makeCharger(), mats.prop, { maxDistance: 160, color: true, castShadow: true });

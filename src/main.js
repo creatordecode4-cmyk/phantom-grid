@@ -252,10 +252,18 @@ async function boot() {
   if (urlQ && (urlQ === 'auto' || CONFIG.quality[urlQ])) mode = urlQ;
   if (mode !== 'auto' && !CONFIG.quality[mode]) mode = 'auto';
 
+  // DYNAMIC RESOLUTION: a phone that keeps 60 frames per second easily gets a sharper picture (more pixels, up to
+  // pixelRatio.dynMax of the quality level); when it gets slow, the picture gets a little softer again before the
+  // frame rate drops (never below 80 % of the normal setting). Address option dynres=0 switches it off (tests).
+  let resK = 1;
+  const dynRes = urlOption('dynres') !== '0';
+  let resFrames = 0, resTime = 0, resGood = 0;
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     const dpr = window.devicePixelRatio || 1;
-    const pr = clamp(dpr * quality.pixelRatio.scale, quality.pixelRatio.min, quality.pixelRatio.max);
+    const base = clamp(dpr * quality.pixelRatio.scale, quality.pixelRatio.min, quality.pixelRatio.max);
+    const top = Math.max(base, Math.min(quality.pixelRatio.dynMax || base, dpr));
+    const pr = clamp(base * resK, Math.max(0.6, base * 0.8), top);
     renderer.setPixelRatio(pr);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
@@ -288,6 +296,7 @@ async function boot() {
     interiors.setQuality(quality);
     spectators.setQuality(quality);
     raceLook.reflections = !!quality.post;          // (LOW: no streaks of light under the signs of Chapter 4)
+    resK = 1;                                       // (a new level starts at its normal sharpness)
     resize();
     city.props.cull(player.position.x, player.position.z, quality.propDistance, true);
     hud.setQualityButtons(mode, quality.label);
@@ -613,18 +622,18 @@ async function boot() {
       stealth: police.stealth, exposed: police.exposed, suspicion: police.suspicion, heard: police.heard, seenNow: police.exposed && !police.heard } : { stars: 0, light: 0 });
     hud.showCover(real && police.coverAvailable && !story.cameraActive);
     hud.setTicker(gameMode === 'story' ? story.news : null, portraitURL);
-    // name tags over the garage vehicles (only when you stand close)
+    // name tags over the garage vehicles (only when you stand close: a screen full of labels looks like a test build)
     tags.length = 0;
     if (vehicles.state === 'none' && gameMode !== 'title') {
       for (const v of vehicles.live) {
-        if (!v.tag || v.away || Math.abs(v.x - player.position.x) > 22 || Math.abs(v.z - player.position.z) > 22) continue;
+        if (!v.tag || v.away || Math.hypot(v.x - player.position.x, v.z - player.position.z) > 11) continue;
         _mark.set(v.x, v.y + v.info.roof + 0.75, v.z).project(camera);
         if (_mark.z < 1 && Math.abs(_mark.x) < 1 && Math.abs(_mark.y) < 1) tags.push({ x: (_mark.x * 0.5 + 0.5) * window.innerWidth, y: (-_mark.y * 0.5 + 0.5) * window.innerHeight, text: v.label });
       }
       // (story people whose model file is missing stand in as mannequins with a name tag)
       actors.tags(camera, tags);
       _mark.set(garage.repair.x, 1.4, garage.repair.z);
-      if (gameMode === 'free' && _mark.distanceTo(player.position) < 30) { _mark.project(camera); if (_mark.z < 1 && Math.abs(_mark.x) < 1 && Math.abs(_mark.y) < 1) tags.push({ x: (_mark.x * 0.5 + 0.5) * window.innerWidth, y: (-_mark.y * 0.5 + 0.5) * window.innerHeight, text: 'REPAIR' }); }
+      if (gameMode === 'free' && _mark.distanceTo(player.position) < 16) { _mark.project(camera); if (_mark.z < 1 && Math.abs(_mark.x) < 1 && Math.abs(_mark.y) < 1) tags.push({ x: (_mark.x * 0.5 + 0.5) * window.innerWidth, y: (-_mark.y * 0.5 + 0.5) * window.innerHeight, text: 'REPAIR' }); }
     }
     hud.setTags(tags);
     hud.setMission(goalState.active ? goalState : null);
@@ -985,6 +994,7 @@ async function boot() {
     updateGuides();
     if (fpsTimer >= 0.5) {
       fps = frames / fpsTimer;
+      const frames_ = frames, span_ = fpsTimer;
       frames = 0;
       fpsTimer = 0;
       hud.setLocation(interiors.inside ? interiors.label : vehicles.active && vehicles.active.arena ? 'IRONHILL HIGHWAY' : layout.districtAt(player.position.x, player.position.z));
@@ -994,6 +1004,18 @@ async function boot() {
         const r = renderer.info.render;
         hud.setStats(`${Math.round(fps)} FPS  ·  ${r.calls} DRAW CALLS\n${Math.round(r.triangles / 1000)}K TRIANGLES  ·  ${quality.label} ${renderer.getPixelRatio().toFixed(2)}x`);
       }
+      // dynamic resolution (see resize): look at the frame rate of the last 2.5 seconds
+      resFrames += frames_; resTime += span_;
+      if (dynRes && resTime >= 2.5 && !document.hidden && gameMode !== 'title') {
+        const rf = resFrames / resTime, prNow = renderer.getPixelRatio();
+        resFrames = 0; resTime = 0;
+        if (rf < 47) { resGood = 0; const k = Math.max(0.8, resK - 0.12); if (k !== resK) { resK = k; resize(); } }
+        else if (rf >= 57) {
+          resGood++;
+          // (two calm windows in a row before it gets sharper: no back and forth)
+          if (resGood >= 2) { resGood = 0; const k = Math.min(2.2, resK + 0.08); if (k !== resK) { resK = k; resize(); if (renderer.getPixelRatio() === prNow) resK -= 0.08; } }
+        } else resGood = 0;
+      } else if (resTime >= 2.5) { resFrames = 0; resTime = 0; }
       // AUTO quality: if the game runs slowly for a while, go one level down
       if (mode === 'auto' && sinceChange > 5 && !document.hidden) {
         slowTime = fps < 42 ? slowTime + 0.5 : Math.max(0, slowTime - 0.25);

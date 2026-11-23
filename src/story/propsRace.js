@@ -198,6 +198,7 @@ export function raceProps(H) {
       const glow = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), glowMat(0xff9a4a, 0.55));
       glow.position.copy(bulb.position); g.add(glow);
       g.userData.billboardPart = glow;
+      g.userData.solid = [{ line: [[-0.9, 0], [0.9, 0]], r: 0.45 }];   // (the counter stops cars and people)
       return g;
     },
 
@@ -243,6 +244,7 @@ export function raceProps(H) {
         const u = streak.material.uniforms;
         u.uTime.value = time; u.uWet.value = shared.uPgWet.value; u.uNight.value = shared.uPgNight.value;
       };
+      g.userData.solid = [{ c: [0, 0], r: 0.16 }];                     // (the post)
       return g;
     },
 
@@ -269,6 +271,8 @@ export function raceProps(H) {
       }
       const m = merged(parts, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.75 }));
       const g = new THREE.Group(); g.add(m);
+      // it is solid: a car that runs wide hits the rail instead of driving through it
+      g.userData.solid = [{ line: pts.map((q) => [q.x, q.y]), r: 0.3 }];
       return g;
     },
 
@@ -312,6 +316,7 @@ export function raceProps(H) {
       lamp.position.set(-(w / 2 + 0.9), 0.95, 0.8); g.add(lamp);
       const lamp2 = lamp.clone(); lamp2.position.x = w / 2 + 0.9; g.add(lamp2);
       g.userData.anim = (time) => { const on = (time * 1.4) % 1 < 0.5; lamp.visible = on; lamp2.visible = !on; };
+      g.userData.solid = [-1, 1].map((s) => ({ line: [[s * (w / 2 + 0.9), 0], [s * (w / 2 + 0.9), 0.8 + gap / 1.1 + 0.8]], r: 0.3 }));
       return g;
     },
 
@@ -341,6 +346,7 @@ export function raceProps(H) {
       for (let i = 0; i < n; i++) lampGeo.push(C(0.07, 0.07, 0.05, 8, -w / 2 + 0.6 + (i * (w - 1.2)) / (n - 1), hgt - 0.1, 0.18, Math.PI / 2));
       const lamps = new THREE.Mesh(mergeGeometries(lampGeo), new THREE.MeshBasicMaterial({ color: 0xf2f5ff }));
       g.add(lamps);
+      g.userData.solid = [{ c: [-w / 2, 0], r: 0.5 }, { c: [w / 2, 0], r: 0.5 }];   // (the two posts with their feet)
       return g;
     },
 

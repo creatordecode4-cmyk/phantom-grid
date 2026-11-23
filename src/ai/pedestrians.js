@@ -249,6 +249,29 @@ export function createPedestrians(ctx) {
         const ed = Math.hypot(ex, ez);
         if (ed < min && ed > 0.001) { x += (ex / ed) * (min - ed); z += (ez / ed) * (min - ed); }
       }
+      // ---- poles, trees, benches, parked cars and walls in the way: walk AROUND them, not through them ----
+      // (the person only moves sideways, so the path bends in a smooth curve around the thing)
+      if (grid && p.fall <= 0) {
+        const cell = grid.near(x, z);
+        for (const q of cell.circles) {
+          if (q.car || q.veh) continue;
+          const ex = x - q.x, ez = z - q.z, min = q.r + 0.34;
+          if (Math.abs(ex) > min || Math.abs(ez) > min) continue;
+          const along = ex * dirX + ez * dirZ;
+          let lat = ex * dirZ - ez * dirX;
+          if (along * along + lat * lat >= min * min) continue;
+          lat = (lat >= 0 ? 1 : -1) * Math.sqrt(min * min - along * along);
+          x = q.x + along * dirX + lat * dirZ; z = q.z + along * dirZ - lat * dirX;
+        }
+        for (const b of cell.boxes) {
+          if (b.h < 0.5) continue;
+          const m = 0.3;
+          if (x < b.minX - m || x > b.maxX + m || z < b.minZ - m || z > b.maxZ + m) continue;
+          // out through the nearest side
+          const l = x - (b.minX - m), r = b.maxX + m - x, n = z - (b.minZ - m), f = b.maxZ + m - z, k = Math.min(l, r, n, f);
+          if (k === l) x -= l; else if (k === r) x += r; else if (k === n) z -= n; else z += f;
+        }
+      }
       p.x = x; p.z = z;
       // turn smoothly toward the walking direction
       let turn = Math.atan2(dirX, dirZ) - p.heading;
@@ -274,8 +297,12 @@ export function createPedestrians(ctx) {
     phaseAttr.needsUpdate = true;
   }
 
+  // the walls, poles, trees, benches and parked cars of the city (cityBuilder gives the grid once it is made)
+  let grid = null;
+
   return {
     people, mesh, loops, update,
+    setColliders(g) { grid = g; },
     get wanted() { return wanted; },
     takeKnocked() { const k = knocked; knocked = 0; return k; },
     // story: at most n people (Infinity = as many as the quality level allows)

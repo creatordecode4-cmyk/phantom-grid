@@ -324,6 +324,7 @@ export function createStory(G) {
     things.delete(id);
     if (held === id) { player.hold(null); held = false; player.setPose('idle'); }
     if (o.holder.parent) o.holder.parent.remove(o.holder);
+    for (const c of o.solid || []) city.colliders.removeCircle(c);   // (its posts no longer stop cars)
     // (pictures are shared between props and stay; shapes and materials are freed)
     // (a mesh can have a list of materials: one for each side of a box)
     o.inner.traverse((m) => { if (m.isMesh) { m.geometry.dispose(); for (const q of Array.isArray(m.material) ? m.material : [m.material]) if (q && q.dispose) q.dispose(); } });
@@ -590,6 +591,24 @@ export function createStory(G) {
       holder.position.set(p[0], p[1], p[2]);
       if (s.face !== undefined) holder.rotation.y = angle(s.face);
       scene.add(holder);
+      // A SOLID THING (a guardrail, a food stall, the posts of an arch): its maker says where it is solid, as
+      // circles in its own frame (userData.solid: { c: [x, z], r } or { line: [[x, z], ...], r }). They go into the
+      // city's collision grid, so cars, the player and the people stop at it instead of passing through.
+      const sol = inner.userData.solid;
+      if (sol && sol.length) {
+        holder.updateMatrixWorld(true);
+        const k = holder.scale.x, v = new THREE.Vector3();
+        o.solid = [];
+        const put = (x, z, r) => { v.set(x, 0, z).applyMatrix4(inner.matrixWorld); const c = { x: v.x, z: v.z, r: r * k, prop: true }; city.colliders.addCircle(c); o.solid.push(c); };
+        for (const e of sol) {
+          if (e.c) { put(e.c[0], e.c[1], e.r); continue; }
+          // a line: circles along it, close enough that nothing slips between them
+          for (let i = 0; i < e.line.length - 1; i++) {
+            const a = e.line[i], b = e.line[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(L / (e.r * 1.2)));
+            for (let q = i ? 1 : 0; q <= n; q++) put(a[0] + ((b[0] - a[0]) * q) / n, a[1] + ((b[1] - a[1]) * q) / n, e.r);
+          }
+        }
+      }
     }
     // (a delivery drone: it flies up and down a line of points)
     if (s.fly) o.fly = { path: makePath(s.fly.path), y: s.fly.y || 9, speed: s.fly.speed || 7, s: 0 };

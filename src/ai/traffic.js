@@ -69,7 +69,7 @@ export function createTraffic(ctx, beamTexture) {
   const kindList = [];
   for (let i = 0; i < MAX; i++) kindList.push(RARE[i] && has(RARE[i]) ? RARE[i] : has('small_city_car') && i % 2 === 1 ? 'small_city_car' : KINDS[i % KINDS.length]);
   for (let i = 0; i < MAX; i++) {
-    cars.push({ kind: kindList[i], slot: 0, alive: false, turn: null, plan: null, x: 0, z: 0, heading: 0, v: 0, v0: 7, road: null, c: 0, dir: 1, t: 0, still: 0, side: 0, wx: 0, wz: 0, stun: 0, blockT: 0, honkT: 0, braking: false, bumped: 0 });
+    cars.push({ kind: kindList[i], slot: 0, alive: false, turn: null, plan: null, x: 0, z: 0, heading: 0, v: 0, v0: 7, road: null, c: 0, dir: 1, t: 0, still: 0, side: 0, wx: 0, wz: 0, stun: 0, blockT: 0, honkT: 0, braking: false, bumped: 0, yieldT: 0, pushT: 0 });
   }
   for (const kind of ['sedan', 'suv', 'van', 'coupe', ...modelKinds]) {
     const mine = cars.filter((c) => c.kind === kind);
@@ -184,6 +184,19 @@ export function createTraffic(ctx, beamTexture) {
     return false;
   }
 
+  // At a crossing WITHOUT traffic lights (the side streets that meet Neon Mile, ...): a car that turns into the other
+  // road waits until nobody on that road is about to pass in front of it.
+  function crossIsBusy(car, P) {
+    const road2 = P.road2, mine = car.road.center;
+    for (let j = 0; j < carCount; j++) {
+      const b = cars[j];
+      if (b === car || !b.alive || b.turn || b.road !== road2) continue;
+      const gap = (mine - b.t) * b.dir;     // meters until that car passes my road
+      if (gap > -5 && gap < 8 + b.v * 3) return true;
+    }
+    return false;
+  }
+
   // circles around the cars close to the player (nobody can walk or drive through a car)
   const dynamicCircles = [];
   const events = [];      // things main.js turns into sound: { type: 'honk', x, z }
@@ -244,9 +257,37 @@ export function createTraffic(ctx, beamTexture) {
           const ax = p.x - car.x, az = p.z - car.z;
           if (Math.abs(ax) > 11 || Math.abs(az) > 11) continue;
           const ahead = ax * fx + az * fz, side = Math.abs(-ax * fz + az * fx);
-          if (ahead > 0 && ahead < 10 && side < 1.7) slowTo(ahead - 4.2, 0);
+          // (a car in a turn looks wider: its path bends toward the people on the crosswalk)
+          if (ahead > 0 && ahead < 10 && side < (car.turn ? 3.6 : 1.7)) slowTo(ahead - (car.turn ? 3.0 : 4.2), 0);
         }
       }
+
+      // ---- another car right in my way: cross traffic in a crossing, a car that just turned in front of me, the
+      // end of a queue on the road I turn into. Stop behind it (the cars drive on rails: without this they would
+      // drive through each other). Two cars in each other's way: the one with the lower number drives first.
+      // (After 6 s of waiting for another car it drives on anyway for a moment: no car waits forever.)
+      let yielding = false;
+      car.pushT = Math.max(0, car.pushT - dt);
+      if (car.pushT <= 0) {
+        const range = car.turn ? 9 : 18, wide = car.turn ? 2.3 : 1.9;
+        for (let j = 0; j < carCount; j++) {
+          const b = cars[j];
+          if (b === car || !b.alive) continue;
+          const ax = b.x - car.x, az = b.z - car.z;
+          if (Math.abs(ax) > range || Math.abs(az) > range) continue;
+          const ahead = ax * fx + az * fz;
+          if (ahead <= 0.5 || ahead > range || Math.abs(-ax * fz + az * fx) > wide) continue;
+          // (the car in front on my own lane: the gap rule below takes care of it)
+          if (!car.turn && !b.turn && b.road === car.road && b.dir === car.dir) continue;
+          // is it waiting for me, too?
+          const bfx = Math.sin(b.heading), bfz = Math.cos(b.heading), bAhead = -ax * bfx - az * bfz;
+          if (j > i && bAhead > 0.5 && bAhead < (b.turn ? 9 : 18) && Math.abs(ax * bfz - az * bfx) < (b.turn ? 2.3 : 1.9)) continue;
+          slowTo(ahead - 5.6, 0);
+          yielding = true;
+        }
+      }
+      car.yieldT = yielding && car.v < 0.3 ? car.yieldT + dt : 0;
+      if (car.yieldT > 6) { car.yieldT = 0; car.pushT = 2.5; }
 
       if (car.turn) {
         // ---- in a turn: a quarter circle from one lane into the other ----
@@ -280,6 +321,8 @@ export function createTraffic(ctx, beamTexture) {
             slowTo(dist, P.kind === 'left' ? 4.6 : 3.4);
             // left turn: wait at the turning place while somebody is coming (but not forever)
             if (P.kind === 'left' && dist < 2.5 && P.wait < 9 && leftIsBlocked(car, P)) { slowTo(dist - 0.3, 0); P.wait += dt; }
+            // no traffic lights here: wait for a gap in the traffic of the other road
+            else if (!P.K.signals && dist < 2.5 && P.wait < 9 && crossIsBusy(car, P)) { slowTo(dist - 0.3, 0); P.wait += dt; }
           }
         }
         // ---- the car in front ----

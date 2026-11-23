@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 7.0',
+  version: 'Phase 7.1',
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {
@@ -93,7 +93,7 @@ export const CONFIG = {
     low: {
       label: 'LOW',
       spectators: 0.5,      // races: half of the crowd
-      pixelRatio: { scale: 0, min: 0.75, max: 0.75 },
+      pixelRatio: { scale: 0, min: 0.75, max: 0.75, dynMax: 1.0 },   // dynMax: how sharp it may get when the phone keeps up
       post: false,          // no bloom, no color grade (render straight to screen)
       vignette: false,
       grain: false,
@@ -104,7 +104,7 @@ export const CONFIG = {
       farShadows: false,
       farShadowMapSize: 1024,
       normalMaps: false,
-      anisotropy: 2,
+      anisotropy: 4,
       envMapSize: 64,
       propDistance: 0.55,   // multiplier for how far props are drawn
       people: 20, traffic: 12, // walking people and driving cars around the player
@@ -118,18 +118,18 @@ export const CONFIG = {
     },
     medium: {
       label: 'MEDIUM',
-      pixelRatio: { scale: 0.5, min: 1.0, max: 1.3 },
+      pixelRatio: { scale: 0.5, min: 1.0, max: 1.3, dynMax: 1.7 },
       post: true,           // bloom + film-like color grade
       vignette: false,
       grain: false,
       msaa: 2,
       shadows: true,
       shadowMapSize: 1024,
-      shadowRange: 55,      // half size of the sharp shadow area around the player
+      shadowRange: 44,      // half size of the sharp shadow area around the player
       farShadows: true,     // low detail shadows for the far city
       farShadowMapSize: 1024,
       normalMaps: true,
-      anisotropy: 4,
+      anisotropy: 8,     // (sharp roads far away)
       envMapSize: 64,
       propDistance: 1.0,
       people: 60, traffic: 30,
@@ -141,7 +141,7 @@ export const CONFIG = {
     },
     high: {
       label: 'HIGH',
-      pixelRatio: { scale: 0.75, min: 1.25, max: 2.0 },
+      pixelRatio: { scale: 0.75, min: 1.25, max: 2.0, dynMax: 2.4 },
       post: true,
       vignette: true,       // subtle dark corners
       grain: true,          // subtle film grain

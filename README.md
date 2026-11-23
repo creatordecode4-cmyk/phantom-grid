@@ -1430,6 +1430,42 @@ It reads Chapter 3's `chip_holder` (Lena is in the garage only when she kept the
   barriers that close its ramp in the city, and no race goes down the street of the maglev line (its pillars
   stand in the middle of the road).
 
+## The look and the people in the street (version 8.1)
+
+- **People walk around things.** The people on the sidewalks used to walk straight through street trees, poles,
+  benches, parked cars and the corners of walls where a sidewalk is narrow. Now each one steps sideways around
+  them (only sideways, so the path bends in a smooth curve) - `src/ai/pedestrians.js`.
+- **Cars no longer drive through each other when they turn.** A traffic car stops behind any car in its way:
+  cross traffic in a crossing, a car that just turned in front of it, the end of a queue on the road it turns
+  into. Two cars in each other's way: the one with the lower number goes first (after 6 s of waiting it moves
+  on anyway, so nothing waits forever). At a crossing without lights a turning car waits for a gap, and a car in
+  a turn looks out for people on the crosswalk - `src/ai/traffic.js`. Measured by the test robot in six places,
+  three minutes: people in poles and walls 20 times before, 0 after; cars in cars 9 times before, 3 after (two
+  fast cars meeting in a crossing on a late yellow light); no car got stuck.
+- **Story things can be solid.** A maker in `src/story/propsRace.js` can say where its thing is solid
+  (`userData.solid`: circles or a line of circles); the story puts them into the city's collision grid and
+  takes them out again. The guardrail of the last turn, the food stalls, the posts of the signs and the arch and
+  the barriers of the jump ramp now stop cars and people (before, a car that ran wide went through the rail).
+- **Trees and plants.** A new leaf picture: twigs with sprays of small broad leaves, gaps where the light comes
+  through, calm natural greens (not the bright yellow-green of a cartoon). Tree crowns are made of ten smaller
+  cards per puff instead of six big ones, bushes of eleven; leaf edges are smoothed (alpha to coverage) so far
+  crowns stay full instead of thin and spotty; trunks are drawn as far as their crowns (no crowns floating in the
+  air far away). The plants that hang from planters and balconies are thin ivy now (their own picture), some
+  strands turned across the others, instead of flat palm leaves that looked like green ribbons.
+- **A clearer picture** (Medium and High, `src/world/postfx.js`, `src/city/materials.js`, `src/world/lighting.js`):
+  soft **ambient occlusion** where things meet - the ground darkens near the foot of a wall (a top-down picture of
+  the walls drawn once, `cityBuilder.js`), the lowest meters of upright walls darken a little; a new grade with
+  more contrast and richer (but natural) colors instead of a flat grey film; a little less sky fill by day so the
+  sun and the shadows shape things again; sharper roads far away (anisotropy 8 on Medium); crisper shadows near
+  the player (44 m range on Medium).
+- **Dynamic resolution** (`src/main.js`): a phone that keeps 60 frames per second for a few seconds gets a sharper
+  picture, step by step (up to 1.7x on Medium, 1.0x on Low, 2.4x on High); when it gets slow, the picture gets a
+  little softer before the frame rate drops (at most 20 % under the normal setting). Address option `dynres=0`
+  switches it off. The FPS button shows the resolution in use.
+- The name tags over the garage vehicles show only within 11 m (the start is not a screen full of labels).
+- The draw calls stay the same (the same views measured before and after: 312 and 312); the denser crowns add
+  about 7 % triangles.
+
 ## Known limits
 
 - Traffic cars drive on rails: when hit they stop and honk, but they are not pushed away. Parked

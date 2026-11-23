@@ -28,6 +28,7 @@ export const shared = {
   uPgDay: { value: 1 },                          // daylight level 0..1
   uPgNoise: { value: null },                     // shared noise texture
   uPgLightMap: { value: null },                  // lamp light seen from above
+  uPgAOMap: { value: null },                     // where the ground is close to a wall (seen from above, white = open)
   uPgLightRect: { value: new THREE.Vector4(-600, -600, 1 / 1200, 1 / 1200) },
   uPgLightColA: { value: new THREE.Color(CONFIG.streetLights.sodiumColor) },
   uPgLightColB: { value: new THREE.Color(CONFIG.streetLights.ledColor) },
@@ -299,6 +300,7 @@ uniform float uPgWinLight;
 uniform float uPgDay;
 uniform sampler2D uPgNoise;
 uniform sampler2D uPgLightMap;
+uniform sampler2D uPgAOMap;
 uniform vec4 uPgLightRect;
 uniform vec3 uPgLightColA;
 uniform vec3 uPgLightColB;
@@ -337,6 +339,11 @@ float pgHash( vec2 p ) {
 	return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 );
 }
 
+// How open the sky is above a spot of ground: 1 = open street, lower = close to the foot of a wall (a top-down
+// picture drawn by the city builder, on the same rectangle as the lamp light picture).
+float pgAOAt( vec2 xz ) {
+	return texture2D( uPgAOMap, ( xz - uPgLightRect.xy ) * uPgLightRect.zw ).r;
+}
 // Lamp light stored in a top-down picture: r = orange lamps, g = white lamps and shops.
 vec3 pgLampTexel( vec2 xz ) {
 	return texture2D( uPgLightMap, ( xz - uPgLightRect.xy ) * uPgLightRect.zw ).rgb;
@@ -1208,6 +1215,28 @@ const PG_FRAGMENT_NORMAL = /* glsl */ `
 `;
 
 // ---- E: light that the surface gives off -----------------------------------------------------
+// AMBIENT OCCLUSION (the soft darkness where things meet): less sky light reaches the ground at the foot of a
+// wall, and the lowest meters of a wall (the street "closes in" there). Cheap: one lookup in a top-down picture
+// for the ground, the height above the street for the walls. It darkens the sky light most, the sun a little.
+const PG_FRAGMENT_AO = /* glsl */ `
+#if defined( PG_GROUND ) || defined( PG_DECAL )
+	{
+		float pgO = pgAOAt( vPgWorld.xz );
+		reflectedLight.indirectDiffuse *= mix( 0.4, 1.0, pgO );
+		reflectedLight.indirectSpecular *= mix( 0.55, 1.0, pgO );
+		reflectedLight.directDiffuse *= mix( 0.82, 1.0, pgO );
+	}
+#endif
+#if defined( PG_WALL ) || defined( PG_SHOP ) || defined( PG_TOWER ) || defined( PG_WINMOD ) || defined( PG_PANEL )
+	{
+		// (only upright surfaces: a floor or a plinth top made of wall material stays as it is)
+		float pgB = smoothstep( 0.05, 3.4, vPgWorld.y ), pgUp = 1.0 - abs( normalize( vPgNormal ).y );
+		reflectedLight.indirectDiffuse *= mix( 1.0, mix( 0.5, 1.0, pgB ), pgUp );
+		reflectedLight.directDiffuse *= mix( 1.0, mix( 0.88, 1.0, pgB ), pgUp );
+	}
+#endif
+`;
+
 const PG_FRAGMENT_EMISSIVE = /* glsl */ `
 	totalEmissiveRadiance += pgEmit * step( 0.001, uPgWinLight + uPgNight ) + pgEmitA;
 #ifdef PG_CANAL
@@ -1319,6 +1348,7 @@ function patch(material, defs) {
     }
     fs = fs.replace('#include <normal_fragment_maps>', normalChunk + '\n' + PG_FRAGMENT_NORMAL);
     fs = fs.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n' + PG_FRAGMENT_EMISSIVE);
+    fs = fs.replace('#include <aomap_fragment>', '#include <aomap_fragment>\n' + PG_FRAGMENT_AO);
     // cars: only the painted parts get the clear coat (not the tires)
     if (defs.includes('PG_CAR')) fs = fs.replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n#ifdef USE_CLEARCOAT\n\tmaterial.clearcoat *= vPgData.z;\n#endif');
     shader.fragmentShader = head + fs;
@@ -1406,6 +1436,7 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   tex.holo = TX.makeHoloTexture();
   tex.leaf = TX.makeLeafTexture();
   tex.frond = TX.makeFrondTexture();
+  tex.ivy = TX.makeIvyTexture();
   tex.bark = TX.makeBarkTexture();
   tex.palmBark = TX.makePalmBarkTexture();
   tex.glow = TX.makeGlowTexture();
@@ -1428,6 +1459,9 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   const blank = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
   blank.needsUpdate = true;
   shared.uPgLightMap.value = blank;
+  const white = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+  white.needsUpdate = true;
+  shared.uPgAOMap.value = white;
 
   // ---- 5. materials ----
   const std = (opts) => new THREE.MeshStandardMaterial({ metalness: 0, roughness: 1, vertexColors: true, ...opts });
@@ -1525,10 +1559,12 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   // Tree trunks: the same prop shader + a bark picture.
   mats.bark = patch(std({ map: tex.bark }), ['PG_PROP']);
   mats.palmBark = patch(std({ map: tex.palmBark }), ['PG_PROP']);
-  // alphaTest cuts the leaf shapes out of the flat cards
-  const leafOpts = { alphaTest: 0.38, side: THREE.DoubleSide, roughness: 0.8, color: 0xd2d2d2 };
+  // alphaTest cuts the leaf shapes out of the flat cards; alpha-to-coverage smooths their edges (with the
+  // anti-aliasing of Medium / High and of the screen) and keeps far crowns full instead of thin and spotty
+  const leafOpts = { alphaTest: 0.34, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.8, color: 0xe4e4e4 };
   mats.leaf = patch(std({ map: tex.leaf, ...leafOpts }), ['PG_FOLIAGE']);
   mats.frond = patch(std({ map: tex.frond, ...leafOpts }), ['PG_FOLIAGE']);
+  mats.ivy = patch(std({ map: tex.ivy, ...leafOpts }), ['PG_FOLIAGE']);   // hanging plants under planters
   // Ocean.
   mats.ocean = patch(
     new THREE.MeshPhysicalMaterial({ color: 0x06222e, roughness: 0.1, metalness: 0, ior: 1.34, reflectivity: 0.5 }),

@@ -896,47 +896,92 @@ export function makeHoloTexture() {
 // ===========================================================================
 // 7. PLANTS
 // ===========================================================================
-// One pointed leaf at (x, y), turned by "rot". len / wid in pixels.
-function drawLeaf(ctx, x, y, rot, len, wid, fill, rib) {
+
+// One broad leaf (like a lime or plane tree leaf): pointed oval, lit on one half and in shade on the other (it
+// looks folded along its vein), with a pale middle vein. hue/sat/lum: the color of this leaf.
+function drawBroadLeaf(ctx, x, y, rot, len, wid, hue, sat, lum) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(rot);
-  ctx.fillStyle = fill;
+  const g = ctx.createLinearGradient(0, -wid, 0, wid);
+  g.addColorStop(0, `hsl(${hue},${sat}%,${lum + 7}%)`);
+  g.addColorStop(0.48, `hsl(${hue},${sat}%,${lum + 2}%)`);
+  g.addColorStop(0.52, `hsl(${hue + 3},${sat}%,${lum - 3}%)`);
+  g.addColorStop(1, `hsl(${hue + 5},${sat - 4}%,${lum - 6}%)`);
+  ctx.fillStyle = g;
   ctx.beginPath();
   ctx.moveTo(-len, 0);
-  ctx.quadraticCurveTo(-len * 0.2, -wid * 1.25, len, 0);
-  ctx.quadraticCurveTo(-len * 0.2, wid * 1.25, -len, 0);
+  ctx.bezierCurveTo(-len * 0.45, -wid * 1.15, len * 0.4, -wid * 1.05, len, 0);
+  ctx.bezierCurveTo(len * 0.4, wid * 1.05, -len * 0.45, wid * 1.15, -len, 0);
   ctx.fill();
-  if (rib) {
-    // light middle rib: makes single leaves readable
-    ctx.strokeStyle = rib;
-    ctx.lineWidth = Math.max(0.6, wid * 0.14);
-    ctx.beginPath(); ctx.moveTo(-len * 0.9, 0); ctx.lineTo(len * 0.85, 0); ctx.stroke();
-  }
+  ctx.strokeStyle = `hsla(${hue - 6},${sat}%,${lum + 16}%,0.45)`;
+  ctx.lineWidth = Math.max(0.6, wid * 0.1);
+  ctx.beginPath(); ctx.moveTo(-len * 0.88, 0); ctx.lineTo(len * 0.8, 0); ctx.stroke();
   ctx.restore();
 }
 
 // A full clump of leaves (used on flat cards to build tree crowns and bushes).
-// Natural greens: dark leaves at the back, sunlit yellow-green leaves in front.
-// The see-through parts are cut away by the material ("alpha test").
+// It is made like a real branch end: twigs grow out from the middle and every twig carries a spray of small
+// broad leaves; between the twigs there are gaps where the light comes through, and the outline is ragged
+// (single leaves stick out). Leaves at the back are dark and cool, leaves in front lighter and warmer. Calm,
+// natural greens - not the bright yellow-green of a cartoon.
+// The see-through parts are cut away by the material (alpha test, smoothed with alpha-to-coverage).
 export function makeLeafTexture() {
   const S = 512;
   const [cv, ctx] = makeCanvas(S, S);
   const rng = new RNG(71);
-  const N = 900;
-  for (let i = 0; i < N; i++) {
-    const depth = i / N; // later leaves are in front = lighter
-    // leaves are thicker in the middle of the clump, with a ragged outline
-    const a = rng.range(0, 6.283);
-    const d = Math.pow(rng.next(), 0.62) * (226 + 22 * Math.sin(a * 5 + 1.3));
-    const x = S / 2 + Math.cos(a) * d, y = S / 2 + Math.sin(a) * d * 0.94;
-    const hue = rng.int(72, 112) - depth * 10;
-    const sat = rng.int(42, 62);
-    const lum = 21 + depth * 27 + rng.range(-5, 6);
-    const fill = rng.chance(0.03) ? `hsl(${rng.int(48, 62)},55%,${lum + 8}%)` : `hsl(${hue},${sat}%,${lum}%)`;
-    drawLeaf(ctx, x, y, rng.range(0, 6.283), rng.range(15, 25), rng.range(6, 10), fill, depth > 0.55 ? `hsla(${hue - 8},60%,${lum + 16}%,0.55)` : null);
+  const leaves = [];
+  const twigs = 12;
+  for (let k = 0; k < twigs; k++) {
+    const a0 = (k / twigs) * Math.PI * 2 + rng.range(-0.22, 0.22);
+    const reach = rng.range(150, 228), bend = rng.range(-0.45, 0.45), n = rng.int(80, 120);
+    for (let i = 0; i < n; i++) {
+      const t = Math.pow(rng.next(), 0.75);                         // where along the twig
+      const a = a0 + bend * t + rng.range(-0.32, 0.32) * (0.35 + t);  // the spray opens toward the tip
+      const d = 26 + t * reach + rng.range(-10, 10);
+      leaves.push({ x: S / 2 + Math.cos(a) * d, y: S / 2 + Math.sin(a) * d * 0.95, rot: a + rng.range(-1.3, 1.3), len: rng.range(8.5, 14) * (1.12 - 0.3 * t), depth: rng.next() });
+    }
   }
-  return canvasToAlphaTexture(cv, [70, 96, 38]);
+  // the heart of the clump: dark leaves deep inside (a crown is never see-through in the middle)
+  for (let i = 0; i < 300; i++) {
+    const a = rng.range(0, 6.283), d = Math.pow(rng.next(), 0.7) * 120;
+    leaves.push({ x: S / 2 + Math.cos(a) * d, y: S / 2 + Math.sin(a) * d, rot: rng.range(0, 6.283), len: rng.range(9, 14), depth: rng.range(0, 0.3) });
+  }
+  leaves.sort((p, q) => p.depth - q.depth);       // the back first
+  for (const L of leaves) {
+    const hue = 86 + L.depth * 16 + rng.range(-7, 7);
+    const sat = 26 + L.depth * 16 + rng.range(-5, 5);
+    const lum = 13 + L.depth * 25 + rng.range(-3, 4);
+    drawBroadLeaf(ctx, L.x, L.y, L.rot, L.len, L.len * 0.6, hue, sat, lum);
+  }
+  return canvasToAlphaTexture(cv, [44, 60, 30]);
+}
+
+// HANGING PLANTS (ivy) for planters and balconies: three thin stems hang down, with small heart-shaped leaves
+// along them - many at the top, fewer and smaller toward the ends. The stems start at the BOTTOM of the
+// picture (v = 0, where the plant hangs from the edge) and grow toward the top (v = 1, the free ends).
+export function makeIvyTexture() {
+  const W = 128, H = 512;
+  const [cv, ctx] = makeCanvas(W, H);
+  const rng = new RNG(73);
+  for (let s = 0; s < 3; s++) {
+    const x0 = W / 2 + (s - 1) * 26 + rng.range(-8, 8), phase = rng.range(0, 6.28), amp = rng.range(4, 9), len = rng.range(0.62, 0.97) * H;
+    const sx = (y) => x0 + Math.sin(y * 0.028 + phase) * amp * (0.4 + 0.6 * y / H);
+    ctx.strokeStyle = 'hsl(64,26%,20%)'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(sx(0), H);
+    for (let y = 0; y <= len; y += 6) ctx.lineTo(sx(y), H - y);
+    ctx.stroke();
+    for (let y = 2; y < len; y += rng.range(7, 12)) {
+      const t = y / len;
+      for (const side of [-1, 1]) {
+        if (rng.chance(0.18 + 0.4 * t)) continue;        // fewer leaves toward the end
+        const size = (1 - 0.5 * t) * rng.range(8.5, 13), depth = rng.next();
+        const rot = side > 0 ? rng.range(-0.5, 0.9) : Math.PI - rng.range(-0.5, 0.9);
+        drawBroadLeaf(ctx, sx(y) + side * size * 0.85, H - y - size * 0.25, rot, size, size * 0.8, 92 + depth * 14, 26 + depth * 14, 14 + depth * 24);
+      }
+    }
+  }
+  return canvasToAlphaTexture(cv, [44, 60, 30]);
 }
 
 // A palm frond seen from above: a strong middle stem with many long, wide

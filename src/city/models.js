@@ -450,13 +450,14 @@ export function makeTree(seed = 1, shape = 0) {
   const lowY = tall ? 4.0 : 3.7, highY = tall ? 9.2 : 7.9;
   const corners = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
   for (const [px, py, pz, pr] of puffs) {
-    const cards = 6;
+    // (ten smaller cards per puff instead of six big ones: the crown looks finer, not like a pile of green boards)
+    const cards = 10;
     for (let i = 0; i < cards; i++) {
-      const a = (i / cards) * Math.PI * 2 + rng.range(-0.5, 0.5);
-      const e = rng.range(-0.5, 1.1);
-      const rad = pr * rng.range(0.35, 0.72);
+      const a = (i / cards) * Math.PI * 2 + rng.range(-0.4, 0.4);
+      const e = rng.range(-0.55, 1.15);
+      const rad = pr * rng.range(0.4, 0.8);
       const cx = px + Math.cos(a) * Math.cos(e) * rad, cy = py + Math.sin(e) * rad * 0.8, cz = pz + Math.sin(a) * Math.cos(e) * rad;
-      const size = pr * rng.range(1.5, 1.95);
+      const size = pr * rng.range(1.1, 1.45);
       // each card looks roughly outward, with a random tilt
       const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.range(-1.0, 1.0), -a + HALF_PI + rng.range(-0.8, 0.8), rng.range(0, 6.28), 'YXZ'));
       const idx = [];
@@ -794,11 +795,12 @@ export function makePlanter() {
 export function makeShrub(seed = 5) {
   const rng = new RNG(seed);
   const mb = new MeshBuilder();
-  for (let i = 0; i < 7; i++) {
-    const a = (i / 7) * Math.PI * 2 + rng.range(-0.3, 0.3);
-    const rad = i < 5 ? rng.range(0.16, 0.3) : 0.05;
-    const cx = Math.cos(a) * rad * 1.5, cz = Math.sin(a) * rad, cy = 0.42 + rng.range(-0.08, 0.14);
-    const size = rng.range(0.75, 1.0);
+  // (eleven smaller cards: a soft bush instead of a few big green boards)
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2 * 2 + rng.range(-0.3, 0.3);
+    const rad = i < 8 ? rng.range(0.2, 0.36) : rng.range(0.02, 0.1);
+    const cx = Math.cos(a) * rad * 1.5, cz = Math.sin(a) * rad, cy = 0.4 + rng.range(-0.1, 0.18) + (i >= 8 ? 0.1 : 0);
+    const size = rng.range(0.52, 0.74);
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rng.range(-0.5, 0.5), -a + HALF_PI + rng.range(-0.6, 0.6), rng.range(0, 6.28), 'YXZ'));
     const idx = [];
     for (const [u, v] of [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]]) {
@@ -1130,20 +1132,26 @@ export function makeEvBay() {
 // Hanging plant: a few long leaves that hang down from one point (y = 0 is
 // the top). Uses the palm frond picture.
 export function makeVine(seed = 9) {
+  // HANGING PLANTS under the edge of a planter or a balcony: thin curtains of ivy (the picture from
+  // makeIvyTexture). Most hang along the wall, every third one stands across the others, so from the side they
+  // never look like flat green ribbons. v = 0 at the top (where they hang from), the picture covers 2 m.
   const rng = new RNG(seed);
   const mb = new MeshBuilder();
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI + rng.range(-0.3, 0.3);
-    const len = rng.range(1.3, 2.1), w = rng.range(0.5, 0.75), lean = rng.range(0.05, 0.3);
+  for (let i = 0; i < 7; i++) {
+    const across = i % 3 === 2;
+    const a = across ? HALF_PI + rng.range(-0.3, 0.3) : rng.range(-0.25, 0.25);   // 0 = along the wall (x)
+    const len = rng.range(0.9, 2.0), w = rng.range(0.32, 0.46), lean = rng.range(0.04, 0.22);
     const dx = Math.cos(a), dz = Math.sin(a);
-    const ox = rng.range(-0.25, 0.25), tx = ox + rng.range(-0.15, 0.15);
-    const n = [-dz * 0.4, 0.5, dx * 0.4 + 0.75];
-    mb.color(1, 1, 0.92, 1);
-    mb.data(0, 0, 0, 0);
-    const i0 = mb.vertex(ox - dx * w / 2, 0, -dz * w / 2, n[0], n[1], n[2], 0, 0), i1 = mb.vertex(ox + dx * w / 2, 0, dz * w / 2, n[0], n[1], n[2], 1, 0);
-    mb.color(0.8, 0.86, 0.72, 1);
-    mb.data(0.7, 0, 0, 0);
-    const i2 = mb.vertex(tx + dx * w / 2, -len, dz * w / 2 + lean, n[0], n[1], n[2], 1, 1), i3 = mb.vertex(tx - dx * w / 2, -len, -dz * w / 2 + lean, n[0], n[1], n[2], 0, 1);
+    const ox = rng.range(-0.55, 0.55), oz = across ? rng.range(0, 0.15) : rng.range(-0.05, 0.1), tx = ox + rng.range(-0.1, 0.1);
+    const n = [0, 0.45, 0.89];                     // out from the wall and a little up: soft light, like a crown
+    mb.color(0.8, 0.84, 0.76, 1);                  // the top hangs in the shade of the planter
+    mb.data(0.05, 0, 0, 0);
+    const i0 = mb.vertex(ox - dx * w / 2, 0, oz - dz * w / 2, n[0], n[1], n[2], 0, 0);
+    const i1 = mb.vertex(ox + dx * w / 2, 0, oz + dz * w / 2, n[0], n[1], n[2], 1, 0);
+    mb.color(1, 1, 0.94, 1);
+    mb.data(0.75, 0, 0, 0);                        // the ends sway in the wind
+    const i2 = mb.vertex(tx + dx * w / 2, -len, oz + dz * w / 2 + lean, n[0], n[1], n[2], 1, len / 2);
+    const i3 = mb.vertex(tx - dx * w / 2, -len, oz - dz * w / 2 + lean, n[0], n[1], n[2], 0, len / 2);
     mb.quadIdx(i0, i1, i2, i3);
   }
   return mb.build(true);

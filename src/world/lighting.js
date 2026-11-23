@@ -496,7 +496,8 @@ export function createLighting(scene, renderer, city, materials) {
       0.36 * day * (0.45 + 0.55 * sunCol[1] * sunLevel) + 0.009 * night,
       0.3 * day * (0.45 + 0.55 * sunCol[2] * sunLevel) + 0.007 * night
     );
-    hemi.intensity = 1.5;
+    // (by day the sky light is a little weaker than it was: the sun and the shadows give the shapes again)
+    hemi.intensity = lerp(1.5, 1.25, day);
 
     // ---- clouds / night layer ----
     const ou = overlayMat.uniforms;

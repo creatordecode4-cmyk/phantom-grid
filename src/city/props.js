@@ -351,9 +351,10 @@ export function buildProps(ctx) {
   S('led2', mLed2.geometry, mats.prop, { maxDistance: 300 });
   S('traffic', mTraffic.geometry, mats.prop, { maxDistance: 200 });
   S('pole', M.makeSmartMast(), mats.prop, { maxDistance: 260 });
-  S('treeTrunk', mTree.trunk, mats.bark, { maxDistance: 200 });
+  // (trunks as far as the crowns: far away a crown must not float in the air)
+  S('treeTrunk', mTree.trunk, mats.bark, { maxDistance: 290 });
   S('treeCrown', mTree.crown, mats.leaf, { maxDistance: 290, useColor: true });
-  S('treeTrunk2', mTree2.trunk, mats.bark, { maxDistance: 200 });
+  S('treeTrunk2', mTree2.trunk, mats.bark, { maxDistance: 290 });
   S('treeCrown2', mTree2.crown, mats.leaf, { maxDistance: 290, useColor: true });
   S('palmTrunk', mPalm.trunk, mats.palmBark, { maxDistance: 300 });
   S('palmCrown', mPalm.crown, mats.frond, { maxDistance: 340, useColor: true });
@@ -410,7 +411,8 @@ export function buildProps(ctx) {
 
   // ---- trees: every tree gets its own green, size and a slight lean ----
   // leaf tints from yellow-green over fresh green to deep green (multiplied with the leaf picture)
-  const LEAF_TINTS = [[1.2, 1.12, 0.62], [1.08, 1.1, 0.7], [0.98, 1.05, 0.72], [0.9, 1.0, 0.7], [0.8, 0.95, 0.68], [0.68, 0.86, 0.62], [0.6, 0.78, 0.6]];
+  // (calm, natural greens: the brightest yellow-green looked like plastic)
+  const LEAF_TINTS = [[1.12, 1.08, 0.72], [1.04, 1.06, 0.76], [0.98, 1.04, 0.78], [0.92, 1.0, 0.76], [0.84, 0.95, 0.72], [0.76, 0.88, 0.68], [0.68, 0.8, 0.64]];
   const leafTint = () => {
     const c = rng.pick(LEAF_TINTS), k = rng.range(0.92, 1.08);
     return [c[0] * k, c[1] * k, c[2] * k];

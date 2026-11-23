@@ -173,16 +173,18 @@ export function createPostFX(renderer) {
         col = toneMapping( col );
       #endif
       col = clamp( col, 0.0, 1.0 );
-      // ---- film-like grade ----
+      // ---- the grade: a clear, modern look ----
       float l = dot( col, vec3( 0.2126, 0.7152, 0.0722 ) );
-      // a little more contrast in the mid tones
-      col = mix( col, col * col * ( 3.0 - 2.0 * col ), 0.1 );
-      // cool shadows, warm highlights
-      col += vec3( - 0.004, 0.001, 0.007 ) * ( 1.0 - l ) * ( 1.0 - l ) + vec3( 0.012, 0.004, - 0.010 ) * l * l;
-      // slightly muted colors
-      col = mix( vec3( dot( col, vec3( 0.2126, 0.7152, 0.0722 ) ) ), col, 0.93 );
-      // film never reaches pure black
-      col = col * 0.985 + 0.006;
+      // contrast: an S-curve in the mid tones (deeper shadows, brighter lights - not a flat grey picture)
+      col = mix( col, col * col * ( 3.0 - 2.0 * col ), 0.24 );
+      // cool shadows, warm light
+      col += vec3( - 0.008, 0.0, 0.012 ) * ( 1.0 - l ) * ( 1.0 - l ) + vec3( 0.016, 0.006, - 0.012 ) * l * l;
+      // richer colors: dull colors get more than strong ones (vibrance), so skin and grey stay natural
+      float l2 = dot( col, vec3( 0.2126, 0.7152, 0.0722 ) );
+      float chroma = max( col.r, max( col.g, col.b ) ) - min( col.r, min( col.g, col.b ) );
+      col = mix( vec3( l2 ), col, 1.0 + 0.2 * ( 1.0 - chroma ) );
+      // the darkest parts stay a little lifted (no crushed black on a phone screen)
+      col = col * 0.993 + 0.003;
       gl_FragColor = linearToOutputTexel( vec4( clamp( col, 0.0, 1.0 ), 1.0 ) );
       // film grain, a bit stronger in the shadows
       float n = hash( vUv * uRes + fract( uTime ) * 61.7 ) - 0.5;
