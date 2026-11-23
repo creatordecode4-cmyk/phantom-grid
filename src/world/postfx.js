@@ -2,6 +2,11 @@
 // postfx.js - the "camera lens" effects for Medium and High quality:
 //   * light bloom (bright things glow softly)
 //   * a film-like color grade
+//   * sharpening: on a phone the picture is drawn smaller than the screen and
+//     then stretched, which makes it soft. A contrast adaptive sharpening
+//     brings the crisp edges back (faces, hair, lines of the city) - strong
+//     where the picture is soft, weak where it already has contrast, so there
+//     are no bright or dark halos
 //   * High only: dark corners (vignette) and film grain
 //
 // How: the 3D scene is first drawn into a hidden picture that can store very
@@ -126,6 +131,7 @@ export function createPostFX(renderer) {
     uSunPos: { value: new THREE.Vector2(0.5, 0.5) },   // where the sun is on the screen (0..1)
     uSunGlow: { value: new THREE.Vector3(0, 0, 0) },   // color x strength of the sun glow (0 = off)
     uSpeed: { value: 0 },                              // 0..1: speed blur at the edges of the picture
+    uSharp: { value: 0 },                              // 0 = no sharpening .. 1 = the most
   };
   const final = pass(/* glsl */ `
     uniform sampler2D tScene;
@@ -138,10 +144,23 @@ export function createPostFX(renderer) {
     uniform vec2 uSunPos;
     uniform vec3 uSunGlow;
     uniform float uSpeed;
+    uniform float uSharp;
     varying vec2 vUv;
     float hash( vec2 p ) { return fract( sin( dot( p, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 ); }
     void main() {
       vec3 col = texture2D( tScene, vUv ).rgb;
+      // ---- sharpening, contrast adaptive (the four neighbors; judged on a compressed copy, so very bright lights
+      //      do not count more than they look) ----
+      if ( uSharp > 0.0 ) {
+        vec2 px = 1.0 / uRes;
+        vec3 n = texture2D( tScene, vUv + vec2( 0.0, px.y ) ).rgb, s = texture2D( tScene, vUv - vec2( 0.0, px.y ) ).rgb;
+        vec3 e = texture2D( tScene, vUv + vec2( px.x, 0.0 ) ).rgb, w = texture2D( tScene, vUv - vec2( px.x, 0.0 ) ).rgb;
+        vec3 cc = col / ( 1.0 + col ), nn = n / ( 1.0 + n ), ss = s / ( 1.0 + s ), ee = e / ( 1.0 + e ), ww = w / ( 1.0 + w );
+        vec3 mn = min( cc, min( min( nn, ss ), min( ee, ww ) ) ), mx = max( cc, max( max( nn, ss ), max( ee, ww ) ) );
+        vec3 amp = sqrt( clamp( min( mn, 1.0 - mx ) / max( mx, vec3( 1e-4 ) ), 0.0, 1.0 ) );
+        vec3 wgt = - amp * mix( 0.125, 0.2, uSharp );
+        col = max( ( col + ( n + s + e + w ) * wgt ) / ( 1.0 + 4.0 * wgt ), 0.0 );
+      }
       // ---- speed blur: at very high speed the edges of the picture streak toward the middle ----
       if ( uSpeed > 0.004 ) {
         vec2 sd = vUv - 0.5;
@@ -251,6 +270,7 @@ export function createPostFX(renderer) {
   }
 
   function setQuality(q) {
+    finalUniforms.uSharp.value = q.sharpen || 0;
     finalUniforms.uVignette.value = q.vignette ? 0.34 : 0;
     finalUniforms.uGrain.value = q.grain ? 0.03 : 0;
   }

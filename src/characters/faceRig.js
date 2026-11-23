@@ -27,6 +27,25 @@ import { bareAt, lipAt } from './faceClean.js';
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const smooth = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 
+// A smooth curve y = a + b u + c u^2 through f(u) for u from -half to +half (the middle counts more), or null.
+function fitCurve(f, half) {
+  if (!(half > 0)) return null;
+  let s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, t0 = 0, t1 = 0, t2 = 0;
+  for (let i = -12; i <= 12; i++) {
+    const u = (i / 12) * half * 0.92, wt = 1 - 0.6 * (u / half) * (u / half), y = f(u);
+    s0 += wt; s1 += wt * u; s2 += wt * u * u; s3 += wt * u * u * u; s4 += wt * u * u * u * u;
+    t0 += wt * y; t1 += wt * y * u; t2 += wt * y * u * u;
+  }
+  // (three equations, three unknowns: Cramer's rule)
+  const det3 = (a, b, c, d, e, g, h, i2, j) => a * (e * j - g * i2) - b * (d * j - g * h) + c * (d * i2 - e * h);
+  const D = det3(s0, s1, s2, s1, s2, s3, s2, s3, s4);
+  if (!(Math.abs(D) > 1e-30)) return null;
+  const a = det3(t0, s1, s2, t1, s2, s3, t2, s3, s4) / D;
+  const b = det3(s0, t0, s2, s1, t1, s3, s2, t2, s4) / D;
+  const c = det3(s0, s1, t0, s1, s2, t1, s2, s3, t2) / D;
+  return (u) => a + b * u + c * u * u;
+}
+
 // how far the upper eyelid travels to close an eye, and where the two lid lines are (meters at 1.8 m, from the eye line)
 export const LID_TRAVEL = 0.009, LID_LOW = -0.0045, LID_HIGH = 0.0045;
 
@@ -53,6 +72,16 @@ export function addFaceBones(A, face) {
     A.bones.push({ name, parent: 'head', head, tail: [head[0], head[1] + 0.03 * k, head[2]], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], length: 0.03 * k, helper: 'face' });
   }
 
+  // ---- the line where the lips meet ----
+  // What readFace found, drawn toward a smooth curve through it (a parabola, tilted if the mouth is), so the lips part
+  // along a clean line and not along a zig-zag; never more than 2 mm away from what was found.
+  const lipFit = fitCurve((uu) => lipAt(face, noseX + uu), mouthHalf);
+  const lipLineAt = (xf) => {
+    const d = lipAt(face, xf), uu = xf - noseX;
+    if (!lipFit || Math.abs(uu) > mouthHalf + 0.004) return d;
+    return d + Math.max(-0.003, Math.min(0.003, lipFit(uu) - d)) * 0.65;
+  };
+
   // ---- which points follow which bone ----
   const pos = A.positions, si = A.skinIndex, sw = A.skinWeight, count = pos.length / 3;
   // for the picture of an open mouth (characterLook.js): per point [which side of the lips (0 above, 1 below), how much it is the mouth]
@@ -76,10 +105,15 @@ export function addFaceBones(A, face) {
     //  the tip of the nose, so "front" is measured from the bare face at that place, not from the nose)
     const front = bareAt(face, pos[v * 3] / k, y) - z;
     const t = smooth(0.03, 0.095, back), inMouth = (1 - smooth(mouthHalf - 0.004, mouthHalf + 0.003, u)) * (1 - smooth(0.006, 0.016, front));
-    const lineY = lipAt(face, pos[v * 3] / k), edge = mouthY + (hingeY - mouthY) * t + (lineY - mouthY) * inMouth;
+    const lineY = lipLineAt(pos[v * 3] / k), edge = mouthY + (hingeY - mouthY) * t + (lineY - mouthY) * inMouth;
     const softUp = (0.002 + 0.006 * t) * (1 - inMouth) + 0.0008 * inMouth, softDown = (0.006 + 0.018 * t) * (1 - inMouth) + 0.0008 * inMouth;
-    w[0] = smooth(edge + softUp, edge - softDown, y) * (1 - smooth(0.1, 0.13, back));
-    if (inMouth > 0.01) { lip[v * 2] = smooth(lineY + 0.0008, lineY - 0.0008, y); lip[v * 2 + 1] = inMouth * (1 - smooth(0.006, 0.011, Math.abs(y - lineY))); }
+    // The lips part like a real mouth: most in the middle, less and less toward the corners, not at all at a corner -
+    // an almond, not a slot (a slot tore the skin at the corners open). Under the lower lip the skin follows the jaw
+    // more and more further down, so the chin still goes with it.
+    const open = 1 - smooth(0.3, 1.0, u / mouthHalf);
+    const lipK = open + (1 - open) * smooth(0, 0.013, lineY - y);
+    w[0] = smooth(edge + softUp, edge - softDown, y) * (1 - smooth(0.1, 0.13, back)) * (1 - inMouth * (1 - lipK));
+    if (inMouth > 0.01) { lip[v * 2] = smooth(lineY + 0.0008, lineY - 0.0008, y); lip[v * 2 + 1] = inMouth * open * (1 - smooth(0.006, 0.011, Math.abs(y - lineY))); }
     // an eyelid: nothing at the lower lid, everything at the upper lid, fading out toward the eyebrow
     const dv = y - eyeY, du = u - eyeX;
     const lid = dv <= LID_LOW ? 0 : dv < LID_HIGH ? (dv - LID_LOW) / (LID_HIGH - LID_LOW) : clamp01(1 - (dv - LID_HIGH) / 0.011);
@@ -115,7 +149,7 @@ export function addFaceBones(A, face) {
     // the model was made smiling: millimeters the corners of the mouth are higher than its middle
     restSmile: face.restSmile,
     // for the picture of an open mouth: the middle of the lower lip (model space), and the two bones
-    lipPoint: at(noseX, lipAt(face, noseX) - 0.004, -0.004), jawBone: index.jaw, headBone: headBone,
+    lipPoint: at(noseX, lipLineAt(noseX) - 0.004, -0.004), jawBone: index.jaw, headBone: headBone,
     at: { noseX, eyeX, eyeY, mouthY, mouthHalf, browY, tipY: face.tipY },
   };
   A.lip = lip;

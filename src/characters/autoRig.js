@@ -39,6 +39,7 @@ import { readFace, cleanFace } from './faceClean.js';
 import { addFaceBones } from './faceRig.js';
 import { SCULPT, sculptFace } from './faceSculpt.js';
 import { applyCharacterLook } from './characterLook.js';
+import { prepareCharacter } from './characterDetail.js';
 
 // ----------------------------------------------------------- small vector helpers
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -1065,10 +1066,16 @@ export async function autoRig(THREE, model, opts = {}) {
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, A.height / 2, 0), A.height * 0.95);
 
   const rig = assemble(THREE, A, geo, material);
-  // the light on a character: a soft fill light from the camera, a matt head (characterLook.js). opts.look: false = off
-  if (opts.look !== false) applyCharacterLook(material, A.info.chinY, A.face && A.lip ? { jaw: A.face.jawBone, head: A.face.headBone, p: A.face.lipPoint, ref: 0.007 * (A.height / 1.8) } : null);
   // the face: painted shadows and smudges are cleaned in the character's picture (faceClean.js). opts.faceClean: 0 = off
   try { rig.faceCleaned = cleanFace(THREE, face, material, opts.faceClean === undefined ? 1 : opts.faceClean, opts.faceDebug || null); } catch (e) { rig.faceCleaned = false; console.warn('[autoRig] the face could not be cleaned:', e); }
+  // close up: a sharper picture with clean seams, wet eyes (characterDetail.js). opts.detail: false = off
+  let detail = null;
+  if (opts.look !== false && opts.detail !== false) {
+    try { detail = prepareCharacter(THREE, A, geo, material, face, { sharpen: opts.sharpen }); } catch (e) { detail = null; console.warn('[autoRig] no close-up detail:', e); }
+  }
+  rig.detail = detail;
+  // the light on a character: a soft fill light from the camera, a matt head (characterLook.js). opts.look: false = off
+  if (opts.look !== false) applyCharacterLook(material, A.info.chinY, A.face && A.lip ? { jaw: A.face.jawBone, head: A.face.headBone, p: A.face.lipPoint, ref: 0.007 * (A.height / 1.8) } : null, detail);
   rig.faceMs = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0;
   face = null;                                             // (its big tables are not needed any more)
   progress(1, 'Character ready');

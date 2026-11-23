@@ -1788,6 +1788,82 @@ fitted to the time its subtitle stays. With the words:
 - The Guard cars drive by the streets. When you stop off the road (a yard, a square behind a corner), the last
   meters to you are straight across, and a Guard car can get caught at a corner there, back up and try again.
 
+## Character quality: sharp faces, real eyes and lips (version 9.3)
+
+Reported from play: "the characters look very blurry and not good - any character; make the quality so high that
+you could see the hair on the arms", and after a first try: "in places you messed up the mouths; I asked for
+quality so good that hair would show, not for added hair; in places the eyes and the lips are not right - it has to
+look real". So nothing is painted onto the people (the first try added fine arm hair and skin bumps - removed);
+their own pictures are shown as clearly as possible, and the eyes and the mouths were fixed.
+
+### Why they looked blurry (measured)
+
+- Every character model carries ONE picture for the whole body: 1024 x 1024 points, strongly compressed, in many
+  small pieces. A face gets about 150 x 150 points of it, a hand about 50.
+- On a phone the 3D picture is drawn smaller than the screen and then stretched (LOW: 0.75 of the screen's
+  points, MEDIUM: 1.0 - 1.3), which softens it once more.
+- The pictures were read without anisotropic filtering: blurry at a slant (arms, the sides of the body, a face
+  turned away).
+- The empty space between the pieces of the picture was dark: the GPU blends neighboring points, so the dark
+  bled into the edges - thin lines along the seams.
+
+### What changed
+
+- SHARPER PICTURE (`src/characters/characterDetail.js`, once, when a character is loaded): the character's picture
+  is sharpened - an unsharp mask on the brightness only (no colored fringes), only inside the pieces of the picture,
+  very small differences left alone (the compression noise does not grow), limited (no halos) and weaker next to
+  the edge of a piece (seams do not stand out). The eyes, brows, lips, wrinkles, seams and folds of the clothes
+  come out. Anisotropic filtering (8x) on all of its pictures.
+- CLEAN SEAMS: the empty space around each piece of the picture is filled with the piece's own edge colors
+  (6 points wide), so no dark lines along the seams.
+- THE SCREEN PICTURE (`src/world/postfx.js`): MEDIUM and HIGH now sharpen the finished picture (contrast adaptive
+  sharpening: strong where the picture is soft, weak where it already has contrast - no bright or dark halos).
+  When the phone keeps up (57 pictures a second and more), the sharpness may now rise further than before: LOW up
+  to 1.25 points per screen point (was 1.0), MEDIUM up to 2.0 (was 1.7). It still goes down when the phone gets
+  slow. No extra draw calls.
+- WET EYES (`src/characters/characterLook.js`): the eyes are found from the face (where the eyelid bones are, how
+  deep the eye lies in its socket). They shine like a wet surface, and each has a small light in it (the sky's
+  reflection), a little above and to the left of the middle, only on the dark of the eye - never on the skin. Now on
+  all 11 characters (Sloane, Adrian and Calder have deep-set eyes: the search for the eye's depth looks wider when
+  it finds too few points). The light is small and soft, like in a photo, and a little stronger at night when the
+  face has its fill light.
+- REAL MOUTHS (`src/characters/faceRig.js`): a speaking mouth used to open along the whole line between the lips -
+  a crack, and where the painted picture made that line uneven, a zigzag (Theo) or a notch in the corner (Lena).
+  Now the mouth opens like real lips: most in the middle, closing smoothly toward the corners (an almond shape).
+  The line between the lips follows a smooth curve fitted to the face (a least-squares curve through the painted
+  line, it moves it 2 mm at most), so the lips close in a clean line at rest. Checked close up on all 11
+  characters, at rest and in three moments of speaking.
+
+Measured on all 11 characters, the same close-up before and after (MEDIUM): the fine detail in the picture of the
+face (its edge energy) went up by 74% to 116% - about twice as much - and the contrast of the edges by 47% to 78%,
+with no halos.
+
+Cost (MEDIUM, the same test before and after, two runs each, in the test robot's software renderer): the same draw
+calls (164), and the drawing time is the same within the measuring noise - the game view with 4 people 1367 ->
+1385 ms per picture (+1%), a face close-up 1355 -> 1391 (+3%), an arm close-up 1320 -> 1265 (-4%); the same test
+run twice differs by up to 6%. The work on each character's picture is done once, while it loads.
+
+### The traffic and the cars left on the road (`src/ai/traffic.js`, `src/main.js`)
+
+Found while testing: the traffic saw the real cars (police, story, a car you left behind) only up to 160 m from the
+player, but it drives up to 250 m away - out there it drove through them, and a new traffic car could even be put
+down right on top of one. Now the traffic sees them as far as it drives, new traffic cars are never put down on a
+real car, and a traffic car that a real car was set down on and stays on (a police car arriving, a car of the
+story) - out where nothing pushes the two apart - is taken away. A car moved a little to the side to get past something at the edge
+of its lane is no longer held up by it for good. Measured: 10 cars standing on traffic lanes 115-160 m from the
+player, three times 2 minutes of traffic: before, a traffic car drove into one of them 30 times; now never (one
+traffic car that the test itself had set a parked car down on was taken away after half a second).
+
+### Honest limits of this pass
+
+- The pictures of the models are small: sharpening brings out what is there, it cannot invent detail. Real skin
+  pores or the hair on the arms need new models with bigger pictures (for example 4096 x 4096 from the 3D
+  generator) - the game would load them the same way.
+- Some seams are in the model itself and stay (a light edge at the corner of Lena's mouth).
+- The sharpening of the screen picture is on MEDIUM and HIGH; LOW has no screen effects at all (it only gets
+  sharper when the phone keeps up).
+- Tested by a robot in a software renderer, close up and in the game view - not watched on a real phone.
+
 ## Known limits
 
 - Traffic cars drive on lanes: when hit they are shoved along the lane and a little to the side, stop and

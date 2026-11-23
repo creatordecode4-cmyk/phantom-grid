@@ -97,7 +97,7 @@ export const CONFIG = {
     low: {
       label: 'LOW',
       spectators: 0.5,      // races: half of the crowd
-      pixelRatio: { scale: 0, min: 0.75, max: 0.75, dynMax: 1.0 },   // dynMax: how sharp it may get when the phone keeps up
+      pixelRatio: { scale: 0, min: 0.75, max: 0.75, dynMax: 1.25 },  // dynMax: how sharp it may get when the phone keeps up
       post: false,          // no bloom, no color grade (render straight to screen)
       vignette: false,
       grain: false,
@@ -122,8 +122,9 @@ export const CONFIG = {
     },
     medium: {
       label: 'MEDIUM',
-      pixelRatio: { scale: 0.5, min: 1.0, max: 1.3, dynMax: 1.7 },
+      pixelRatio: { scale: 0.5, min: 1.0, max: 1.3, dynMax: 2.0 },
       post: true,           // bloom + film-like color grade
+      sharpen: 0.55,        // the picture is drawn smaller than the screen: sharpened back (postfx.js)
       vignette: false,
       grain: false,
       msaa: 2,
@@ -147,6 +148,7 @@ export const CONFIG = {
       label: 'HIGH',
       pixelRatio: { scale: 0.75, min: 1.25, max: 2.0, dynMax: 2.4 },
       post: true,
+      sharpen: 0.35,
       vignette: true,       // subtle dark corners
       grain: true,          // subtle film grain
       msaa: 4,

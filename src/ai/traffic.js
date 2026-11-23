@@ -142,7 +142,7 @@ export function createTraffic(ctx, beamTexture) {
     };
   }
 
-  function placeCar(car, px, pz, minD) {
+  function placeCar(car, px, pz, minD, obstacles) {
     for (let k = 0; k < 8; k++) {
       const r = rng.next();
       let road, dir, t;
@@ -156,6 +156,8 @@ export function createTraffic(ctx, beamTexture) {
       // not inside a crossing, and not on top of another car
       if (road.cross.some((q) => Math.abs(q.c - t) < half + 9)) continue;
       if (cars.some((o) => o.alive && o !== car && Math.hypot(o.x - x, o.z - z) < 14)) continue;
+      // and not on top of a real car (a car left on the road, a police car, a story car)
+      if (obstacles && obstacles.some((o) => (o.x - x) ** 2 + (o.z - z) ** 2 < (7 + o.r) ** 2)) continue;
       Object.assign(car, {
         road, dir, c, t, x, z, alive: true, turn: null, still: 0,
         v0: rng.range(7, 10.5) * (0.85 + 0.15 * CAR_TYPES[car.kind].accel / 7),
@@ -233,6 +235,16 @@ export function createTraffic(ctx, beamTexture) {
     return false;
   }
 
+  // is the middle of this circle more than a meter deep inside the car's body (its three circles)?
+  function deepIn(car, ob) {
+    const s = Math.sin(car.heading), c = Math.cos(car.heading);
+    for (const k of BODY_K) {
+      const dx = ob.x - car.wx - s * k, dz = ob.z - car.wz - c * k;
+      if (dx * dx + dz * dz < 1.0) return true;
+    }
+    return false;
+  }
+
   // obstacles: [{ x, z, r, speed?, dx?, dz? }] things the cars must not hit: the player or the player's car, the
   //            police, story and race cars and the cars left at the curb (main.js), a trailer
   // people:    the walking people (cars brake for the ones on the road)
@@ -253,20 +265,25 @@ export function createTraffic(ctx, beamTexture) {
       const pd = Math.hypot(car.x - px, car.z - pz);
       if (i >= carCount) car.alive = false;
       else if (car.alive && (pd > FAR || (car.still > 30 && pd > 70))) car.alive = false;
-      if (!car.alive && i < carCount && (first || placed < 2)) { placed++; placeCar(car, px, pz, first ? 28 : 110); }
+      if (!car.alive && i < carCount && (first || placed < 2)) { placed++; placeCar(car, px, pz, first ? 28 : 110, obstacles); }
       if (!car.alive) { for (let k = 0; k < 16; k++) out[o + k] = 0; continue; }
 
       let want = car.v0;
       const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
       const slowTo = (dist, speed) => { want = Math.min(want, Math.sqrt(speed * speed + 2 * BRAKE * 0.6 * Math.max(dist, 0))); };
       // ---- things in front of the car: the player, the player's car, people ----
-      let sideWant = 0, blocked = false, makeWay = false;
+      let sideWant = 0, blocked = false, makeWay = false, buried = false;
       for (const ob of obstacles) {
         const ax = ob.x - car.x, az = ob.z - car.z;
+        // (a real car was put down right on top of this one - a police car, a car of the story - and stands there, out
+        //  where nothing pushes the two apart: it would stand inside it for good. It is taken away.)
+        if (pd > 45 && car.still > 0.5 && !(ob.speed > 0.5) && ax * ax + az * az < 16 && deepIn(car, ob)) buried = true;
         const ahead = ax * fx + az * fz, right = -ax * fz + az * fx, side = Math.abs(right);
         // (a car driving away in front: follow it at about its speed, like the car in front on the lane)
         const away = ob.speed > 0.5 ? Math.max(0, ob.speed * (ob.dx * fx + ob.dz * fz)) * 0.5 : 0;
-        if (ahead > -1 && ahead < 22 && side < 1.3 + ob.r) { slowTo(ahead - 3.4 - ob.r * 1.6, away); if (ahead < 9) blocked = true; }
+        // (in the way: measured from where the car really is - moved a little to the side to get past something at
+        //  the edge of its lane, a car is not held up by it any more; before, it waited behind it for good)
+        if (ahead > -1 && ahead < 22 && Math.abs(right - car.side) < 1.3 + ob.r) { slowTo(ahead - 3.4 - ob.r * 1.6, away); if (ahead < 9) blocked = true; }
         // something close to the lane: steer a little away from it
         if (ahead > 0 && ahead < 16 && side > 0.5 && side < 3.2 + ob.r) sideWant = right > 0 ? -0.8 : 0.8;
         // a broken car at the roadside: pass slowly
@@ -274,6 +291,7 @@ export function createTraffic(ctx, beamTexture) {
         // a car of the story (moved exactly, it cannot steer round) comes up behind on my lane: make way for it
         if (ob.kin && !car.turn && ahead < 0 && ahead > -32 && side < 2.2 && ob.speed > 2 && ob.dx * fx + ob.dz * fz > 0.7) makeWay = true;
       }
+      if (buried) { car.alive = false; for (let k = 0; k < 16; k++) out[o + k] = 0; continue; }
       // a siren close by: move to the right edge of the road and stop
       // (2.4 m: over toward the curb, far enough that a police car on the lane passes without touching)
       if (!car.turn) for (const s of sirens) {

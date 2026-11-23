@@ -400,7 +400,8 @@ async function boot() {
     for (const q of vehicles.live) {
       if (q === car && !onFoot) continue;
       if (q.away || q.ghost || q.role === 'boat' || (q.role === 'drone' && q.alt > 2.5) || !q.circles) continue;
-      if (Math.abs(q.x - px) > 160 || Math.abs(q.z - pz) > 160 || q.y > 2.5) continue;
+      // (as far out as the traffic goes: 250 m)
+      if (Math.abs(q.x - px) > 260 || Math.abs(q.z - pz) > 260 || q.y > 2.5) continue;
       const fx = Math.sin(q.heading), fz = Math.cos(q.heading), sp = Math.hypot(q.vx || 0, q.vz || 0);
       for (const k of q.circles) carObstacles.push({ x: q.x + fx * k, z: q.z + fz * k, r: q.radius, speed: sp, dx: sp > 0.1 ? q.vx / sp : fx, dz: sp > 0.1 ? q.vz / sp : fz, damaged: q.damage > 0.6, kin: !!q.kin });
     }
