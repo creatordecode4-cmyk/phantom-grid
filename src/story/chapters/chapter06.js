@@ -345,8 +345,11 @@ function LEAVE() {
         // hangs in the van): the garage door, Mace in it, the light getting smaller (src/story/rearView.js). Once he
         // looks up at it. The radio, faintly.
         { seconds: 10.5, cam: { from: { cabin: 'van', at: 'pass', p: [0, 0.03, 0.1] }, to: { cabin: 'van', at: 'pass', p: [0, 0.03, 0.04] }, look: { cabin: 'van', at: 'eye', p: [0, -0.05, 0.16] }, fov: 44, near: NEAR },
-          do: [{ do: 'autoDrive', gas: 0.26, steer: 0, brake: 0 }, { do: 'rearView', car: 'van', x: 0.62, look: g(-4.4, 1.25, 6.45) }, { do: 'player', look: null, mood: 'sad' }],   // (brake: 0 - else the story holds the car still)
-          lines: [{ at: 4.2, do: [{ do: 'player', look: { cabin: 'van', at: 'mid', p: [0, 0.22, 0.62] } }] }, { at: 7.4, do: [{ do: 'player', look: null }] }] },
+          do: [{ do: 'autoDrive', gas: 0.14, steer: 0, brake: 0 }, { do: 'rearView', car: 'van', x: 0.62, look: g(-4.4, 1.25, 6.45) }, { do: 'player', look: null, mood: 'sad' }],   // (brake: 0 - else the story holds the car still)
+          // (slowly away from the curb; he looks up at the mirror once; then he stops looking back - the mirror goes -
+          //  and the van goes faster. The street trees would come between the mirror and the door further on.)
+          lines: [{ at: 2.4, do: [{ do: 'player', look: { cabin: 'van', at: 'mid', p: [0, 0.22, 0.62] } }] }, { at: 5.0, do: [{ do: 'player', look: null }] },
+            { at: 5.8, do: [{ do: 'rearView', off: true }] }, { at: 6.2, do: [{ do: 'autoDrive', gas: 0.3, steer: 0, brake: 0 }] }] },
         // the street in the rain, the light of the door, the van's tail lights far away. Three seconds of silence.
         { seconds: 7.0, fade: 'out', fadeSeconds: 3.2, cam: { from: g(1.5, 1.5, 9.6), to: g(1.3, 1.48, 9.5), look: g(-60, 1.2, 11.0), fov: 42 },
           do: [{ do: 'rearView', off: true }, { do: 'music', silence: 3.2 }] },
