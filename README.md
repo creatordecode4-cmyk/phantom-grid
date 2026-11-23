@@ -2029,7 +2029,8 @@ sounds in `src/audio/music.js` and `src/audio/sound.js`, and `src/story/chapters
   office and the back warehouse are only seen in the film scenes (you cannot walk up the stairs). The ships do not
   move away from the quay. Rask holds his hands over the crate (there is no pose for a flat hand on it).
 - CHAPTER 6 / OLD DEBTS: played to the end only by a test robot in a software renderer (it does the stations by itself
-  and presses the buttons); the feel of the gestures, the pace of the stories and every sound still need a real phone.
+  and presses the buttons; the five stations of 6.1 were also done once with finger-like touch events on the panel, and
+  each one finished); the feel of the gestures, the pace of the stories and every sound still need a real phone.
   The garage is a set of its own (the city is not drawn while it is shown, but stays loaded, so leaving is instant).
   Nate does not walk in the film scenes (the cut puts him at his next place), the car's doors do not open (he is
   simply in the seat), and the roller door does not roll up on screen (the picture goes dark). There is no upgrade shop
