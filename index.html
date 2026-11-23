@@ -151,6 +151,20 @@
     #drv-quiet { width: 66px; height: 66px; font-size: 9px; right: calc(24px + env(safe-area-inset-right)); bottom: calc(142px + env(safe-area-inset-bottom)); display: none; border-color: rgba(120, 230, 200, 0.75); }
     body.role-boat #drv-quiet { display: block; }
     #drv-quiet.on { background: rgba(60, 160, 140, 0.55); }
+    /* the boat in Chapter 5: RAM (where NITRO sits on a car) and QUICK TURN (where the LIGHT button sits) */
+    #drv-ram { width: 62px; height: 62px; font-size: 9px; right: calc(248px + env(safe-area-inset-right)); bottom: calc(96px + env(safe-area-inset-bottom)); display: none; border-color: rgba(255, 170, 110, 0.75); }
+    #drv-turn { width: 58px; height: 58px; font-size: 9px; left: calc(166px + env(safe-area-inset-left)); bottom: calc(136px + env(safe-area-inset-bottom)); display: none; border-color: rgba(170, 220, 255, 0.7); }
+    body.role-boat #drv-ram, body.role-boat #drv-turn { display: block; }
+    #drv-ram.on, #drv-turn.on { background: rgba(255, 255, 255, 0.5); }
+    /* CARGO: a thin bar under the speed - how whole the load still is (green, then amber, then red) */
+    #cargo-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 5px; font-size: 9px; letter-spacing: 0.18em; }
+    #cargo-row[hidden] { display: none; }
+    #cargo-row .dash-bar { margin: 0; width: 96px; height: 4px; }
+    #cargo-bar i { background: #6fe39a; transition: width 0.25s; }
+    #cargo-row.warn #cargo-bar i { background: #ffc94a; }
+    #cargo-row.bad #cargo-bar i { background: #ff5a3c; }
+    #cargo-row.hit { animation: limhit 0.4s steps(2) 2; }
+    #cargo-num { min-width: 22px; text-align: left; opacity: 0.85; }
     /* the pedals show how hard they are pressed */
     #drv-gas.on, #drv-brake.on { background: rgba(255, 255, 255, calc(0.3 + 0.56 * var(--press, 1))); }
     /* ---------- dashboard: gear, speed, turn arrows, thin bars ---------- */
@@ -250,6 +264,8 @@
       #drv-up { right: calc(14px + env(safe-area-inset-right)); bottom: calc(132px + env(safe-area-inset-bottom)); }
       #drv-down { right: calc(84px + env(safe-area-inset-right)); bottom: calc(122px + env(safe-area-inset-bottom)); }
       #drv-quiet { right: calc(12px + env(safe-area-inset-right)); bottom: calc(130px + env(safe-area-inset-bottom)); }
+      #drv-ram { right: calc(14px + env(safe-area-inset-right)); bottom: calc(204px + env(safe-area-inset-bottom)); }
+      #drv-turn { left: calc(14px + env(safe-area-inset-left)); bottom: calc(188px + env(safe-area-inset-bottom)); }
       #hud-speed { bottom: calc(200px + env(safe-area-inset-bottom)); }
     }
     /* with a mouse and keyboard the touch buttons are not needed */
@@ -367,6 +383,8 @@
     #subs .plate { display: inline-block; padding: 7px 14px 8px; border-radius: 8px; background: rgba(4, 5, 7, 0.62); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
     #subs-who { font-size: calc(var(--sub) * 0.6); letter-spacing: 0.3em; color: #ffc94a; margin-bottom: 3px; }
     #subs-who.wren { color: #8fd8ff; }
+    #subs-who.radio { color: #b9c9b0; }
+    #subs-who.radio::before { content: '\25C9  RADIO  \00B7  '; opacity: 0.7; }
     #subs-who:empty { display: none; }
     #subs-text { font-size: var(--sub); line-height: 1.42; letter-spacing: 0.02em; font-weight: 400; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
     #subs-text.thought { font-style: italic; opacity: 0.92; }
@@ -623,11 +641,14 @@
       <button class="btn round" id="drv-up" aria-label="Drone up">UP</button>
       <button class="btn round" id="drv-down" aria-label="Drone down">DOWN</button>
       <button class="btn round" id="drv-quiet" aria-label="Quiet motor (hold)">QUIET</button>
+      <button class="btn round" id="drv-ram" aria-label="Ram the boat in front">RAM</button>
+      <button class="btn round" id="drv-turn" aria-label="Quick turn">TURN</button>
       <div id="hud-speed">
         <div id="dash-row"><span id="ind-l">&#9664;</span><span id="gear">N</span><span id="speed-num">0</span><span class="unit">KM/H</span><span id="limit-badge" hidden>80</span><span id="ind-r">&#9654;</span></div>
         <div class="dash-bar" id="rpm-bar"><i></i></div>
         <div class="dash-bar" id="nitro-bar"><i></i></div>
         <div class="dash-bar" id="dmg-bar"><i></i></div>
+        <div id="cargo-row" hidden><span id="cargo-label">CARGO</span><div class="dash-bar" id="cargo-bar"><i></i></div><span id="cargo-num">100</span></div>
         <div id="speed-car"></div>
       </div>
     </div>

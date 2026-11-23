@@ -14,6 +14,7 @@ import { makeDrone } from '../city/models.js';
 import { wantedProps } from './propsWanted.js';
 import { sunkProps } from './propsSunk.js';
 import { raceProps } from './propsRace.js';
+import { docksProps } from './propsDocks.js';
 
 // a picture with text, drawn in code. lines: [{ text, size, color, y (0..1), font, weight }]
 function textTexture(w, h, bg, lines, border = null) {
@@ -103,6 +104,7 @@ export function createProps() {
       g.add(box(0.36, 0.26, 0.11, std(0x9aa1a8, 0.35, 0.8)));
       for (const y of [-0.06, 0.06]) { const rib = box(0.365, 0.012, 0.115, std(0x5c6268, 0.4, 0.8)); rib.position.y = y; g.add(rib); }
       const handle = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 6, 12, Math.PI), std(0x1a1b1d, 0.6)); handle.position.y = 0.13; g.add(handle);
+      g.userData.grip = 80;      // held by the handle: the fingers close around it
       return g;
     },
     // the race ticket: a small worn card
@@ -190,6 +192,8 @@ export function createProps() {
   Object.assign(MAKERS, sunkProps({ std, box, tex, textTexture, glowTexture }).makers);
   // the things of Chapter 4 (Theo's jacket, the wolf on Dante's hood, the night market, the guardrail, the ramp ...): propsRace.js
   Object.assign(MAKERS, raceProps({ std, box, tex, textTexture, glowTexture }).makers);
+  // the things of Chapter 5 (Rask's watch, the HALO cores, the crate, the floating junk, the gate, the package ...): propsDocks.js
+  Object.assign(MAKERS, docksProps({ std, box, tex, textTexture, glowTexture }).makers);
   // a soft round glow (white in the middle, clear at the edge)
   function glowTexture() {
     const cv = document.createElement('canvas'); cv.width = cv.height = 64;

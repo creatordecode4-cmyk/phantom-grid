@@ -21,6 +21,7 @@ import { makeBeamTexture } from '../vehicles/vehicle.js';
 import { buildProps, makeHoloMaterial } from './props.js';
 import { buildBackdrop } from './backdrop.js';
 import { buildSunk } from './sunk.js';
+import { buildDocks } from './docks.js';
 import { createWater } from '../world/water.js';
 
 // Used to free the normal-memory copy of a big mesh after it was sent to the graphics card.
@@ -102,16 +103,17 @@ function makeCollisionGrid(boxes, circles) {
 // ---------------------------------------------------------------------------
 function makeLampLightMap(ctx) {
   const L = ctx.layout;
-  const SIZE = 1024;
+  // (wider than tall since the docks: about 1.4 x 1.2 m per pixel)
+  const SIZE = 1024, SIZE_X = 1280;
   // (west: the old edge of the city plus the scenery behind it, or The Sunk - whichever reaches farther)
   const minX = L.bounds.minX - 40, maxX = Math.max((L.raw.oldWestEdge || L.bounds.maxX) + 220, L.bounds.maxX + 20);
   const minZ = L.bounds.minZ - 30, maxZ = L.bounds.maxZ + 230;
-  const sx = SIZE / (maxX - minX), sz = SIZE / (maxZ - minZ);
+  const sx = SIZE_X / (maxX - minX), sz = SIZE / (maxZ - minZ);
   const cv = document.createElement('canvas');
-  cv.width = cv.height = SIZE;
+  cv.width = SIZE_X; cv.height = SIZE;
   const g = cv.getContext('2d');
   g.fillStyle = '#000';
-  g.fillRect(0, 0, SIZE, SIZE);
+  g.fillRect(0, 0, SIZE_X, SIZE);
   const X = (x) => (x - minX) * sx;
   const Y = (z) => SIZE - (z - minZ) * sz; // the picture is flipped: north is up
   g.globalCompositeOperation = 'lighter'; // colors add up where light pools overlap
@@ -174,14 +176,14 @@ function makeLampLightMap(ctx) {
   // Every wall is drawn a few times, each time a little bigger and very faint: the darkness fades out about
   // 2.5 m from the wall. The ground shader reads it (ambient occlusion: the soft shadow where things meet).
   {
-    const A = 1024, ax = A / (maxX - minX), az = A / (maxZ - minZ);
+    const A = SIZE, AW = SIZE_X, ax = AW / (maxX - minX), az = A / (maxZ - minZ);
     const ca = document.createElement('canvas');
-    ca.width = ca.height = A;
+    ca.width = AW; ca.height = A;
     const q = ca.getContext('2d');
     q.fillStyle = '#fff';
-    q.fillRect(0, 0, A, A);
+    q.fillRect(0, 0, AW, A);
     const AX = (x) => (x - minX) * ax, AY = (z) => A - (z - minZ) * az;
-    const walls = ctx.colliders.boxes.filter((b) => b.h > 2.5);
+    const walls = ctx.colliders.boxes.filter((b) => b.h > 2.5 && !b.boatOnly);   // (not the walls that only stop boats)
     const round = ctx.colliders.circles.filter((c) => c.r > 1.6);
     for (const [grow, alpha] of [[2.6, 0.1], [1.8, 0.12], [1.1, 0.14], [0.5, 0.16], [0, 0.3]]) {
       q.fillStyle = `rgba(0,0,0,${alpha})`;
@@ -259,6 +261,12 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
   onProgress(0.45, 'Flooding The Sunk');
   const sunk = buildSunk(ctx);
   lap('sunk');
+  await pause();
+
+  // ---- Chapter 5: RUSTWATER DOCKS, the port east of Neon Mile (containers, cranes, ships, Rask's office) ----
+  onProgress(0.48, 'Building Rustwater Docks');
+  const docks = buildDocks(ctx);
+  lap('docks');
   await pause();
 
   onProgress(0.5, 'Building skyline and highway');
@@ -355,6 +363,7 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
     counts: ctx.buildingCounts,
     timing,
     sunk,
+    docks,
     // where the water is and how deep (src/world/water.js): whoever is in deep water swims
     water: createWater(layout),
     // LOW quality switches the 3D window detail off
@@ -367,11 +376,14 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
       // LOW: the simple canal water (no rain rings, no boat waves), no mist
       sunk.water.material = q.water === 'simple' ? ctx.mats.canalLow : ctx.mats.canal;
       sunk.quality = q;
+      docks.setQuality(q);
     },
     // called every frame
     update(dt, time, x, z, propDistance) {
       props.update(dt, time, x, z, propDistance);
       backdrop.rail.update(dt);
+      // (after the traffic: the legs of the moving yard cranes join the list of moving things to collide with)
+      docks.update(dt, time, x, z, colliders.dynamic);
     },
   };
 }

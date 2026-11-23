@@ -63,6 +63,9 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
   const fallback = kinds.length ? kinds : ['sedan'];   // without the model files: a plain dark sedan
   const B = layout.bounds, H = layout.highway;
   const SK = city.sunk || null;      // The Sunk (Chapter 3): canals, the canal map, decks
+  const DW = city.docks ? city.docks.water : null;   // the harbor and the channel of the docks (Chapter 5)
+  // which water a point is in (where Guard boats can come): The Sunk's canals or the harbor of the docks
+  const waterOf = (x, z, m = 30) => (SK && SK.inZone(x, z, m) ? SK : DW && DW.inZone(x, z, m) ? DW : null);
 
   // ------------------------------------------------------------------ state
   let level = 0;                      // 0..5 (stars = level rounded up)
@@ -268,15 +271,16 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     units.splice(i, 1);
   }
 
-  // ------------------------------------------------------------------ Guard boats (The Sunk)
-  // a place on the canals near (x, z), r meters around
-  const waterPoint = (x, z, r) => (SK ? SK.waterPoint(x, z, r) : { x, z });
+  // ------------------------------------------------------------------ Guard boats (The Sunk, the docks)
+  // a place on the water near (x, z), r meters around
+  const waterPoint = (x, z, r) => { const W = waterOf(x, z); return W ? W.waterPoint(x, z, r) : { x, z }; };
   function spawnBoat(near, minD = 70, maxD = 150) {
-    if (!SK) return null;
+    const W = waterOf(near.x, near.z);
+    if (!W) return null;
     for (let k = 0; k < 12; k++) {
       const a = Math.random() * Math.PI * 2, d = minD + Math.random() * (maxD - minD);
-      const p = waterPoint(near.x + Math.sin(a) * d, near.z + Math.cos(a) * d, 10);
-      if (Math.hypot(p.x - target.x, p.z - target.z) < 45 || !SK.inZone(p.x, p.z, 30)) continue;
+      const p = W.waterPoint(near.x + Math.sin(a) * d, near.z + Math.cos(a) * d, 10);
+      if (Math.hypot(p.x - target.x, p.z - target.z) < 45 || !W.inZone(p.x, p.z, 30)) continue;
       const v = vehicles.spawn('patrol_boat', p.x, p.z, Math.atan2(target.x - p.x, target.z - p.z), null, { npc: true, keep: true, noDetail: true, tint: [0.42, 0.46, 0.55] });
       if (!v) return null;
       const u = { v, kind: 'boat', mode: 'search', goal: { x: near.x, z: near.z }, wait: 0, route: null, t: 0, check: 1.5, lastX: p.x, lastZ: p.z, back: 0, sees: false, gone: 0 };
@@ -293,7 +297,7 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     const goal = chase ? target : u.goal;
     const dist = Math.hypot(goal.x - v.x, goal.z - v.z);
     u.t -= dt;
-    if (u.t <= 0) { u.t = 0.7; u.route = dist > 14 && SK ? SK.route(v.x, v.z, goal.x, goal.z) : null; }
+    if (u.t <= 0) { u.t = 0.7; const W = waterOf(v.x, v.z, 40); u.route = dist > 14 && W ? W.route(v.x, v.z, goal.x, goal.z) : null; }
     const aim = u.route && u.route.length > 1 ? gps.pointAhead(u.route, 13) || goal : goal;
     const top = v.type.topSpeed / 3.6;
     let want;
@@ -322,23 +326,35 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
 
   // ------------------------------------------------------------------ sentries (fixed paths, a cone of sight)
   // spec: { path: [[x, z], ...] (a loop), y: height, speed (m/s), range (m), fov (half the cone, radians), sweep (radians), stop: seconds at each point }
+  //   kind: 'drone' (default) | 'guard' (Chapter 5: a man on foot with a torch; body(x, z, heading, speed) moves his figure,
+  //   the story gives it) | 'flood' (a floodlight on a mast that sweeps a yard: it does not move, face = where it looks)
+  //   tilt: how far down the light looks (radians)
   function addSentry(spec) {
-    const o = props ? props.make('policeDrone') : new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({ color: 0x222222 }));
-    const U = o.userData;
+    const kind = spec.kind || 'drone';
+    const drone = props ? props.make('policeDrone') : new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({ color: 0x222222 }));
+    const U = drone.userData;
     if (U.beam) U.beam.visible = false;
     if (U.spot) U.spot.visible = false;
+    // (a guard or a floodlight: only the light and its pool on the ground, no drone)
+    const o = kind === 'drone' ? drone : new THREE.Group();
     const range = spec.range || 22, fov = spec.fov || 0.55;
     // its searchlight looks forward and down: a soft cone and a pool of light where it meets the ground
     const coneGeo = new THREE.ConeGeometry(Math.tan(fov) * range * 0.9, range, 20, 1, true);
     coneGeo.translate(0, -range / 2, 0);
     const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0xcfe2ff, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
-    cone.rotation.x = -Math.PI / 2 - 0.5;      // tip at the drone, opening forward and a little down
+    cone.rotation.x = -Math.PI / 2 - (spec.tilt ?? (kind === 'flood' ? Math.atan2(spec.y || 18, range * 0.55) : kind === 'guard' ? 0.18 : 0.5));   // tip at the light, opening forward and down
     cone.renderOrder = 18;
     o.add(cone);
     const spotMesh = U.spot ? U.spot.clone() : null;
     if (spotMesh) { spotMesh.visible = true; spotMesh.material = U.spot.material.clone(); scene.add(spotMesh); }
     const p0 = spec.path[0];
-    const sn = { o, cone, spot: spotMesh, path: spec.path, i: 0, x: p0[0], z: p0[1], y: spec.y, speed: spec.speed || 3, range, fov, sweep: spec.sweep ?? 0.45, stop: spec.stop || 0, wait: 0, heading: 0, look: 0, sees: false, ph: Math.random() * 6 };
+    if (kind === 'guard') {
+      // the torch in his hand: a small bright lamp at the tip of the cone
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff1c8 }));
+      o.add(lamp);
+    }
+    const sn = { o, cone, spot: spotMesh, kind, body: spec.body || null, path: spec.path, i: 0, x: p0[0], z: p0[1], y: spec.y ?? (kind === 'guard' ? 1.35 : 8), speed: spec.speed || (kind === 'guard' ? 1.25 : 3), range, fov,
+      sweep: spec.sweep ?? (kind === 'flood' ? 0.9 : kind === 'guard' ? 0.55 : 0.45), sweepSpeed: spec.sweepSpeed || (kind === 'flood' ? 0.28 : kind === 'guard' ? 0.9 : 0.7), stop: spec.stop || 0, wait: 0, heading: 0, look: 0, sees: false, ph: Math.random() * 6, moving: false };
     if (spec.path.length > 1) sn.heading = Math.atan2(spec.path[1][0] - p0[0], spec.path[1][1] - p0[1]);
     else sn.heading = spec.face || 0;
     o.position.set(sn.x, sn.y, sn.z);
@@ -354,6 +370,7 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     sentries.length = 0;
   }
   function flySentry(sn, dt) {
+    sn.moving = false;
     if (sn.path.length > 1) {
       const next = sn.path[(sn.i + 1) % sn.path.length];
       const dx = next[0] - sn.x, dz = next[1] - sn.z, d = Math.hypot(dx, dz);
@@ -362,19 +379,23 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
       else {
         const step = Math.min(d, sn.speed * dt);
         sn.x += (dx / d) * step; sn.z += (dz / d) * step;
-        sn.heading += angleDiff(sn.heading, Math.atan2(dx, dz)) * Math.min(1, dt * 2.5);
+        sn.heading += angleDiff(sn.heading, Math.atan2(dx, dz)) * Math.min(1, dt * (sn.kind === 'guard' ? 5 : 2.5));
+        sn.moving = true;
       }
     }
-    // it looks around a little while it flies
-    sn.look = sn.heading + Math.sin(time * 0.7 + sn.ph) * sn.sweep;
-    sn.o.position.set(sn.x, sn.y + Math.sin(time * 1.7 + sn.ph) * 0.2, sn.z);
+    // it looks around a little while it flies (a guard: more when he stands still; a floodlight: a slow wide sweep)
+    const sw = sn.kind === 'guard' && sn.moving ? sn.sweep * 0.35 : sn.sweep;
+    sn.look = sn.heading + Math.sin(time * sn.sweepSpeed + sn.ph) * sw;
+    sn.o.position.set(sn.x, sn.y + (sn.kind === 'drone' ? Math.sin(time * 1.7 + sn.ph) * 0.2 : 0), sn.z);
+    if (sn.body) sn.body(sn.x, sn.z, sn.moving ? sn.heading : sn.look, sn.moving ? sn.speed : 0);
     sn.o.rotation.set(0, sn.look, 0);
     sn.cone.material.opacity = (sn.sees ? 0.1 : 0.035) + 0.04 * nightNow;
     sn.cone.material.color.setHex(sn.sees ? 0xffb080 : 0xcfe2ff);
     if (sn.spot) {
       const gx = sn.x + Math.sin(sn.look) * sn.range * 0.55, gz = sn.z + Math.cos(sn.look) * sn.range * 0.55;
       sn.spot.position.set(gx, city.groundHeight(gx, gz) + 0.06, gz);
-      sn.spot.material.opacity = 0.06 + 0.3 * nightNow;
+      sn.spot.material.opacity = (sn.kind === 'guard' ? 0.03 : 0.06) + (sn.kind === 'guard' ? 0.18 : 0.3) * nightNow;
+      if (sn.kind === 'flood') sn.spot.scale.setScalar(2.2);
     }
     if (sn.o.userData.anim) sn.o.userData.anim(time);
   }
@@ -611,7 +632,7 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     areaT -= dt;
     if (areaT <= 0 && gps.setAvoidArea) { areaT = 1; gps.setAvoidArea(s > 0 && mode === 'search' ? { x: lastKnown.x, z: lastKnown.z, r: searchR } : null); }
     // ---- how many units: cars (on the streets) or boats (in The Sunk), and drones ----
-    water = !!SK && (SK.inZone(who.x, who.z, 25) || (mode === 'patrol' && !!patrol && SK.inZone(patrol.x, patrol.z)));
+    water = !!waterOf(who.x, who.z, 25) || (mode === 'patrol' && !!patrol && !!waterOf(patrol.x, patrol.z, 0));
     const wantCars = water ? 0 : s > 0 ? Math.min(caps.cars, (known ? CARS : CARS_FREE)[s]) : (mode === 'patrol' ? Math.min(caps.cars, patrol.cars || 0) : 0);
     const wantBoats = !water ? 0 : s > 0 ? Math.min(caps.boats, BOATS[s]) : (mode === 'patrol' ? Math.min(caps.boats, patrol.boats || 0) : 0);
     const wantDrones = s > 0 ? Math.min(caps.drones, (known ? DRONES : DRONES_FREE)[s]) : (mode === 'patrol' ? Math.min(caps.drones, patrol.drones || 0) : 0);
@@ -704,7 +725,7 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
       view.units.push({ x: u.v.x, z: u.v.z, heading: u.v.heading, range: viewRange(u), fov: FOV, kind: u.kind || 'car', alert: u.mode === 'chase' || u.sees });
     }
     for (const dr of drones) if (!dr.leaving) view.units.push({ x: dr.x, z: dr.z, heading: dr.heading, range: (mode === 'chase' ? 34 : 27) * look, fov: Math.PI, kind: 'drone', alert: dr.sees });
-    for (const sn of sentries) view.units.push({ x: sn.x, z: sn.z, heading: sn.look, range: sn.range * look, fov: sn.fov, kind: 'drone', alert: sn.sees });
+    for (const sn of sentries) view.units.push({ x: sn.x, z: sn.z, heading: sn.look, range: sn.range * look, fov: sn.fov, kind: sn.kind === 'guard' ? 'car' : 'drone', alert: sn.sees });
     view.search = mode === 'search' ? { x: lastKnown.x, z: lastKnown.z, r: searchR } : null;
     view.block = block ? { x: block.x, z: block.z } : null;
     return view;

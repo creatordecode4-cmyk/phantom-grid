@@ -107,7 +107,7 @@ export function createHUD() {
       zoneLook: $('zone-look'), zoneMove: $('zone-move'),
       joyBase: $('joy-base'), joyKnob: $('joy-knob'), runButton: $('btn-run'),
       minimap: $('minimap'), bigmapCanvas: $('bigmap-canvas'),
-      drive: { left: $('drv-left'), right: $('drv-right'), gas: $('drv-gas'), brake: $('drv-brake'), hand: $('drv-hand'), horn: $('drv-horn'), tilt: $('drv-tilt'), nitro: $('drv-nitro'), up: $('drv-up'), down: $('drv-down'), quiet: $('drv-quiet') },
+      drive: { left: $('drv-left'), right: $('drv-right'), gas: $('drv-gas'), brake: $('drv-brake'), hand: $('drv-hand'), horn: $('drv-horn'), tilt: $('drv-tilt'), nitro: $('drv-nitro'), up: $('drv-up'), down: $('drv-down'), quiet: $('drv-quiet'), ram: $('drv-ram'), turn: $('drv-turn') },
     },
     // ---- driving ----
     // role: car / police / boat / drone (some buttons only exist for some vehicles)

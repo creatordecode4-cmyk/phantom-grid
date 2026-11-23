@@ -152,6 +152,8 @@ async function boot() {
   // roofs that keep the rain off and hide a boat (or a person) from the drones
   const SK = city.sunk;
   if (SK) for (const b of SK.spots) { SHELTERS.push(b); police.addSpot({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ }); }
+  // RUSTWATER DOCKS (Chapter 5): Rask's building and the covered market keep the rain out too
+  if (city.docks) for (const b of city.docks.spots) { SHELTERS.push(b); police.addSpot({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ }); }
   const sunkBoats = [], sunkWalker = { x: 0, z: 0, vx: 0, vz: 0, heading: 0 };
   let lenaCam = false;           // the camera is in "room" mode in Lena's flat
   let marketHush = 0;            // 0..1: the Tidewalkers at the market have gone quiet (Nate is close)
@@ -360,7 +362,7 @@ async function boot() {
     const lock = gameMode === 'title' ? LOCK_ALL : S ? S.locks : null;
     if (lock) {
       if (lock.move) { input.moveX = 0; input.moveY = 0; input.run = false; }
-      if (lock.drive) { const d = input.drive; d.steer = 0; d.gas = 0; d.brake = 0; d.handbrake = true; d.nitro = false; d.horn = false; d.up = false; d.down = false; }
+      if (lock.drive) { const d = input.drive; d.steer = 0; d.gas = 0; d.brake = 0; d.handbrake = true; d.nitro = false; d.horn = false; d.up = false; d.down = false; d.ram = false; d.turn = false; }
       if (lock.look) { input.lookX = 0; input.lookY = 0; input.map = false; input.camera = false; }
       if (lock.action) input.lights = false;
     }
@@ -553,8 +555,18 @@ async function boot() {
       marketHush += ((dp < 30 ? 1 : 0) - marketHush) * Math.min(1, dt * (dp < 30 ? 0.8 : 0.15));
       marketK = clamp(1 - dm / 130, 0, 1) * (1 - 0.85 * marketHush) * (S ? amb.market ?? 1 : 1);
     }
+    // RUSTWATER DOCKS (Chapter 5): how deep in the port the camera is, the morning (gulls), a moving yard crane close by
+    let docksK = 0, dawnK = 0, craneK = 0;
+    if (city.docks && !inside) {
+      const cp = camera.position, Dd = layout.docks;
+      const dx = Math.max(Dd.minX - cp.x, 0, cp.x - Dd.maxX), dz = Math.max(Dd.minZ - 60 - cp.z, 0, cp.z - Dd.maxZ);
+      docksK = clamp(1 - Math.hypot(dx, dz) / 80, 0, 1);
+      const h = lighting.hour;
+      dawnK = clamp(1 - Math.abs(h - 6.2) / 1.6, 0, 1);
+      for (const g of city.docks.gantries) if (g.state === 'move' || g.state === 'lower' || g.state === 'raise') craneK = Math.max(craneK, clamp(1 - Math.hypot(g.x - cp.x, g.row - cp.z) / 70, 0, 1));
+    }
     music.update(dt, {
-      sunk: sunkK, market: marketK, tunnel: tunnelK,
+      sunk: sunkK, market: marketK, tunnel: tunnelK, docks: docksK, dawn: dawnK, crane: craneK,
       rain: weather.amount, city: clamp(city.traffic.count / 30, 0, 1) * 0.8, beach: clamp((-250 - pz) / 130, 0, 1),
       inCar: driving || (!!S && S.indoors) || inside,
       drone: Math.max(police.droneNear, S ? amb.drone : 0), radio: S ? amb.radio : 0, street: S ? amb.street : 0,

@@ -10,7 +10,7 @@
 // DRIVING (phone): steering buttons or TILT, GAS and BRAKE are analog (slide the
 //          finger up on the pedal for more), HANDBRAKE, HORN, NITRO, UP / DOWN (drone).
 // DRIVING (keys):  W A S D, Space handbrake, H horn, N nitro, C camera, L lights,
-//          U / J drone up / down, Q (hold) the quiet motor of a boat.
+//          U / J drone up / down, Q (hold) the quiet motor of a boat, B ram and V quick turn (a boat).
 //
 // The rest of the game only reads "controls.input".
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ export function createControls(dom) {
     map: false,           // true for one frame when M was pressed
     // driving: steer -1 (left) .. 1 (right), gas / brake 0..1
     //          nitro: boost (supercar), up / down: the drone
-    drive: { steer: 0, gas: 0, brake: 0, handbrake: false, horn: false, nitro: false, up: false, down: false, quiet: false },
+    drive: { steer: 0, gas: 0, brake: 0, handbrake: false, horn: false, nitro: false, up: false, down: false, quiet: false, ram: false, turn: false },
     camera: false,        // true for one frame: next camera view
     lights: false,        // true for one frame: high beam on / off
   };
@@ -109,7 +109,7 @@ export function createControls(dom) {
 
   // ------------------------------------------------------- driving buttons (phone)
   // a button is "down" while at least one finger is on it
-  const held = { left: false, right: false, gas: false, brake: false, hand: false, horn: false, nitro: false, up: false, down: false, quiet: false };
+  const held = { left: false, right: false, gas: false, brake: false, hand: false, horn: false, nitro: false, up: false, down: false, quiet: false, ram: false, turn: false };
   // GAS and BRAKE are analog: a finger low on the pedal presses it a little, sliding up presses it fully
   const pedal = { gas: 1, brake: 1 };
   const pedalAmount = (node, e) => { const r = node.getBoundingClientRect(); return clamp(0.4 + (0.9 * (r.bottom - e.clientY)) / Math.max(r.height, 1), 0.35, 1); };
@@ -226,6 +226,8 @@ export function createControls(dom) {
     d.up = keys.has('KeyU') || held.up;
     d.down = keys.has('KeyJ') || held.down;
     d.quiet = keys.has('KeyQ') || held.quiet;          // the boat's quiet motor (hold)
+    d.ram = keys.has('KeyB') || held.ram;              // the boat: RAM (Chapter 5)
+    d.turn = keys.has('KeyV') || held.turn;            // the boat: QUICK TURN
     d.handbrake = keys.has('Space') || held.hand;
     d.horn = keys.has('KeyH') || held.horn;
     return input;

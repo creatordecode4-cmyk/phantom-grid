@@ -1466,6 +1466,130 @@ It reads Chapter 3's `chip_holder` (Lena is in the garage only when she kept the
 - The draw calls stay the same (the same views measured before and after: 312 and 312); the denser crowns add
   about 7 % triangles.
 
+## Chapter 5: RASK (version 9.0)
+
+The next night. **Phantoms' minds live in physical servers** (HALO cores), and KVI ships those servers by sea,
+through **Rustwater Docks**. The docks belong to **Viktor Rask** (61), an old smuggler. To get a look at the
+cargo, Nate has to work for him. Serious, grey, wet, dockside: short plain lines, feelings through objects (a
+child's wristwatch that stopped, a name on a box, a drawing of a ship, a bank record in the dark).
+
+### The missions, and how to start each one
+
+Start any of them from the title screen (**MISSIONS**) or with the address option.
+
+| # | Mission | What happens | Address option |
+|---|---|---|---|
+| 5.0 | **MEETING VIKTOR RASK** | Mace's garage: Lena points at a map of the docks. "KVI moves the servers by sea. Rask moves everything by sea. If you want the route, you work for him." (If Nate raced Dante or took Theo's jacket: "The Chrome Wolves trust you now.") Mace looks away when she says the name. Drive to the docks, up the steel stairs. Rask sits behind his desk, his back to the window over the yards; a child's wristwatch lies face up on the desk. He does not offer a seat: "I do not ask who sends you. I ask what you can carry." **Choice.** Then the test: carry **one crate** to a grey van past a Guard on foot with a torch (heavy: you walk slowly and cannot run; **SET DOWN** / **PICK UP**). | `?story=chapter05.0` |
+| 5.1 | **THE LATE SHIPMENT** | Rask's boat was stopped at sea and its crate went over the side. Take Rask's launch from the pier, **tail the Guard cutter** (not too close, not too far), pick up the **floating crate** when its little light blinks, then **2 Guard boats** chase you (2 stars): **RAM** bumps a boat off its line, **TURN** spins you round, planks on **floating junk** are jumps. Escape into **Rask's channel** to the slip. | `?story=chapter05.1` |
+| 5.2 | **CONTAINER 77** | The watched yard B at night: guards on foot with torches, two **floodlights** sweeping from their masts, a drone, the **gantry crane** that lowers its container into the cross aisles (a moving wall: wait for the gap). In through a cut in the fence, **hack the gate box** (the mini-game of Chapter 3), get into the **truck** (the armored van made 18 % bigger) with **container 77** on its **trailer**, out through the gate, into Rask's back warehouse. The **CARGO** bar: every hard hit, and the trailer scraping walls and stacks, breaks a little; at 0 the mission fails. Seen? Then it becomes a chase: lose the Guard before you drive to Rask's door. | `?story=chapter05.2` |
+| 5.3 | **WHAT IS INSIDE** | Quiet, no music at all. The container is opened in the back warehouse: rows of **HALO cores**, cold blue light. One crate has a paper label: **M. RASK**. Nate stops. Rask has come in without a sound; he puts his hand on the crate and looks at the **stopped watch on his wrist**. A long silence. Then, quietly: "Whoever brings Mila back, the Docks are theirs." | `?story=chapter05.3` |
+| 5.4 | **TRUST** | Dawn, gulls. Rask gives Nate a **sealed package** for the tea stall at the market. Halfway, under a lamp: **Choice** - open it (a child's drawing of a ship: a red ship, two people on its deck, MILA) or leave it sealed. The old woman at the stall puts it in a tin with the others: "One every week. I keep them for him." | `?story=chapter05.4` |
+| 5.5 | **THE END OF ACT ONE** | Mace's garage at night, without its lamp. Lena waits in the dark with a bank record on her screen: the day after the crash, KVI paid **200,000 credits to Marcus Doyle**. Nate reads it twice. "I didn't want to tell you in front of him." He turns and looks at Mace, asleep in his chair by the open door, the radio on. **Choice:** wake him now, or wait. A long fade on the rain. **END OF ACT ONE.** | `?story=chapter05.5` |
+
+### Chapter 5 choices and flags
+
+| Flag | Set when |
+|---|---|
+| `rask_stance` | `'honest'` ("I don't work for crooks") or `'paid'` ("I work for anyone who can pay") in 5.0. Rask's lines, Ivo's lines and the crews follow it |
+| `rask_mila_seen` | Nate saw the HALO core labelled M. RASK (5.3) |
+| `opened_package` | Nate opened Rask's sealed package (5.4). The woman at the tea stall and Rask notice |
+| `mace_payment_seen` | Nate saw KVI's payment to Mace (5.5) |
+| `confront_mace` | `true`: wake him now (Chapter 6 opens tense), `false`: wait for the right moment (it opens quietly) |
+| `container_taken`, `gate_hacked` | container 77 reached Rask's warehouse; the gate was opened with the hack (not by the alarm) |
+
+It reads Chapter 4's `dante_response` and `jacket_taken` (Lena's line about the Chrome Wolves; Nate wears the jacket).
+
+### RUSTWATER DOCKS (`src/city/docks.js`, its plan is `docks` in `src/city/layout.js`)
+
+East of Neon Mile along the coast, past the highway (x -900 .. -499): **Dock Road** with a gate booth, **two
+container yards** (stacks of rusted red, blue, grey ... containers two to four high, aisles and cross aisles for
+chases; yard B fenced, with barbed wire and a cut in the fence by the channel), **four ship-to-shore cranes** on
+the quay, **two gantry cranes** that drive along their yards and lower a container into the cross aisles (a
+moving obstacle with its own collision), **two cargo ships** at the quay (they bob gently), the **channel** from
+the sea with a **slip** for boats at its end, a **fishing pier**, **rail tracks** with wagons, **two warehouses**
+with roller doors, loading docks and steel walkways, the **covered smuggler market**, the **fuel depot**, and
+**Rask's building** (the back warehouse below - hollow, the truck drives in - and his office above it, with a
+desk, a lamp, shelves, a map, and a window over the yards). Floodlight masts, puddles, oil, tire marks, pallets,
+drums, forklifts. Small future touches: autonomous carriers on the quay, drone loaders over the ships, green
+tracking tags on containers. **22 dock workers** in orange vests and hard hats (a few in rain gear) stand at their
+work or walk their rounds; the story can send them home.
+
+- Containers: two instanced shapes (detailed near the player, plain boxes far away), one draw call each, their
+  colors per copy; the corrugated ribs and the rust come from the metal shader. Everything that does not move is
+  merged into the city's shared meshes.
+- The sea in the harbor is deep water at a quay wall (no shallows, no surf, a thin line of foam); the channel has
+  its own water sheet. The minimap and the big map draw the yards, the road, the channel, the sheds and the ships;
+  the GPS follows Neon Mile on into Dock Road.
+
+### Cargo and the truck (`src/vehicles/cargo.js`)
+
+`{ do: 'cargo', vehicle, kind: 'crate' | 'trailer', label, heavy, fragile }`. A **crate** sits on the back of the
+roof; a **trailer** is hitched behind and follows the truck like a real one (it cuts corners and stops at walls on
+its own). **Heavy** (0..1) makes the engine pull less and the brakes need longer (`v.heavy` in `physics.js`).
+**Integrity** drops with hard hits (more than about 2.4 m/s into something) and while the trailer scrapes; it is the
+thin **CARGO** bar under the speed (green, amber, red). `spawn` takes `scale` (a bigger copy of any vehicle: body,
+wheels, lights and collision grow together).
+
+### On foot with a crate
+
+`{ do: 'carryTo', prop, at, radius }`: **PICK UP** next to the crate, carry it (slower, no running), **SET DOWN**
+anywhere (it lies there and can be picked up again), **PUT IT DOWN** at the place.
+
+### Hands that really hold things (`carryPose` in `src/characters/proceduralAnim.js`)
+
+A box held with both hands - the parcels of Chapter 1, the crate and the package of Chapter 5, Rask and the woman at
+the tea stall with the package - sits where the arms can hold it (in front of the belly, it rides up and down with the
+hips while walking), and the arm solver puts a palm flat on each side of it, the fingers forward. Before, the arms
+had a fixed pose and the box a fixed place: it floated under the hands or went through them. Dr. Solberg's case
+(Chapter 1) now hangs below her hand, its handle in her closed fingers (`grip`), instead of her fingers going into it.
+
+### The boat in Chapter 5 (`stepBoat` in `src/vehicles/physics.js`)
+
+- **RAM** (button, or B): a hard push forward for 0.6 s (then 3 s to recharge). A Guard boat it touches is thrown off
+  its line and loses its motor for a moment.
+- **TURN** (button, or V): half a circle on the spot in 0.75 s; most of the speed is lost.
+- **Floating junk** (`debrisRamp` prop): up its plank at speed and the boat jumps, lands with a splash.
+- The boat may go into Rask's channel; you get out at the **slip** or at the **pier** ("STEER THE BOAT TO THE SLIP OR
+  THE PIER TO GET OUT" anywhere else in the harbor). The Guard's boats now come to the harbor and the channel too
+  (`water` of docks.js: free places on the water, the way in and out of the channel).
+
+### Guards on foot and floodlights (`src/ai/wanted.js`)
+
+`sentries` take `kind: 'guard'` (a crowd character in rain gear with a torch walks the path; the story gives his
+figure with `actor`) and `kind: 'flood'` (a floodlight on a mast that sweeps slowly). Both fill the stealth meter
+like the drones of Chapter 3; the stacks block their view.
+
+### Sound (made in code, `src/audio/music.js`)
+
+In the docks: rain on corrugated metal and on containers, drops plinking on steel, the low idle of ships and trucks,
+a crane groaning when one moves near you (and the clank of its spreader), a ship's horn far out at sea, a forklift
+backing up, a chain rattling, **gulls in the morning**. The tense pad only plays in the heist and the chases; the
+reveal is in total silence. Rask speaks over the radio in some missions (the subtitle says RADIO).
+
+### Mobile UX
+
+Truck: the normal driving buttons (gas, brake, handbrake, horn); the CARGO bar under the speed. Boat: QUIET, **RAM**
+(where NITRO sits on a car) and **TURN** (where LIGHT sits). On foot: the big action button shows PICK UP / SET DOWN /
+PUT IT DOWN / GIVE. Objective text and subtitles stay where they were (thumb-safe).
+
+### Performance (measured in the test robot's software renderer at MEDIUM)
+
+From the player's camera the docks take 80 - 160 draw calls (Dock Road 158, yard B 138, yard A 125, the market
+124, the quay 92, the office 78; the city itself is 100 - 170) and 0.7 - 0.8 million triangles. The plain far boxes
+of the containers cut a wide view over the yards from about 2.4 to 1.4 million triangles. At most 22 dock workers
+are drawn near the port (one draw call, 11 on LOW, where the carriers and drone loaders also stand still); the
+city's own walkers do not come into the docks.
+
+### What was built for it
+
+`src/city/docks.js` (the district, the moving cranes, the crews, the harbor water for the Guard), `docks` in
+`src/city/layout.js` (the plan, the ground, the channel, the pier), a chain-link fence picture and material, the
+harbor water mode of the sea shader, `src/vehicles/cargo.js`, `rescale` of a vehicle, RAM / TURN / ramps in the boat
+physics, guards and floodlights in `wanted.js`, the steps `cargo`, `carryTo`, `pickup`, `docks` in the story engine,
+`src/story/propsDocks.js` (the watch, the crate, the floating crate, the floating junk, the gate, the HALO racks and
+crates, the open container, the package and the drawing, the tin, the bank laptop, the map, the torch, the armchair),
+the docks ambience in `src/audio/music.js`, and `src/story/chapters/chapter05.js` (only data).
+
 ## Known limits
 
 - Traffic cars drive on rails: when hit they stop and honk, but they are not pushed away. Parked
@@ -1520,4 +1644,10 @@ It reads Chapter 3's `chip_holder` (Lena is in the garage only when she kept the
   body with a shader outfit (clothes do not swing). On foot in The Sunk the GPS arrow points straight at the
   goal (only boats get a line along the canals). The water, the mist and the stealth were tuned in a software
   renderer only.
+- CHAPTER 5 / THE DOCKS: played to the end only by a test robot in a software renderer (it drives the truck and
+  the boat along written lines and is put at the gate box, it does not sneak). How hard the stealth in yard B is, how
+  wide the trailer swings, the boat chase and RAM / TURN still need real play on a phone. The dock workers are simple
+  figures (the same body as the city's walkers, with vests and hard hats); they do not react to the player. The
+  office and the back warehouse are only seen in the film scenes (you cannot walk up the stairs). The ships do not
+  move away from the quay. Rask holds his hands over the crate (there is no pose for a flat hand on it).
 - Shop names, signs and adverts are invented. No real brands are used.

@@ -105,6 +105,8 @@ export function stepCar(v, input, dt, world) {
     if (v.reverse) drive = -T.accel * 0.55 * gas * clamp(1 + fwd / 11, 0, 1);
     else if (n < 1.0) drive = T.accel * gas * torque(n) * gearPush(v.gear) * (v.nitroOn ? 1.75 : 1) * (1 + 0.55 * (v.boost || 0)) * (1 - 0.35 * v.damage);
   }
+  // A HEAVY LOAD (Chapter 5: a crate, a trailer with a container; v.heavy 0..1): the engine pulls less
+  if (v.heavy) drive *= 1 - 0.45 * v.heavy;
   // SPEED LIMITER (story: Nate's van): at v.limit (m/s) the engine simply stops pulling
   fx.limited = false;
   if (v.limit > 0 && !v.reverse) {
@@ -120,6 +122,7 @@ export function stepCar(v, input, dt, world) {
   if (v.limit > 0 && fwd > v.limit + 0.4) resist += (fwd - v.limit) * 1.6;     // (rolling faster than the limiter allows: it holds the car back)
   let brakeAcc = brake > 0.02 ? brake * 13.5 : 0;
   if (input.handbrake) brakeAcc = Math.max(brakeAcc, 5.5);
+  if (v.heavy) brakeAcc *= 1 - 0.3 * v.heavy;                    // (a heavy load needs longer to stop)
 
   // ------------------------------------------------------------ weight on the front and rear tires
   const h = 0.52;                                               // height of the center of gravity (m)
@@ -281,7 +284,24 @@ export function stepSimpleCar(v, targetX, targetZ, wantSpeed, dt, world) {
 //   world: { waterLevel, shoreZ (the beach: it cannot go past it), minX, maxX, minZ }
 // ---------------------------------------------------------------------------
 export function initBoatState(v) {
-  Object.assign(v, { vx: 0, vz: 0, forward: 0, slide: 0, steer: 0, roll: 0, pitch: 0, wave: Math.random() * 10, damage: 0, fx: { throttle: 0, slip: 0, impact: 0, wake: 0 } });
+  Object.assign(v, { vx: 0, vz: 0, forward: 0, slide: 0, steer: 0, roll: 0, pitch: 0, wave: Math.random() * 10, damage: 0, fx: { throttle: 0, slip: 0, impact: 0, wake: 0 },
+    // Chapter 5: RAM (a short hard push forward), QUICK TURN (half a circle in under a second), jumps from floating junk
+    ramT: 0, ramCool: 0, turnT: 0, turnCool: 0, turnDir: 1, airY: 0, airVy: 0, air: false, stunT: 0 });
+}
+// is the boat on the plank of a floating ramp, going up it? (world.ramps: { x, z, heading, len, w, h })
+function onRamp(v, world, speed) {
+  if (!world.ramps || !world.ramps.length || speed < 5) return null;
+  for (const r of world.ramps) {
+    const dx = v.x - r.x, dz = v.z - r.z;
+    if (dx * dx + dz * dz > (r.len + 4) ** 2) continue;
+    const s = Math.sin(r.heading), c = Math.cos(r.heading);
+    const along = dx * s + dz * c, side = dx * c - dz * s;           // in the ramp's own frame (+along = up the plank)
+    if (Math.abs(side) > r.w / 2 + 0.3 || along < -r.len / 2 || along > r.len / 2) continue;
+    const goes = (v.vx * s + v.vz * c) / speed;                      // moving up the plank?
+    if (goes < 0.6) continue;
+    return { r, top: along > r.len / 2 - 1.2 };
+  }
+  return null;
 }
 export function stepBoat(v, input, dt, world) {
   const T = v.type, fx = v.fx;
@@ -294,17 +314,31 @@ export function stepBoat(v, input, dt, world) {
   const accel = T.accel * (v.quiet ? 0.55 : 1) * (v.rusty ? 0.82 : 1);
   let fxv = Math.sin(v.heading), fzv = Math.cos(v.heading);
   let fwd = v.vx * fxv + v.vz * fzv;
-  const thrust = (input.gas - input.brake * 0.6) * accel;
+  // in the air (off a ramp): no water under the motor or the rudder
+  let thrust = v.air ? 0 : (input.gas - input.brake * 0.6) * accel;
   fx.throttle = Math.abs(input.gas - input.brake);
+  fx.ram = false; fx.turned = false; fx.landed = 0;
+  // RAM: a short, hard push forward (then a few seconds before the next one)
+  v.ramCool = Math.max(0, (v.ramCool || 0) - dt); v.turnCool = Math.max(0, (v.turnCool || 0) - dt);
+  if (input.ram && v.ramCool <= 0 && !v.air) { v.ramT = 0.6; v.ramCool = 3; fx.ram = true; }
+  if (v.ramT > 0) { v.ramT -= dt; thrust += 11; top *= 1.18; }
+  // QUICK TURN: the boat spins half a circle on the spot (it loses most of its speed)
+  if (input.turn && v.turnCool <= 0 && !v.air && !(v.turnT > 0)) {
+    v.turnT = 0.75; v.turnCool = 2.2; v.turnDir = input.steer > 0.15 ? -1 : 1; fx.turned = true;
+    v.vx *= 0.45; v.vz *= 0.45; fwd *= 0.45;
+  }
+  // a boat that was rammed hard loses its line for a moment (computer boats)
+  if (v.stunT > 0) { v.stunT -= dt; thrust *= 0.25; }
   v.steer = approach(v.steer, input.steer, 1.6, dt);
   // the rudder only works when water flows past it
-  v.heading -= v.steer * 0.85 * clamp(fwd / 7, -0.6, 1) * dt;
+  if (v.turnT > 0) { v.turnT -= dt; v.heading -= v.turnDir * (Math.PI / 0.75) * dt; }
+  else if (!v.air) v.heading -= v.steer * 0.85 * clamp(fwd / 7, -0.6, 1) * dt;
   fxv = Math.sin(v.heading); fzv = Math.cos(v.heading);
   const rx = -fzv, rz = fxv;
   fwd = v.vx * fxv + v.vz * fzv;
   let slide = v.vx * rx + v.vz * rz;
-  fwd += thrust * dt - (fwd * Math.abs(fwd) * (accel / (top * top)) + fwd * 0.25) * dt;
-  slide *= Math.exp(-1.6 * dt);                                  // a boat slides sideways for a while
+  fwd += thrust * dt - (v.air ? 0.02 * fwd : (fwd * Math.abs(fwd) * (accel / (top * top)) + fwd * 0.25)) * dt;
+  slide *= Math.exp((v.air ? -0.2 : -1.6) * dt);                 // a boat slides sideways for a while
   v.vx = fxv * fwd + rx * slide; v.vz = fzv * fwd + rz * slide;
   v.forward = fwd; v.slide = slide;
   v.x += v.vx * dt; v.z += v.vz * dt;
@@ -315,11 +349,24 @@ export function stepBoat(v, input, dt, world) {
   if (v.z < world.minZ) { v.z = world.minZ; v.vz = Math.abs(v.vz) * 0.3; }
   if (v.x < world.minX) { v.x = world.minX; v.vx = Math.abs(v.vx) * 0.3; }
   if (v.x > world.maxX) { v.x = world.maxX; v.vx = -Math.abs(v.vx) * 0.3; }
+  // RAMPS (Chapter 5): up the plank of floating junk, then off its end into the air
+  const sp = Math.hypot(v.vx, v.vz);
+  if (!v.air) {
+    const on = onRamp(v, world, sp);
+    if (on) {
+      v.airY = Math.max(v.airY, on.r.h * 0.6);
+      if (on.top) { v.air = true; v.airVy = Math.min(8.5, 2 + sp * 0.3); v.airY = on.r.h; }
+    } else v.airY = Math.max(0, v.airY - dt * 3);
+  } else {
+    v.airY += v.airVy * dt; v.airVy -= 9.81 * dt;
+    if (v.airY <= 0) { fx.landed = Math.abs(v.airVy); v.air = false; v.airY = 0; v.airVy = 0; fwd *= 0.82; v.vx *= 0.82; v.vz *= 0.82; }
+  }
   // waves: three slow swells with different rhythms
   v.wave += dt;
   const t = v.wave, k = clamp(1 - Math.abs(fwd) / (top * 1.5), 0.4, 1) * (canal ? 0.4 : 1);
-  v.y = world.waterLevel - 0.5 + (Math.sin(t * 1.25 + v.x * 0.08) * 0.13 + Math.sin(t * 0.8 + v.z * 0.06) * 0.1) * k + Math.abs(fwd) * 0.006;
-  v.pitch += (-clamp(fwd / top, -0.3, 1) * 0.085 - thrust * 0.004 + Math.sin(t * 1.25 + 1.1) * 0.03 * k - v.pitch) * Math.min(1, dt * 3);
+  v.y = world.waterLevel - 0.5 + (Math.sin(t * 1.25 + v.x * 0.08) * 0.13 + Math.sin(t * 0.8 + v.z * 0.06) * 0.1) * k + Math.abs(fwd) * 0.006 + v.airY;
+  const airPitch = v.air ? clamp(-v.airVy * 0.035, -0.25, 0.3) : 0;
+  v.pitch += (-clamp(fwd / top, -0.3, 1) * 0.085 - thrust * 0.004 + Math.sin(t * 1.25 + 1.1) * 0.03 * k + airPitch - v.pitch) * Math.min(1, dt * 3);
   v.roll += (v.steer * clamp(fwd / top, 0, 1) * 0.2 + Math.sin(t * 0.95) * 0.04 * k - v.roll) * Math.min(1, dt * 3);
   // (the wake is measured against the boat's real top speed: the quiet motor leaves almost none)
   fx.wake = clamp(Math.abs(fwd) / (T.topSpeed / 3.6 * 0.8), 0, 1);

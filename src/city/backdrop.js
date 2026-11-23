@@ -30,11 +30,14 @@ function buildOcean(ctx) {
   const L = ctx.layout;
   const mb = new MeshBuilder();
   // (not over The Sunk: its canals have their own water, see sunk.js)
+  // (and not past the quay of the docks, Chapter 5: the channel there has its own sheet, see docks.js)
   const edge = L.beach.minZ + 8;
-  mb.groundRect(-9000, -9000, 9000, Math.min(edge, SUNK.minZ), L.ocean.level, 1);
-  if (edge > SUNK.minZ) {
-    mb.groundRect(-9000, SUNK.minZ, SUNK.minX, edge, L.ocean.level, 1);
-    mb.groundRect(SUNK.maxX, SUNK.minZ, 9000, edge, L.ocean.level, 1);
+  // (the docks start where the beach ends: the quay line there is the same as the edge of The Sunk)
+  const D = L.docks, low = D ? Math.min(D.minZ, SUNK.minZ) : SUNK.minZ;
+  mb.groundRect(-9000, -9000, 9000, Math.min(edge, low), L.ocean.level, 1);
+  if (edge > low) {
+    mb.groundRect(D ? D.maxX : -9000, low, SUNK.minX, edge, L.ocean.level, 1);
+    mb.groundRect(SUNK.maxX, low, 9000, edge, L.ocean.level, 1);
   }
   const mesh = new THREE.Mesh(mb.build(false), ctx.mats.ocean);
   mesh.name = 'ocean';
@@ -258,7 +261,9 @@ function buildHighway(ctx) {
 
   // ---- wall along the east edge of the play area (under the highway) ----
   con(0.85);
-  pm.box(L.bounds.minX - 1.5, 0, L.neon.roadMaxZ, L.bounds.minX - 1.1, 2.7, L.bounds.maxZ + 220, tile, 'nsewt');
+  // (at the old east edge: since Chapter 5 the play area reaches further east only over the docks, south of here)
+  const E = L.raw.oldEastEdge ?? L.bounds.minX;
+  pm.box(E - 1.5, 0, L.docks ? L.docks.maxZ : L.neon.roadMaxZ, E - 1.1, 2.7, L.bounds.maxZ + 220, tile, 'nsewt');
 }
 
 // ---------------------------------------------------------------------------
@@ -385,8 +390,8 @@ function buildEdgeRows(ctx) {
     simpleBuilding(ctx, { minX: x, maxX: x + len, minZ: city.maxZ + 14, maxZ: city.maxZ + 14 + rng.range(26, 40) }, rng.int(4, 9), rng);
     x += len + rng.range(0, 3);
   }
-  // east of the highway: low warehouses with few windows
-  for (let z = L.neon.roadMaxZ + 10; z < city.maxZ; ) {
+  // east of the highway: low warehouses with few windows (north of Rustwater Docks)
+  for (let z = (L.docks ? L.docks.maxZ : L.neon.roadMaxZ) + 12; z < city.maxZ; ) {
     const len = rng.range(40, 90);
     simpleBuilding(ctx, { minX: L.highway.minX - 70 - rng.range(0, 20), maxX: L.highway.minX - 14, minZ: z, maxZ: z + len }, rng.int(2, 3), rng,
       { brick: rng.chance(0.3), tint: rng.pick([[0.7, 0.72, 0.76], [0.82, 0.8, 0.76], [0.6, 0.62, 0.6], [1, 1, 1]]), windows: rng.chance(0.4) });

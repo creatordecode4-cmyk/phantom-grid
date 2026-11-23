@@ -45,6 +45,15 @@
 //     { off: true }: the story drives the player's car for a moment), zero ({ strike: {...} } | { stare: true } | { stop:
 //     true }: the black car of src/ai/zero.js; its moments are events 'zero:pass', 'zero:hit', 'zero:dark', 'zero:stare',
 //     'zero:away', 'zero:gone'), jacket ({ on: true }: Theo's jacket in the car and on the screen)
+//   CHAPTER 5: cargo ({ vehicle, kind: 'crate' | 'trailer', label, heavy, fragile } | { vehicle, off: true }: a load
+//     that makes the vehicle slow and that breaks a little with every hard hit - events 'cargo:hit', 'cargo:scrape',
+//     'cargo:broken'; condition { cargoUnder: 0..1 }), spawn takes scale (a bigger copy: the armored van as a truck) and
+//     cargo, carryTo ({ prop (a crate on the ground), at, radius }: pick it up, carry it there - slower - and put it down;
+//     it can be put down anywhere and picked up again), pickup ({ prop, radius }: drive the boat or the car to it),
+//     docks ({ crew: false }: the dock workers go home). A prop with userData.boatRamp (debrisRamp) is a jump for boats.
+//   HANDS ON THINGS: prop with { on: actor, carry: true } = a box held in front with both hands (a palm on each side,
+//     the arms solved to it, like player carry); a prop in a hand (bone 'hand_R') with grip (degrees, or the maker's
+//     userData.grip, e.g. the case's handle) closes the fingers of that hand around it.
 //   BUSTED: when the real Guard catches the player, a short line, a fine, and the last checkpoint again.
 //   STEPS THAT HOLD OTHER STEPS
 //     if (cond, then, else), seq (steps in order), meanwhile (steps in order, beside the main story)
@@ -222,6 +231,9 @@ export function createStory(G) {
     if (c.spotted !== undefined && !!police.spotted !== !!c.spotted) return false;
     if (c.tunnel !== undefined && !!(city.sunk && city.sunk.inTunnel(p.x, p.z)) !== !!c.tunnel) return false;
     if (c.boat !== undefined && (vehicles.state === 'driving' && !!vehicles.active && vehicles.active.role === 'boat') !== !!c.boat) return false;
+    // The docks (Chapter 5): how whole the load still is; the crate in the hands
+    if (c.cargoUnder !== undefined) { const l = vehicles.cargo.info(c.cargoOf ? car(c.cargoOf) : vehicles.active); if (!l || !(l.integrity < c.cargoUnder)) return false; }
+    if (c.carrying !== undefined && (held === '_carry') !== !!c.carrying) return false;
     return true;
   }
   // rules: conditions with something to do. Returns the text key of a rule that fails the mission (or null).
@@ -323,21 +335,42 @@ export function createStory(G) {
     if (!o) return;
     things.delete(id);
     if (held === id) { player.hold(null); held = false; player.setPose('idle'); }
+    if (o.carrier) actors.carry(o.carrier, null);          // (out of an actor's hands)
+    if (o.grip) actors.grip(o.grip.a, o.grip.tag, 0);
     if (o.holder.parent) o.holder.parent.remove(o.holder);
     for (const c of o.solid || []) city.colliders.removeCircle(c);   // (its posts no longer stop cars)
+    if (o.ramp) { const R = vehicles.seaWorld.ramps, i = R.indexOf(o.ramp); if (i >= 0) R.splice(i, 1); }
     // (pictures are shared between props and stay; shapes and materials are freed)
     // (a mesh can have a list of materials: one for each side of a box)
     o.inner.traverse((m) => { if (m.isMesh) { m.geometry.dispose(); for (const q of Array.isArray(m.material) ? m.material : [m.material]) if (q && q.dispose) q.dispose(); } });
   }
+  // how big a thing is and where its middle is, in the frame of the one who holds it: { w, h, d, cx, cy, cz }
+  const _bb = new THREE.Box3(), _bc = new THREE.Vector3();
+  function boxOf(holder) {
+    holder.position.set(0, 0, 0);
+    holder.updateMatrixWorld(true);
+    _bb.setFromObject(holder);
+    _bb.getCenter(_bc);
+    return { w: _bb.max.x - _bb.min.x, h: _bb.max.y - _bb.min.y, d: _bb.max.z - _bb.min.z, cx: _bc.x, cy: _bc.y, cz: _bc.z };
+  }
   // a parcel in the player's arms. what: { kind, size } or null
   function carry(what) {
     if (held) removeThing(held);
+    if (player.setBurden) player.setBurden(0);
     if (!what) return;
-    STEP.prop({ id: '_carry', kind: what.kind || 'parcel', size: what.size, at: [0, 0, 0] });
+    STEP.prop({ ...what, id: '_carry', kind: what.kind || 'parcel', at: [0, 0, 0] });
     const o = things.get('_carry');
+    // (in the hands it is not an obstacle: take away the circles it put into the collision grid)
+    for (const c of o.solid || []) city.colliders.removeCircle(c);
+    o.solid = null;
     scene.remove(o.holder);
-    o.holder.position.set(0, 1.02, 0.36);
-    player.hold(o.holder); held = '_carry'; player.setPose('carry');
+    // (its size: the hands go on its sides; without a skeleton it simply sits in front of the body)
+    const size = boxOf(o.holder);
+    o.holder.position.set(0, what.kind === 'crate' ? 1.0 : 1.02, what.kind === 'crate' ? 0.4 : 0.36);
+    o.holder.userData.solid = null;
+    player.hold(o.holder, size); held = '_carry'; player.setPose('carry');
+    // a heavy thing in the arms: he walks slower and cannot run (the crate of Chapter 5)
+    if (player.setBurden) player.setBurden(what.heavy === undefined ? (what.kind === 'crate' ? 0.6 : 0) : what.heavy);
   }
   function playTape(n, s = {}) {
     const my = gen, auto = s.then === undefined && s.auto !== false;
@@ -458,6 +491,8 @@ export function createStory(G) {
     if (s.speed) { v.forward = s.speed / KMH; v.vx = Math.sin(face) * v.forward; v.vz = Math.cos(face) * v.forward; }   // (it is already rolling)
     if (s.detail && v.needDetail) v.needDetail();              // (the detailed model now: glass you can see through, the inside)
     if (s.rusty) v.rusty = true;                               // an old boat: slower to pick up, a rough motor (Chapter 3)
+    if (s.scale) vehicles.rescale(v, s.scale);                 // a bigger copy (Chapter 5: the armored van as the big truck)
+    if (s.cargo) vehicles.cargo.attach(v, s.cargo);            // a load on it: a crate, or a trailer with a container
     STEP.vehicleSet(s);
   };
   STEP.vehicleSet = (s) => {
@@ -575,11 +610,20 @@ export function createStory(G) {
       if (!b) return;
       if (s.p) holder.position.set(s.p[0], s.p[1], s.p[2]);
       b.add(holder);
+    } else if (s.on && s.carry) {
+      // a box held in front with both hands (Rask holds out the package): the hands go on its sides
+      const a = actors.get(s.on);
+      if (!a) return;
+      actors.carry(a, holder, boxOf(holder));
+      o.carrier = a;
     } else if (s.on) {
       const a = actors.get(s.on);
       if (!a) return;
       if (s.p) holder.position.set(s.p[0], s.p[1], s.p[2]);
       actors.attach(a, s.bone || 'hand_R', holder);
+      // something held by a handle (a case): the fingers of that hand close around it
+      const curl = s.grip ?? inner.userData.grip;
+      if (curl && /^hand_[LR]$/.test(s.bone || 'hand_R')) { const tag = (s.bone || 'hand_R').slice(-1); actors.grip(a, tag, curl); o.grip = { a, tag }; }
       // along: the name of the next bone (a bandage around a forearm: it lies along the bone, near its end)
       if (s.along && a.rig && a.rig.bones[s.along]) {
         const d = a.rig.bones[s.along].position.clone();
@@ -609,6 +653,13 @@ export function createStory(G) {
           }
         }
       }
+    }
+    // (floating junk with a plank: a jump for boats - the boat physics finds it in seaWorld.ramps)
+    const br = inner.userData.boatRamp;
+    if (br && !s.in && !s.on) {
+      const p = holder.position;
+      o.ramp = { x: p.x, z: p.z, heading: holder.rotation.y, len: br.len * (s.scale || 1), w: br.w * (s.scale || 1), h: br.h * (s.scale || 1) };
+      vehicles.seaWorld.ramps.push(o.ramp);
     }
     // (a delivery drone: it flies up and down a line of points)
     if (s.fly) o.fly = { path: makePath(s.fly.path), y: s.fly.y || 9, speed: s.fly.speed || 7, s: 0 };
@@ -730,12 +781,28 @@ export function createStory(G) {
     const o = {};
     for (const k of ['known', 'disguised', 'cars', 'drones', 'gates', 'roadblocks', 'startStars', 'ram', 'boats', 'stealth', 'hear']) if (k in s) o[k] = s[k];
     if ('patrol' in s) o.patrol = s.patrol ? (() => { const q = xz(s.patrol.at); return { x: q[0], z: q[1], r: s.patrol.r || 120, cars: s.patrol.cars || 0, drones: s.patrol.drones || 0, boats: s.patrol.boats || 0 }; })() : null;
-    if ('sentries' in s) o.sentries = s.sentries || [];
+    // (a sentry with an actor: a guard on foot - Chapter 5. His figure walks where the sentry goes, a torch in his hand)
+    if ('sentries' in s) o.sentries = (s.sentries || []).map((sp) => (sp.actor ? { ...sp, kind: sp.kind || 'guard', body: guardBody(sp) } : sp));
     if (realPolice) o.freeRoam = false;
     if (Object.keys(o).length) police.configure(o);
     if (s.stars !== undefined) police.setStars(s.stars, { search: s.search ? xz(s.search) : null, seen: !!s.seen, radius: s.radius });
     if ('announce' in s) { announce = !!s.announce; paNext = clock + (s.announceIn || 12); }
   };
+  // the figure of a guard on foot (a sentry of wanted.js moves it): a crowd character in rain gear with a torch
+  const GUARD_CLOTH = { pants: [0.05, 0.05, 0.06], coat: [0.06, 0.08, 0.11], patch: [0.55, 0.6, 0.12], scarf: [0.05, 0.05, 0.06], head: [0.04, 0.04, 0.05] };
+  function guardBody(sp) {
+    const id = sp.actor;
+    if (!actors.get(id)) {
+      STEP.actor({ id, extra: sp.extra || GUARD_CLOTH, name: sp.name || 'name.guard', at: sp.path[0], face: sp.face || 0, pose: 'idle', look: null, mood: 'stern' });
+      STEP.prop({ id: id + '_torch', kind: 'torch', on: id, bone: 'hand_R', p: [0, -0.08, 0.04] });
+    }
+    return (x, z, heading, speed) => {
+      const a = actors.get(id);
+      if (!a) return;
+      if (speed > 0) actors.walkTo(a, x, z, speed * 1.15, null);
+      else actors.walkTo(a, x, z, 1.3, heading);
+    };
+  }
   // the news line at the bottom of the screen: { text: key } or { text: null }
   STEP.news = (s) => { newsText = s.text ? t(s.text) : null; };
   // the look of a recording: { state: 'on' | 'glitch' | 'locked' | 'off', date, file, lock (keys) }
@@ -1010,6 +1077,62 @@ export function createStory(G) {
       if (pressed && s.prop && !s.keep) removeThing(s.prop);
       return pressed;
     });
+  };
+  // CARRY A CRATE THERE (Chapter 5): { prop: the crate lying somewhere, at: where it must go, radius, size, heavy }
+  // PICK UP near the crate, DROP anywhere (it lies there and can be picked up again); done when it is put down
+  // at the place (or carried into it with drop: false)
+  STEP.carryTo = (s) => {
+    let lying = s.prop || null, act = null, n = 0;
+    const size = s.size || 1;
+    const goalAt = pt(s.at);
+    return goal(s, s.at, (dt, st) => {
+      const q = player.position;
+      const there = Math.hypot(q.x - goalAt[0], q.z - goalAt[2]) < (s.radius || 2.5);
+      if (held === '_carry') {
+        st.marker = null; st.text = null;
+        if (there && s.drop === false) { carry(null); return true; }
+        ui.prompt(t(there ? 'ui.put_down' : 'ui.set_down'), () => { act = 'drop'; });
+        if (act === 'drop') {
+          act = null;
+          carry(null);
+          if (there) return true;
+          // it lies at his feet now
+          lying = '_crate' + (n++);
+          const f = [q.x + Math.sin(player.heading) * 0.7, q.z + Math.cos(player.heading) * 0.7];
+          STEP.prop({ id: lying, kind: 'crate', size, at: f, face: Math.round((player.heading * 180) / Math.PI) });
+          sound.thump(0.6);
+        }
+        return false;
+      }
+      // not carrying: go to the crate and pick it up
+      const o = lying && things.get(lying);
+      if (!o) { carry({ kind: 'crate', size, heavy: s.heavy }); return false; }      // (no crate in the world: he has it)
+      o.holder.getWorldPosition(_v);
+      st.marker = { prop: lying }; st.text = t(s.pickText || 'c5.obj.pick_crate');
+      const near = vehicles.state === 'none' && Math.hypot(_v.x - q.x, _v.z - q.z) < 1.9;
+      ui.prompt(near ? t('ui.pick_up') : null, () => { act = 'pick'; });
+      if (act === 'pick') { act = null; removeThing(lying); lying = null; carry({ kind: 'crate', size, heavy: s.heavy }); sound.burst(900, 0.6, 0.05, 0.01, 0.12); }
+      return false;
+    }, () => { if (held === '_carry' && s.keepHeld === false) carry(null); });
+  };
+  // drive the boat (or the car) to a thing and take it: { prop, radius, keep }
+  STEP.pickup = (s) => goal(s, { prop: s.prop }, () => {
+    const o = things.get(s.prop);
+    if (!o) return true;
+    o.holder.getWorldPosition(_v);
+    const v = vehicles.state === 'driving' ? vehicles.active : null, p = v || player.position;
+    if (Math.hypot(_v.x - p.x, _v.z - p.z) > (s.radius || 4)) return false;
+    if (!s.keep) removeThing(s.prop);
+    fire(s.event);
+    return true;
+  });
+  // the docks themselves: { crew: false } sends the dock workers home (a quiet night, the stealth mission)
+  STEP.docks = (s) => { if (city.docks && 'crew' in s) city.docks.setCrew(!!s.crew); };
+  // a load on a vehicle (see the top of this file)
+  STEP.cargo = (s) => {
+    const v = car(s.vehicle);
+    if (!v) return;
+    if (s.off) vehicles.cargo.detach(v); else vehicles.cargo.attach(v, s);
   };
   // THE LIMITER MOMENT: a heartbeat, one big button. Pressing it: a second of nothing, then the engine is free.
   //   { vehicle, heart: beats per minute, nag: a line that is said again while the player waits, nagEvery }
@@ -1372,6 +1495,8 @@ export function createStory(G) {
     drivers.update();
     // ---- Zero's moments (Chapter 4) ----
     if (world.zero) for (const e of world.zero.takeEvents()) fire('zero:' + e);
+    // ---- the load on a vehicle (Chapter 5): its hits and scrapes, and when it is broken ----
+    for (const e of vehicles.cargo.events) fire('cargo:' + e);
     // ---- the Guard: what happened (for rules and waits), and the drones' loudspeakers ----
     if (realPolice) {
       const st = police.stars, seenNow = st > 0 && police.mode === 'chase';
@@ -1419,6 +1544,7 @@ export function createStory(G) {
     // ---- the small displays ----
     const d = c ? vehicles.hud : null;
     ui.limitBadge(d ? d.limit : 0, !!(d && d.limited));
+    ui.cargo(c && !cine ? vehicles.cargo.info(c) : null);
     music.setInCar(!!c || indoors);
     if (frame % 4 === 0) {
       ui.tape(tapeShown && !!c && !cine, music.trackName, music.progress);

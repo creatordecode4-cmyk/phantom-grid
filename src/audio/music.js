@@ -48,8 +48,11 @@ export function createMusic(sound) {
   let wantedNext = 0, voiceNext = 0, voiceLeft = 0, announceUntil = 0;
   const tape = { track: 0, bar: 0, step: 0, next: 0, startBar: 0, onEnd: null, ended: false };
   let heartNext = 0, pulseNext = 0, sirenNext = 20, silentUntil = 0, time = 0;
-  const env = { rain: 0, city: 0.5, beach: 0, inCar: false, drone: 0, street: 0, radio: 0, sunk: 0, market: 0, tunnel: 0 };
+  const env = { rain: 0, city: 0.5, beach: 0, inCar: false, drone: 0, street: 0, radio: 0, sunk: 0, market: 0, tunnel: 0, docks: 0, dawn: 0, crane: 0 };
   let sunkAmb = null, dripNext = 0, slapNext = 0, tinkNext = 0, crowdNext = 0;
+  // RUSTWATER DOCKS (Chapter 5): rain on corrugated metal, cranes groaning, ships' horns far out, forklift beeps,
+  // gulls at dawn, rusty chains, the low idle of engines
+  let docksAmb = null, groanNext = 2, hornNext = 12, beepNext = 6, gullNext = 1, chainNext = 9, plinkNext = 0;
 
   function ready() {
     if (A) return A.ctx.state === 'running';
@@ -110,6 +113,19 @@ export function createMusic(sound) {
       for (const [f, g] of [[46, 0.5], [46.6, 0.5], [92.3, 0.18]]) { const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f; const og = c.createGain(); og.gain.value = g; o.connect(og); og.connect(humG); o.start(); }
       sunkAmb = { tin, crowdG, crowdEnv, crowd, humG };
     }
+    // ---- RUSTWATER DOCKS: the rain on metal sheds and containers, and the low idle of ships and trucks ----
+    {
+      const metal = loopNoise('bandpass', 3100, 1.4, ambBus, 0);
+      const metal2 = loopNoise('bandpass', 1250, 1.1, ambBus, 0);
+      const idleG = c.createGain(); idleG.gain.value = 0; idleG.connect(ambBus);
+      const ilp = c.createBiquadFilter(); ilp.type = 'lowpass'; ilp.frequency.value = 120; ilp.Q.value = 0.7; ilp.connect(idleG);
+      const wob = c.createOscillator(); wob.frequency.value = 0.7; const wd = c.createGain(); wd.gain.value = 1.2; wob.connect(wd); wob.start();
+      for (const [f, type, g] of [[31.5, 'sawtooth', 0.4], [32.2, 'sawtooth', 0.4], [63, 'sine', 0.25]]) {
+        const o = c.createOscillator(); o.type = type; o.frequency.value = f; wd.connect(o.frequency);
+        const og = c.createGain(); og.gain.value = g; o.connect(og); og.connect(ilp); o.start();
+      }
+      docksAmb = { metal, metal2, idleG };
+    }
     // ---- calm pad: a warm chord that breathes slowly ----
     {
       calmBus = c.createGain(); calmBus.gain.value = 0; calmBus.connect(A.out);
@@ -128,6 +144,36 @@ export function createMusic(sound) {
     return { g, f };
   }
   const glide = (p, v, t = 0.2) => p.setTargetAtTime(v, A.ctx.currentTime, t);
+  // ---- the sounds of the docks (all made in code) ----
+  // a crane groaning: a low saw tone that slides down, through a narrow metallic filter
+  function creak(t, gain) {
+    const c = A.ctx, o = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(58 + Math.random() * 12, t); o.frequency.linearRampToValueAtTime(44 + Math.random() * 6, t + 2.2);
+    f.type = 'bandpass'; f.frequency.setValueAtTime(280 + Math.random() * 160, t); f.frequency.linearRampToValueAtTime(220, t + 2.2); f.Q.value = 6;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + 0.6); g.gain.linearRampToValueAtTime(gain * 0.7, t + 1.6); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.6);
+    o.connect(f); f.connect(g); g.connect(ambBus); o.start(t); o.stop(t + 2.7);
+  }
+  // steel on steel: a short ring with a few high partials
+  function clank(t, gain) {
+    for (const [f, k] of [[420, 1], [1130, 0.6], [2310, 0.35]]) tone('triangle', f * (0.95 + Math.random() * 0.1), t, 0.5, gain * k, ambBus, 0.002);
+  }
+  // a ship's horn far away: two low notes, a slow swell, a long tail
+  function horn(t, gain) {
+    const c = A.ctx, f = c.createBiquadFilter(), g = c.createGain();
+    f.type = 'lowpass'; f.frequency.value = 380; f.Q.value = 0.6;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + 0.9); g.gain.setValueAtTime(gain, t + 2.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 4.6);
+    for (const fr of [69, 103.5]) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; o.connect(f); o.start(t); o.stop(t + 4.7); }
+    f.connect(g); g.connect(ambBus);
+  }
+  // a gull: a quick rising and falling cry with a rough edge
+  function gull(t, base, gain) {
+    const c = A.ctx, o = c.createOscillator(), g = c.createGain(), v = c.createOscillator(), vd = c.createGain();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(base, t); o.frequency.linearRampToValueAtTime(base * 1.45, t + 0.08); o.frequency.exponentialRampToValueAtTime(base * 0.8, t + 0.28);
+    v.frequency.value = 38; vd.gain.value = base * 0.05; v.connect(vd); vd.connect(o.frequency);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(g); g.connect(ambBus); o.start(t); o.stop(t + 0.32); v.start(t); v.stop(t + 0.32);
+  }
 
   // ---------------------------------------------------------------- single sounds
   // one tone with a soft start and end. wave: sine / triangle / sawtooth / square
@@ -286,6 +332,47 @@ export function createMusic(sound) {
         src.buffer = A.noiseBuf; f.type = 'lowpass'; f.frequency.value = 260 + Math.random() * 260; f.Q.value = 1.4;
         g.gain.setValueAtTime(0.0001, now); g.gain.linearRampToValueAtTime(0.05 * k * out, now + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
         src.connect(f); f.connect(g); g.connect(ambBus); src.start(now, Math.random()); src.stop(now + 0.4);
+      }
+    }
+    // ---- RUSTWATER DOCKS (Chapter 5) ----
+    if (docksAmb) {
+      const k = env.docks * quiet, out = inCar ? 0.5 : 1;
+      glide(docksAmb.metal.g.gain, env.rain * k * 0.028 * out, 0.6);
+      glide(docksAmb.metal2.g.gain, env.rain * k * 0.018 * out, 0.6);
+      glide(docksAmb.idleG.gain, k * 0.045 * out, 1.5);
+      if (k > 0.05) {
+        // drops on steel: hollow plinks
+        if (env.rain > 0.2 && now > plinkNext) { plinkNext = now + 0.1 + Math.random() * 0.4; tone('triangle', 1500 + Math.random() * 1700, now, 0.07, 0.0045 * k * out, ambBus, 0.002); }
+        // a crane groans as it moves (louder close to a moving crane), a clank of its spreader
+        if (now > groanNext) {
+          const near = Math.max(0.25, env.crane);
+          groanNext = now + (env.crane > 0.3 ? 3 : 7) + Math.random() * 6;
+          creak(now, 0.03 * k * near * out);
+          if (Math.random() < 0.5) clank(now + 1.2 + Math.random(), 0.04 * k * near * out);
+        }
+        // a ship's horn far out at sea: two low notes together, slow to start, slow to die
+        if (now > hornNext) { hornNext = now + 40 + Math.random() * 50; horn(now, 0.03 * k); }
+        // a forklift backing up somewhere: four to six beeps
+        if (now > beepNext) {
+          beepNext = now + 10 + Math.random() * 16;
+          const n = 4 + Math.floor(Math.random() * 3), f = 1020 + Math.random() * 120;
+          for (let i = 0; i < n; i++) tone('square', f, now + i * 0.5, 0.24, 0.0035 * k * out, ambBus, 0.005);
+        }
+        // a chain rattles over steel
+        if (now > chainNext) {
+          chainNext = now + 14 + Math.random() * 18;
+          const n = 10 + Math.floor(Math.random() * 12);
+          for (let i = 0; i < n; i++) {
+            const t0 = now + i * (0.035 + Math.random() * 0.04);
+            tone('triangle', 2400 + Math.random() * 2600, t0, 0.03, 0.006 * k * out, ambBus, 0.001);
+          }
+        }
+        // gulls, in the morning
+        if (env.dawn > 0.05 && now > gullNext) {
+          gullNext = now + 1.5 + Math.random() * 4.5;
+          const calls = 2 + Math.floor(Math.random() * 3), base = 1500 + Math.random() * 500;
+          for (let i = 0; i < calls; i++) gull(now + i * (0.32 + Math.random() * 0.1), base, 0.011 * k * env.dawn * out);
+        }
       }
     }
     // ---- the calm pad of the last scene ----

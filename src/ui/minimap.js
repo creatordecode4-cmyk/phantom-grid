@@ -22,8 +22,10 @@ export function createMinimap(canvas, layout) {
   const L = layout;
   // area covered by the hidden picture
   // (west: the city, or The Sunk of Chapter 3 - whichever reaches farther)
-  const minX = L.city.minX - 60, maxX = Math.max(L.city.maxX, SUNK.maxX) + 60;
-  const minZ = L.beach.minZ - 60, maxZ = L.city.maxZ + 60;
+  // (east: the docks of Chapter 5 reach past the old city edge; their pier goes far out into the sea)
+  const DK = L.docks;
+  const minX = Math.min(L.city.minX, DK ? DK.minX : 1e9) - 60, maxX = Math.max(L.city.maxX, SUNK.maxX) + 60;
+  const minZ = Math.min(L.beach.minZ - 60, DK ? DK.pier.minZ - 20 : 1e9), maxZ = L.city.maxZ + 60;
   const W = Math.ceil((maxX - minX) * SCALE), H = Math.ceil((maxZ - minZ) * SCALE);
   // world -> picture. East (-x) is on the right, north (+z) is at the top.
   const PX = (x) => (maxX - x) * SCALE;
@@ -101,12 +103,63 @@ export function createMinimap(canvas, layout) {
     g.strokeStyle = 'rgba(150,120,90,0.8)'; g.lineWidth = 1.2;
     for (const [ax, az, bx, bz] of SPANS) { g.beginPath(); g.moveTo(PX(ax), PY(az)); g.lineTo(PX(bx), PY(bz)); g.stroke(); }
   }
+  // RUSTWATER DOCKS (Chapter 5): the yards with their rows of containers, Dock Road, the channel, the sheds, the ships
+  if (DK) {
+    const rect = (r, inset = 0) => g.fillRect(PX(r.maxX) + inset, PY(r.maxZ) + inset, (r.maxX - r.minX) * SCALE - inset * 2, (r.maxZ - r.minZ) * SCALE - inset * 2);
+    // the sea in front of the quay, then the concrete of the port
+    g.fillStyle = '#1f4254';
+    rect({ minX: DK.minX - 60, maxX: DK.maxX, minZ: minZ - 10, maxZ: DK.minZ });
+    g.fillStyle = '#2b2d30';
+    rect(DK);
+    for (const y of DK.yards) {
+      g.fillStyle = y.watched ? '#33302d' : '#303235';
+      rect(y);
+      // the rows of stacks (two lines of containers each), cut by the cross aisles
+      g.fillStyle = y.watched ? '#5a3a30' : '#4a4038';
+      const cuts = [...y.cuts].sort((a, b) => a - b);
+      let a = y.minX;
+      const segs = [];
+      for (const c of cuts) { segs.push([a, c - 4]); a = c + 4; }
+      segs.push([a, y.maxX]);
+      for (const rz of y.rows) for (const [x0, x1] of segs) rect({ minX: x0 + 0.6, maxX: x1 - 0.6, minZ: rz - 2.6, maxZ: rz + 2.6 });
+    }
+    // Dock Road (the road color), the rail tracks (dashed)
+    g.fillStyle = '#3a3d42';
+    rect(DK.road);
+    g.strokeStyle = 'rgba(160,150,130,0.7)'; g.lineWidth = 1; g.setLineDash([3, 2]);
+    for (const z of DK.railZ) { g.beginPath(); g.moveTo(PX(DK.fenceX), PY(z)); g.lineTo(PX(DK.minX), PY(z)); g.stroke(); }
+    g.setLineDash([]);
+    // the channel and the pier
+    g.fillStyle = '#1f4254';
+    rect(DK.channel);
+    g.fillStyle = '#8a6f4a';
+    rect(DK.pier);
+    rect({ minX: DK.channel.minX + 2, maxX: DK.channel.maxX - 2, minZ: DK.channel.maxZ - 3.2, maxZ: DK.channel.maxZ });
+    // sheds, the market, the depot, Rask's building (a little warmer)
+    for (const b of [...DK.warehouses, DK.market, DK.depot]) { g.fillStyle = '#23272b'; rect(b); g.fillStyle = '#2a2f34'; rect(b, 1.2); }
+    g.fillStyle = '#3a3330'; rect(DK.rask);
+    // the ships at the quay
+    g.fillStyle = '#15191c';
+    for (const sh of DK.ships) rect({ minX: sh.x - sh.len / 2, maxX: sh.x + sh.len / 2, minZ: sh.z - sh.beam / 2, maxZ: sh.z + sh.beam / 2 });
+    // the fence of the watched yard
+    const yb = DK.yards.find((y) => y.watched);
+    if (yb) {
+      g.strokeStyle = 'rgba(220,200,160,0.45)'; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(PX(yb.fenceX), PY(yb.fenceZ)); g.lineTo(PX(DK.minX), PY(yb.fenceZ)); g.stroke();
+      g.beginPath(); g.moveTo(PX(yb.fenceX), PY(yb.fenceZ)); g.lineTo(PX(yb.fenceX), PY(DK.minZ)); g.stroke();
+    }
+  }
   // edge of the play area (the old city, and The Sunk south-west of it)
   g.strokeStyle = 'rgba(255,255,255,0.22)';
   g.lineWidth = 1;
   const B = L.bounds, oldX = L.raw.oldWestEdge || B.maxX;
   g.beginPath();
-  for (const [x, z] of [[B.minX, B.minZ], [B.maxX, B.minZ], [B.maxX, SUNK.maxZ], [oldX, SUNK.maxZ], [oldX, B.maxZ], [B.minX, B.maxZ]]) g.lineTo(PX(x), PY(z));
+  // (and the docks east of the old city edge: a notch, the land north of the port is not part of it)
+  const oldE = L.raw.oldEastEdge ?? B.minX;
+  const corners = DK
+    ? [[DK.minX, B.minZ], [B.maxX, B.minZ], [B.maxX, SUNK.maxZ], [oldX, SUNK.maxZ], [oldX, B.maxZ], [oldE, B.maxZ], [oldE, DK.maxZ], [DK.minX, DK.maxZ]]
+    : [[B.minX, B.minZ], [B.maxX, B.minZ], [B.maxX, SUNK.maxZ], [oldX, SUNK.maxZ], [oldX, B.maxZ], [B.minX, B.maxZ]];
+  for (const [x, z] of corners) g.lineTo(PX(x), PY(z));
   g.closePath();
   g.stroke();
 
@@ -312,6 +365,7 @@ export function createMinimap(canvas, layout) {
     { text: 'NEON MILE', x: -20, z: L.neon.centerZ + 40 },
     { text: 'THE CROWN', x: 360, z: 400 },
     { text: 'THE SUNK', x: 640, z: -280 },
+    { text: 'RUSTWATER DOCKS', x: -700, z: -335 },
   ];
   function drawBig(cv, x, z, heading, extra = {}) {
     const d = Math.min(window.devicePixelRatio || 1, 2);

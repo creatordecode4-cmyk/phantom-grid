@@ -22,6 +22,8 @@ export function createGPS(layout) {
   T.ns.forEach((ns, i) => roads.push({ axis: 'ns', c: ns.center, nodes: grid[i] }));
   T.ew.forEach((ew, j) => roads.push({ axis: 'ew', c: ew.center, nodes: grid.map((col) => col[j + 1]) }));
   roads.push({ axis: 'ew', c: zSouth, nodes: grid.map((col) => col[0]) });
+  // Chapter 5: Neon Mile goes on east as Dock Road, into Rustwater Docks (one more node at its far end)
+  if (layout.docks) roads[roads.length - 1].nodes.push(node(layout.docks.road.minX + 8, zSouth));
   const along = (road, n) => (road.axis === 'ns' ? n.z : n.x);
   for (const road of roads) {
     road.nodes.sort((a, b) => along(road, a) - along(road, b));

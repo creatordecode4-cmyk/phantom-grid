@@ -133,7 +133,9 @@ export function buildGround(ctx) {
   // ---- 1. asphalt everywhere north of the beach walk --------------------------------
   ctx.mb.asphalt.color(1, 1, 1, 1);
   // (not where The Sunk is: the old streets there are under water)
-  ctx.mb.asphalt.groundRect(-1500, L.neon.roadMinZ, SUNK.minX, 1700, 0, T.asphalt.size);
+  // (and not over Rustwater Docks, east of the highway: the port has its own ground, see docks.js)
+  ctx.mb.asphalt.groundRect(-1500, L.docks.maxZ, SUNK.minX, 1700, 0, T.asphalt.size);
+  ctx.mb.asphalt.groundRect(L.docks.maxX, L.neon.roadMinZ, SUNK.minX, L.docks.maxZ, 0, T.asphalt.size);
   ctx.mb.asphalt.groundRect(SUNK.minX, SUNK.maxZ, 1800, 1700, 0, T.asphalt.size);
   ctx.mb.asphalt.groundRect(SUNK.maxX, L.neon.roadMinZ, 1800, SUNK.maxZ, 0, T.asphalt.size);
 
@@ -142,7 +144,7 @@ export function buildGround(ctx) {
     addSlab(ctx, b.poly, curb, 1, rng.int(0, 3) * 0.25, rng.int(0, 3) * 0.25);
   }
   // beach promenade
-  for (const [x0, x1] of [[-1500, SUNK.minX], [SUNK.maxX, 1800]]) {
+  for (const [x0, x1] of [[L.docks.maxX, SUNK.minX], [SUNK.maxX, 1800]]) {
     addSlab(ctx, [
       { x: x0, z: L.neon.promenadeMinZ }, { x: x1, z: L.neon.promenadeMinZ },
       { x: x1, z: L.neon.promenadeMaxZ }, { x: x0, z: L.neon.promenadeMaxZ },
@@ -162,7 +164,7 @@ export function buildGround(ctx) {
     const tile = T.sand.size;
     const zs = [L.beach.maxZ, (L.beach.maxZ + L.beach.minZ) / 2, L.beach.minZ, L.beach.minZ - 60];
     mb.color(1, 1, 1, 1);
-    for (let i = 0; i < zs.length - 1; i++) for (const [x0, x1] of [[-1500, SUNK.minX], [SUNK.maxX, 1800]]) {
+    for (let i = 0; i < zs.length - 1; i++) for (const [x0, x1] of [[L.docks.maxX, SUNK.minX], [SUNK.maxX, 1800]]) {
       const zN = zs[i], zS = zs[i + 1];
       const yN = L.beachHeight(zN), yS = L.beachHeight(zS);
       mb.quad(

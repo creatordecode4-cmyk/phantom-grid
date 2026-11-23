@@ -26,6 +26,7 @@ import { makeDrone, lin } from '../city/models.js';
 import { mountDetailedWheel, addBrake } from './wheelDetail.js';
 import { BIKE_INFO, BIKE_SPEC, BIKE_HEAD, BIKE_RAKE, BIKE_BAR, BIKE_GRIP, BIKE_PEG, BIKE_EYE, BIKE_R, BIKE_PARK_LEAN, bikeBodyIn } from './bike.js';
 import { clamp, damp } from '../utils/math.js';
+import { createCargo } from './cargo.js';
 
 const KMH = 3.6;
 const STEP = 1 / 60;                   // the physics always runs in steps of this length
@@ -330,10 +331,12 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // the sea, and the canals of The Sunk (Chapter 3): there the boat may pass the shore line, and the
   // walls, pontoons and other boats stop it (collideBoat below)
   const SK = city.sunk;
+  const DK = city.docks;     // Chapter 5: the channel of Rustwater Docks is open to boats too
   const seaWorld = {
     waterLevel: L.ocean.level, shoreZ: SHORE, minX: B.minX - 250, maxX: B.maxX + 250, minZ: B.minZ - 1100,
-    canal: SK ? (x, z) => SK.inZone(x, z, 10) && z < -86 : null,
+    canal: SK || DK ? (x, z) => (SK && SK.inZone(x, z, 10) && z < -86) || (DK && DK.inChannel(x, z, 2)) : null,
     collide: (v) => collideBoat(v),
+    ramps: [],                 // floating junk with a plank: boats jump from it (Chapter 5; the story adds them)
   };
 
   function makeVehicle(kind, x, y, z, rot, color, opts = {}) {
@@ -501,12 +504,17 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     for (const c of city.colliders.dynamic || []) if (Math.hypot(c.x - x, c.z - z) < c.r + 0.4) return false;
     return true;
   }
+  // a boat in the harbor of the docks (there is no beach there: he gets out at the slip or the pier)
+  function inHarbor(v) { return !!DK && v.x < L.docks.maxX + 6 && v.x > L.docks.minX - 60 && v.z < L.docks.maxZ; }
   // where the driver stands next to the vehicle (left side first)
   function doorSpot(v) {
     if (v.role === 'boat') {
       // a dock of The Sunk next to the boat (the story may take him out anywhere: then the nearest one), else the beach
       const d = SK && SK.dockNear(v.x, v.z, SK.inZone(v.x, v.z, 30) ? 400 : 6);
       if (d) return { x: d.x, z: d.z };
+      // the slip or the pier of the docks (the story may take him out anywhere near the port: then the nearest)
+      const k = DK && DK.dockNear(v.x, v.z, inHarbor(v) ? 600 : 9);
+      if (k) return { x: k.x, z: k.z };
       return { x: clamp(v.x, B.minX + 1, B.maxX - 1), z: B.minZ + 0.6 };     // step onto the beach
     }
     const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
@@ -554,7 +562,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     if (state !== 'driving') return;
     const v = active;
     if (v.lockExit) { if (typeof v.lockExit === 'string') message = v.lockExit; return; }
-    if (v.role === 'boat' && v.z < SHORE - 9 && !(SK && SK.dockNear(v.x, v.z, 6))) { message = SK && SK.inZone(v.x, v.z, 20) ? 'STEER THE BOAT TO A DOCK TO GET OUT' : 'BRING THE BOAT BACK TO THE BEACH TO GET OUT'; return; }
+    if (v.role === 'boat' && inHarbor(v) && !DK.dockNear(v.x, v.z, 9)) { message = 'STEER THE BOAT TO THE SLIP OR THE PIER TO GET OUT'; return; }
+    if (v.role === 'boat' && v.z < SHORE - 9 && !(SK && SK.dockNear(v.x, v.z, 6)) && !(DK && DK.dockNear(v.x, v.z, 9))) { message = SK && SK.inZone(v.x, v.z, 20) ? 'STEER THE BOAT TO A DOCK TO GET OUT' : 'BRING THE BOAT BACK TO THE BEACH TO GET OUT'; return; }
     if (v.role === 'boat' && SK && SK.inZone(v.x, v.z) && !SK.dockNear(v.x, v.z, 6)) { message = 'STEER THE BOAT TO A DOCK TO GET OUT'; return; }
     if (v.role === 'drone' && v.alt > 1.5) { message = 'LAND THE DRONE FIRST (DOWN BUTTON)'; return; }
     exitWanted = true;
@@ -671,7 +680,14 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
           q.x -= (dx / d) * push; q.z -= (dz / d) * push;
           // the hit pushes the other boat a little
           const vn = (v.vx - q.vx) * (dx / d) + (v.vz - q.vz) * (dz / d);
-          if (vn < 0) { q.vx += (dx / d) * vn * 0.45; q.vz += (dz / d) * vn * 0.45; if (-vn > 2) events.push({ type: 'hitBoat', strength: -vn, police: !!q.guard }); }
+          // (RAM, Chapter 5: a boat that rams pushes much harder - a bump that throws the other one off its line)
+          const ramming = v.ramT > 0;
+          if (vn < 0) {
+            const k = ramming ? 1.35 : 0.45;
+            q.vx += (dx / d) * vn * k; q.vz += (dz / d) * vn * k;
+            if (ramming) { q.stunT = 1.6; v.ramT = 0; }
+            if (-vn > 2 || ramming) events.push({ type: 'hitBoat', strength: -vn, police: !!q.guard, ram: ramming });
+          }
         }
       }
       const len = Math.hypot(px, pz);
@@ -870,6 +886,10 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         v.wheelPrev = p;
       } else v.wheelPrev = null;
       if (fx.impact > 1 && impactCool < 0) { impactCool = 0.4; sound.thump(Math.min(1, fx.impact / 6)); if (fx.impact > 3) sound.crash('scrape', fx.impact / 10); shake = Math.min(1, shake + fx.impact * 0.03); haptic = 40; }
+      // Chapter 5: RAM (the motor roars), QUICK TURN (a wall of spray), landing after a jump (a heavy splash)
+      if (fx.ram) { sound.burst(160, 0.8, 0.22, 0.01, 0.5, 'lowpass'); shake = Math.min(1, shake + 0.2); haptic = 30; }
+      if (fx.turned) { sound.burst(1400, 0.5, 0.1, 0.02, 0.5); for (let k = 0; k < 10; k++) effects.emit('foam', v.x + (Math.random() - 0.5) * 3, seaWorld.waterLevel + 0.3, v.z + (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 1.5 + Math.random() * 2, (Math.random() - 0.5) * 3, 1.3); }
+      if (fx.landed > 2) { sound.splash(true); sound.thump(Math.min(1, fx.landed / 8)); shake = Math.min(1, shake + fx.landed * 0.05); haptic = 60; for (let k = 0; k < 16; k++) effects.emit('foam', v.x + (Math.random() - 0.5) * 4, seaWorld.waterLevel + 0.3, v.z + (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, 2 + Math.random() * 3, (Math.random() - 0.5) * 4, 1.6); }
       return;
     }
     if (v.role === 'drone') {
@@ -1000,6 +1020,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     cur = null;
     const v = active;
     if (v && v.fx) { v.fx.impact = pkImpact; if (v.isCar) { v.fx.bump = pkBump; v.fx.shifted = pkShift; if (fxLast) v.fx.scrape = pkScrape; } }
+    cargo.update(dt);           // a crate or a trailer on a vehicle (Chapter 5): the trailer follows, hits break the load
     if (v && state === 'driving') {
       // police: the horn button switches the siren
       if (v.type.role === 'police') { if (drive.horn && !nitroWas) { v.siren = !v.siren; } nitroWas = drive.horn; sound.setSiren(v.siren); }
@@ -1080,9 +1101,25 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   }
 
   // (a plain object with "get" functions: the values are read fresh every time)
+  // A BIGGER (OR SMALLER) COPY of a vehicle: the armored van as the big truck of the docks (Chapter 5).
+  // The whole vehicle grows (body, wheels, lights); its size numbers and its collision circles grow with it.
+  function rescale(v, k) {
+    if (!v || !(k > 0)) return;
+    const s0 = v.group.scale.x || 1, f = k / s0;
+    v.group.scale.setScalar(k);
+    const i = v.info, sc = (n) => (typeof n === 'number' ? n * f : n);
+    v.info = { ...i, length: sc(i.length), halfWidth: sc(i.halfWidth), boxHalfWidth: sc(i.boxHalfWidth), frontZ: sc(i.frontZ), backZ: sc(i.backZ),
+      roof: sc(i.roof), wheelR: sc(i.wheelR), wheelbase: sc(i.wheelbase), plateY: sc(i.plateY), noseY: sc(i.noseY), tailY: sc(i.tailY), lampW: sc(i.lampW),
+      wheelZ: Array.isArray(i.wheelZ) ? i.wheelZ.map(sc) : i.wheelZ, wheelX: sc(i.wheelX) };
+    v.radius = clamp((v.info.boxHalfWidth || v.info.halfWidth) * 0.97, 0.85, 1.75);
+    const reach = Math.max(0, v.info.length / 2 - v.radius);
+    v.circles = reach > 0.3 ? [reach, reach / 3, -reach / 3, -reach] : [0];
+  }
+  const cargo = createCargo({ scene, city, mats });
+
   return {
     live, nearest, tryEnter, requestExit, update, prefetch, spawn, spawnInFront, buildGarage, repair, removeVehicle, world, events, flasher, seaWorld, arenaGates,
-    enterNow, leaveNow, showDamage, clearParked, repaint,
+    enterNow, leaveNow, showDamage, clearParked, repaint, rescale, cargo,
     // story: only vehicles this function says yes to can be entered (null = all)
     set enterFilter(fn) { enterFilter = fn; },
     // where the passenger sits (null until the inside of the car exists)

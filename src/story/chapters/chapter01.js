@@ -50,7 +50,8 @@ const GUARD = (id, at, face) => ({ do: 'spawn', id, kind: 'police_coupe', or: 's
 // DR. INGRID SOLBERG. What she wants: to put something right. What she fears: the roofs. Her object: a race ticket
 // she has kept for four years.
 const SOLBERG = { do: 'actor', id: 'solberg', model: 'Ingrid_Solberg', name: 'name.solberg', at: [132, -253.4], face: 270, fixed: true, look: 'player', mood: 'worried' };
-const CASE = { do: 'prop', id: 'case', kind: 'case', on: 'solberg', bone: 'hand_R', p: [0, 0.24, 0.02], rot: [0, Math.PI / 2, Math.PI] };
+// (the handle lies in her closed fingers, the case hangs below the hand)
+const CASE = { do: 'prop', id: 'case', kind: 'case', on: 'solberg', bone: 'hand_R', p: [-0.02, 0.3, 0], rot: [0, Math.PI / 2, Math.PI] };
 // JUNO KADE: only ever a shape on a roof.
 const JUNO = { do: 'actor', id: 'juno', model: 'Juno_Kade', at: { roof: [73.4, -257.4] }, face: 270, pose: 'aim', hidden: true, ghost: true, fixed: true, look: null, mood: 'stern' };
 const RIFLE = { do: 'prop', id: 'rifle', kind: 'rifle', on: 'juno', bone: 'hand_R', p: [0.02, 0.1, 0.1], rot: [0, 0, 0] };

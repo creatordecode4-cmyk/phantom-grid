@@ -816,6 +816,11 @@ export function buildProps(ctx) {
     addParkedCar(pickKind(), c.x, curb + 0.03, c.z, c.rot, lin(rng.pick(CAR_COLORS)));
   }
   for (const l of ctx.lotLamps) addStreetLight(1, l.x, curb, l.z, l.rot);
+  // Chapter 5: trucks and vans parked in Rustwater Docks (on the ground of the port, not on a curb)
+  for (const c of ctx.parkedDocks || []) {
+    const kind = isModel(c.kind) ? c.kind : isModel('armored_van') ? 'armored_van' : 'van';
+    addParkedCar(kind, c.x, 0.03, c.z, c.rot, lin(rng.pick(CAR_COLORS)));
+  }
   // ---- Ironhill Highway: lights along the raised road and its ramp, on alternating sides ----
   {
     const H = L.highway;

@@ -24,8 +24,11 @@ export const LAYOUT = {
   // The player cannot walk outside this rectangle (about 1000 m x 1000 m).
   // (Chapter 3: the play area reaches west over The Sunk, the drowned quarter - only south of z = -86;
   //  north of it an invisible wall keeps the old edge at x = 472.4, see src/city/sunk.js)
-  bounds: { minX: -497, maxX: 780, minZ: -476, maxZ: 495.4 },
+  bounds: { minX: -905, maxX: 780, minZ: -476, maxZ: 495.4 },
   oldWestEdge: 472.4,
+  // (Chapter 5: the play area reaches east past the highway over RUSTWATER DOCKS - only south of the docks'
+  //  north fence; north of it the old edge stays at the highway, see "docks" below)
+  oldEastEdge: -497,
 
   // ----- TRAFFIC ---------------------------------------------------------------
   // Cars drive on the right, in the inner lane of every street.
@@ -136,6 +139,50 @@ export const LAYOUT = {
     minHeight: 60,
     maxHeight: 220,
     kvi: { x: 540, z: 800, height: 260 }, // Kessler-Vance (KVI) headquarters
+  },
+
+  // ----- RUSTWATER DOCKS (Chapter 5): the port east of Neon Mile, along the coast ---------------------
+  // Neon Mile goes on east past the highway, through the main gate, as DOCK ROAD. South of the road, by the
+  // quay, lie the two container yards (A in the west, B in the east - the watched one, behind a fence) with
+  // the channel between them that leads out to the sea. North of the road: the rail tracks, two warehouses,
+  // the covered market, the fuel depot and Rask's building (the back warehouse below, his office above, its
+  // window looking south over the yards). Two cargo ships lie at the quay; a fishing pier reaches into the sea.
+  // src/city/docks.js builds all of it from these numbers.
+  docks: {
+    minX: -900, maxX: -499,             // the concrete of the port (its west fence stands at x = -506)
+    fenceX: -506,
+    minZ: -470, maxZ: -300,             // the quay edge (the sea is south of it) and the north fence
+    road: { minX: -892, maxX: -499, minZ: -403, maxZ: -381 },   // DOCK ROAD
+    gateX: -514,                        // the main gate on Dock Road (a booth and two barrier arms, open)
+    // the container yards: rows of blocks (two containers wide, 5 m), 7 m aisles between the rows,
+    // 8 m cross aisles at "cuts" (the short ways between the rows: a chase can turn there)
+    yards: [
+      { id: 'A', minX: -684, maxX: -522, minZ: -452, maxZ: -416, rows: [-447.5, -435.5, -423.5], cuts: [-643, -602, -561] },
+      { id: 'B', minX: -884, maxX: -728, minZ: -452, maxZ: -416, rows: [-447.5, -435.5, -423.5], cuts: [-842, -800, -760],
+        watched: true, fenceZ: -413, fenceX: -724, gateX: -800, hole: [-724, -462] },
+    ],
+    // the channel from the sea into the port; at its north end the slip where a boat can be left
+    channel: { minX: -714, maxX: -692, minZ: -470, maxZ: -414, bottom: -5.5, slip: [-703, -417.5] },
+    pier: { minX: -668, maxX: -662, minZ: -548, maxZ: -470, deck: 0.15 },
+    railZ: [-372, -366],
+    warehouses: [
+      { id: 'w1', minX: -642, maxX: -566, minZ: -354, maxZ: -314, h: 11 },
+      { id: 'w2', minX: -738, maxX: -660, minZ: -354, maxZ: -314, h: 12 },
+    ],
+    market: { minX: -556, maxX: -516, minZ: -356, maxZ: -318, teaX: -531.2 },   // teaX: the tea stall (Chapter 5) keeps the middle of its table free
+    depot: { minX: -792, maxX: -752, minZ: -356, maxZ: -314 },
+    // Rask's building: the back warehouse on the ground floor (door to the south), the office above it
+    rask: { minX: -868, maxX: -808, minZ: -356, maxZ: -318, h: 12.5, office: { minX: -850, maxX: -826, minZ: -356, maxZ: -342, floor: 6.4, ceil: 9.8 } },
+    // ships at the quay (x = the middle; they lie along the quay, bow to the east)
+    ships: [{ x: -585, z: -481, len: 108, beam: 18, hull: [0.23, 0.07, 0.05], name: 'HALDEN STAR' }, { x: -790, z: -481, len: 98, beam: 17, hull: [0.06, 0.12, 0.2], name: 'NORA VESTA' }],
+    quayCranes: [-560, -612, -765, -815],     // ship-to-shore cranes (x)
+    // places of the story
+    places: {
+      officeDesk: [-838, -350.5], officeDoor: [-829, -343.2], stairsFoot: [-806.5, -352],
+      warehouseDoor: [-838, -357.5], warehouseIn: [-838, -340],
+      slip: [-703, -417.5], yardBGate: [-800, -413], gateBox: [-806.5, -415.6], fenceHole: [-724, -462], truck77: [-852, -441.5],
+      pierEnd: [-665, -544], market: [-536, -337], craneA: [-602, -441.5], quayA: [-600, -462], depot: [-772, -335],
+    },
   },
 
   // ----- Dry hills on the horizon -------------------------------------------------
@@ -473,8 +520,33 @@ export function buildLayout(L = LAYOUT) {
     const t = (beach.maxZ - z) / (beach.maxZ - beach.minZ);
     return 0.1 + (L.ocean.level - 0.1) * Math.min(t, 1) - Math.max(0, t - 1) * 3.5;
   }
+  // ---- RUSTWATER DOCKS (Chapter 5) ----
+  const D = L.docks;
+  const docks = {
+    ...D,
+    // in the port? (m: a margin in meters)
+    inZone(x, z, m = 0) { return x > D.minX - m && x < D.maxX + m && z > D.minZ - m && z < D.maxZ + m; },
+    // the water of the channel (boats come in from the sea here; 30 m out from the quay count too)
+    inChannel(x, z, m = 0) { const c = D.channel; return x > c.minX - m && x < c.maxX + m && z > c.minZ - 30 && z < c.maxZ + m; },
+    onPier(x, z) { const p = D.pier; return x > p.minX && x < p.maxX && z > p.minZ && z < p.maxZ; },
+    // the deep water in front of the quay (the ships lie there)
+    harbor(x, z) { return x > D.minX - 40 && x < D.maxX && z < D.minZ; },
+  };
   function groundHeight(x, z) {
     if (inSunk(x, z)) return topAt(x, z);               // The Sunk: a pontoon, a roof ... or the water
+    // the docks: concrete at street level, the channel, the pier over the deep harbor water
+    if (x < D.maxX && x > D.minX - 400 && z < D.maxZ) {
+      if (z >= D.minZ) {
+        const c = D.channel;
+        if (x > c.minX && x < c.maxX && z < c.maxZ) {
+          // the floating slip at the end of the channel (a steel pontoon at the water line), else deep water
+          if (z > c.maxZ - 3.2 && x > c.minX + 2 && x < c.maxX - 2) return L.ocean.level + 0.45;
+          return c.bottom;
+        }
+        return 0;
+      }
+      if (x > D.minX - 40) return docks.onPier(x, z) ? D.pier.deck : -7;
+    }
     if (z < beach.maxZ) return beachHeight(z);
     if (z < neon.promenadeMaxZ) return curb; // promenade
     if (z < neon.roadMaxZ) {
@@ -519,6 +591,7 @@ export function buildLayout(L = LAYOUT) {
   // ---- District name at a position (for the HUD) -----------------------------------------
   function districtAt(x, z) {
     if (inSunk(x, z)) return 'THE SUNK';
+    if (docks.inZone(x, z, 2)) return 'RUSTWATER DOCKS';
     if (x > 456 && z < SUNK.maxZ) return 'RUSTWATER';
     if (z < beach.maxZ) return 'MERIDIAN BEACH';
     if (z < rows[0].maxZ + S.width / 2) return 'NEON MILE';
@@ -562,6 +635,7 @@ export function buildLayout(L = LAYOUT) {
     neon, beach, median, medianPieces,
     ocean: L.ocean,
     highway, rail,
+    docks,
     crown: L.crown,
     hills: L.hills,
     spawn: L.spawn,

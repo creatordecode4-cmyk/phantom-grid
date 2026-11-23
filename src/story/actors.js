@@ -215,6 +215,8 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       mood: spec.mood || 'neutral', // the expression of the face (faceAnim.js)
       jacket: spec.jacket || null,  // somebody else's jacket painted over the clothes (Chapter 4: Dante in Theo's jacket)
       ghost: !!spec.ghost,       // true: the player can walk through (far away figures)
+      carried: null,             // a box held with both hands: { object, size } (see carry)
+      grips: {},                 // hands closed around a handle: { L: degrees, R: degrees }
     };
     root.position.set(a.x, a.y, a.z);
     root.rotation.y = a.heading;
@@ -227,6 +229,8 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       a.rig = rig; a.anim = createAnimator(THREE, rig);
       if (a.jacket) setJacket(a, a.jacket);
       a.anim.setPose(a.pose, 0); a.anim.floorBelow = a.floorBelow; a.anim.setFace(a.mood, 0);
+      if (a.carried) a.anim.carry = a.carried.size;
+      for (const t in a.grips) a.anim.setGrip(t, a.grips[t]);
       root.add(rig.root);
       for (const at of a.attached) rig.bones[at.bone].add(at.object);
       a.ready = true;
@@ -277,6 +281,18 @@ export function createActors({ scene, city, materials, player, vehicles }) {
   // ------------------------------------------------------------------ what the story can ask of an actor
   // put something into a hand or on the body: bone name ('hand_R' ...), object with its own position
   function attach(a, bone, object) { a.attached.push({ bone, object }); if (a.rig) a.rig.bones[bone].add(object); }
+  // a box held in front with both hands (a package): size = { w, h, d, cx, cy, cz } (its size and its middle).
+  // The animator puts the hands on its sides and says where the box is (carryAt); null = put it away.
+  function carry(a, object, size) {
+    if (a.carried && a.carried.object.parent) a.carried.object.parent.remove(a.carried.object);
+    a.carried = object ? { object, size } : null;
+    if (object) { a.root.add(object); object.visible = false; }      // (shown once it is in the hands)
+    if (a.anim) a.anim.carry = object ? size : null;
+    if (object) setPose(a, 'carry', 0.3);
+    else if (a.pose === 'carry') setPose(a, 'idle', 0.3);
+  }
+  // a hand that holds something by a handle (Dr. Solberg's case): the fingers close around it. curl 0 = normal
+  function grip(a, tag, curl) { a.grips[tag] = curl || 0; if (a.anim) a.anim.setGrip(tag, curl || 0); }
   function setPose(a, pose, seconds = 0.4) { a.pose = pose; if (a.anim) a.anim.setPose(pose, seconds); }
   // the expression of the face: 'smile', 'sad', 'angry' ... (FACES in src/characters/faceAnim.js)
   function setMood(a, mood, seconds = 0.45) { a.mood = mood; if (a.anim) a.anim.setFace(mood, seconds); }
@@ -356,6 +372,11 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       a.anim.look = look;
       a.anim.talk = a.talking;
       a.anim.update(step, { speed, x: a.x, z: a.z, y: a.y, heading: a.heading, groundAt: a.keepY ? null : city.groundHeight, swim: a.swim });
+      if (a.carried) {
+        const at = a.anim.carryAt, C = a.carried;
+        C.object.visible = !!at;
+        if (at) C.object.position.set(at.x - C.size.cx, at.y - C.size.cy, at.z - C.size.cz);
+      }
       // the player cannot walk through a standing person
       if (!a.walk && dist < 12 && city.colliders.dynamic && a.pose !== 'fallen' && !a.ghost) city.colliders.dynamic.push({ x: a.x, z: a.z, r: 0.32 });
     }
@@ -370,5 +391,5 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     }
   }
 
-  return { list, spawn, get, remove, clear, unload, preload, update, tags, attach, setPose, setMood, walkTo, place, sitIn, setJacket };
+  return { list, spawn, get, remove, clear, unload, preload, update, tags, attach, carry, grip, setPose, setMood, walkTo, place, sitIn, setJacket };
 }

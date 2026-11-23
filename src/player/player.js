@@ -127,6 +127,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   const compassToAngle = (deg) => Math.atan2(-Math.sin(deg * DEG), Math.cos(deg * DEG));
   heading = compassToAngle(layout.spawn.facingDeg);
   let speed = 0;
+  let burden = 0;          // 0..1: something heavy in the arms
   let stepPhase = 0;
   let stepDist = 0, steps = 0;
   const vel = new THREE.Vector2();
@@ -243,8 +244,9 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     let amount = Math.hypot(mx, mz);
     if (amount > 1) { mx /= amount; mz /= amount; amount = 1; }
     // swimming is slow (and slow to speed up and to turn); deep water at the beach slows the walk
+    // (carrying something heavy - the crate of Chapter 5 - he walks slower and cannot run)
     const top = swimming ? (input.run ? P.swimFast ?? 2 : P.swimSpeed ?? 1.2)
-      : (input.run ? P.runSpeed : P.walkSpeed) * (1 - 0.6 * clamp((wade - WADE) / (SWIM - WADE), 0, 1));
+      : (input.run && burden < 0.5 ? P.runSpeed : P.walkSpeed) * (1 - 0.6 * clamp((wade - WADE) / (SWIM - WADE), 0, 1)) * (1 - 0.4 * burden);
     const acc = swimming ? 2.4 : P.acceleration;
     vel.x = damp(vel.x, mx * top, acc, dt);
     vel.y = damp(vel.y, mz * top, acc, dt);
@@ -295,6 +297,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
       // the procedural animation: it needs the speed along the walking direction and the ground under the feet
       const forward = vel.x * Math.sin(heading) + vel.y * Math.cos(heading);
       mover.update(dt, { speed: forward, x: pos.x, z: pos.z, y: pos.y, heading, groundAt, swim: swimming });
+      placeHeld();
     } else {
       // no skeleton: a tiny up-down bob and a forward lean, so it does not look like sliding
       stepPhase += dt * (4.5 + speed * 2.2);
@@ -429,18 +432,26 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     if (!staged) return;
     staged = false;
     blob.visible = !hidden;
-    if (mover) { mover.setPose('idle', 0); mover.look = null; mover.talk = 0; mover.reset(); }
+    // (still holding a box after the scene: the hands stay on it)
+    if (mover) { mover.setPose(held && heldSize ? 'carry' : 'idle', 0); mover.look = null; mover.talk = 0; mover.reset(); }
   }
   // a staged character still breathes, speaks and looks around
-  function tick(dt) { if (mover) mover.update(dt, { speed: 0, x: pos.x, z: pos.z, y: pos.y, heading, groundAt: null }); }
+  function tick(dt) { if (mover) { mover.update(dt, { speed: 0, x: pos.x, z: pos.z, y: pos.y, heading, groundAt: null }); placeHeld(); } }
   // what the arms do while walking ('idle', 'carry' ...), and small things the story sets
   function setPose(pose, seconds = 0.3) { if (mover) mover.setPose(pose, seconds); }
   // something carried in front of the body (a parcel): it moves with the character. null = put it away
-  let held = null;
-  function hold(object) {
+  //   size: { w, h, d, cx, cy, cz } - how big the box is and where its middle is in its own frame. With it, the box
+  //   sits where the arms can hold it (the animator's carryAt) and both hands are put on its sides
+  let held = null, heldSize = null;
+  function hold(object, size = null) {
     if (held) body.remove(held);
-    held = object;
+    held = object; heldSize = object ? size : null;
+    if (mover) mover.carry = heldSize;
     if (object) body.add(object);
+  }
+  function placeHeld() {
+    const at = held && heldSize && mover ? mover.carryAt : null;
+    if (at) held.position.set(at.x - heldSize.cx, at.y - heldSize.cy, at.z - heldSize.cz);
   }
 
   function teleport(x, z, compassDeg = null) {
@@ -461,6 +472,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     usingMannequin,
     rigged, animated: !!mixer || !!mover, autoRigged: !!rig, rig, anim: mover,
     setHidden, place, glideTo, sit,
+    setBurden(b) { burden = clamp(b || 0, 0, 1); },
     stage, unstage, tick, setPose, hold,
     // walking inside a house: its floor, its walls and furniture (null = back in the city)
     setRoom(r) { room = r; },

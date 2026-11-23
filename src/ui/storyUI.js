@@ -26,6 +26,7 @@ export function createStoryUI() {
     subs: $('subs'), who: $('subs-who'), text: $('subs-text'), choices: $('choices'), skip: $('skip'), fade: $('fade'), card: $('card'),
     limiter: $('btn-limiter'), wren: $('wren'), mirror: $('mirror'), tape: $('tape'), tapeName: $('tape-name'), tapeBar: $('tape-bar').firstElementChild,
     act: $('btn-act'), tip: $('tip'), reader: $('reader'), badge: $('limit-badge'),
+    cargoRow: $('cargo-row'), cargoBar: $('cargo-bar').firstElementChild, cargoNum: $('cargo-num'),
     title: $('title'), pause: $('pause'), settings: $('settings'), select: $('select'), endcard: $('endcard'), failcard: $('failcard'),
     paint: $('paint'), video: $('video'), videoDate: $('video-date'), videoFile: $('video-file'), videoLock: $('video-lock'), bustcard: $('bustcard'),
   };
@@ -69,6 +70,7 @@ export function createStoryUI() {
     el.subs.hidden = false;
     el.who.textContent = s.who || '';
     el.who.classList.toggle('wren', s.kind === 'wren');
+    el.who.classList.toggle('radio', s.kind === 'radio');           // a voice over the radio (Rask, Chapter 5)
     el.text.textContent = s.text;
     el.text.classList.toggle('thought', s.kind === 'thought');
     subLeft = s.seconds;
@@ -77,7 +79,7 @@ export function createStoryUI() {
   }
   // how long a line stays: long enough to read it
   const readTime = (text) => Math.max(1.9, Math.min(7, 1.1 + text.length * 0.062));
-  // who: name shown above (may be ''), kind: '' | 'wren' | 'thought'
+  // who: name shown above (may be ''), kind: '' | 'wren' | 'thought' | 'radio'
   function say(who, text, opts = {}) {
     const s = { who, text, seconds: opts.seconds || readTime(text), kind: opts.kind || '', onShow: opts.onShow || null, onDone: opts.onDone || null };
     if (opts.now || (!subNow && !queue.length)) { queue.length = opts.now ? 0 : queue.length; showSub(s); } else queue.push(s);
@@ -133,6 +135,21 @@ export function createStoryUI() {
   function limitBadge(limit, hit) {
     if (limit !== lastLimit) { lastLimit = limit; el.badge.hidden = !limit; el.badge.textContent = String(limit); }
     if (hit !== lastHit) { lastHit = hit; el.badge.classList.toggle('hit', !!hit); }
+  }
+
+  // ---- CARGO (Chapter 5): how whole the load on the vehicle still is. info: { integrity 0..1 } or null ----
+  let lastCargo = -1;
+  function cargo(info) {
+    const v = info ? Math.round(info.integrity * 100) : -1;
+    if (v === lastCargo) return;
+    if (v >= 0 && lastCargo >= 0 && v < lastCargo - 1) { el.cargoRow.classList.remove('hit'); void el.cargoRow.offsetWidth; el.cargoRow.classList.add('hit'); }
+    lastCargo = v;
+    el.cargoRow.hidden = v < 0;
+    if (v < 0) return;
+    el.cargoBar.style.width = v + '%';
+    el.cargoNum.textContent = String(v);
+    el.cargoRow.classList.toggle('warn', v < 60 && v >= 30);
+    el.cargoRow.classList.toggle('bad', v < 30);
   }
 
   // ---- the rear-view mirror: who is behind the player, drawn as lights in the dark ----
@@ -356,7 +373,7 @@ export function createStoryUI() {
   }
   // everything of the story off the screen (leaving the story, restarting a checkpoint)
   function reset() {
-    cine(false); clearSubs(); skip(null); limiter(null); prompt(null); tip(null); tape(false); mirror(false); limitBadge(0, false);
+    cine(false); clearSubs(); skip(null); limiter(null); prompt(null); tip(null); tape(false); mirror(false); limitBadge(0, false); cargo(null);
     card(null); el.choices.hidden = true; choiceDone = null; el.reader.hidden = true; body.classList.remove('quiet');
     paint(null); video('off');
   }
@@ -365,7 +382,7 @@ export function createStoryUI() {
     settings, update, reset,
     // change one setting from outside the settings screen (the TILT and SOUND buttons) and remember it
     setSetting(key, value) { settings[key] = value; saveSettings(); applyLook(); },
-    cine, fade, card, say, clearSubs, choice, skip, limiter, prompt, tip, tape, limitBadge, mirror, drawMirror, reader,
+    cine, fade, card, say, clearSubs, choice, skip, limiter, prompt, tip, tape, limitBadge, cargo, mirror, drawMirror, reader,
     title, pause, settingsScreen, select, endCard, failCard, hideMenus, paint, paintProgress, video, bustCard,
     quiet(on) { body.classList.toggle('quiet', !!on); },
     storyMode(on) { body.classList.toggle('story', !!on); },

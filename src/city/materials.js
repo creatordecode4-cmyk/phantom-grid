@@ -36,6 +36,10 @@ export const shared = {
   uPgWinAtlas: { value: null },                  // 8 x 8 day windows
   uPgWinLit: { value: null },                    // 4 x 4 glowing windows
   uPgShoreZ: { value: -470 },                    // where the sea meets the sand
+  // Chapter 5: the harbor of Rustwater Docks. East of this x the sea meets a quay wall, not a beach
+  // (deep water: no shallows, no surf). The channel: minX, maxX, its end (z). docks.js sets them.
+  uPgHarborX: { value: -1e9 },
+  uPgChannel: { value: new THREE.Vector4(0, 0, 0, 0) },
   uPgWaterNormal: { value: null },
   uPgDetail: { value: null },                    // wall cracks / drips / pitting
   uPgSunDir: { value: new THREE.Vector3(0, 1, 0) }, // direction TO the sun (or moon)
@@ -328,6 +332,8 @@ varying vec3 vPgNormal;
 #endif
 #ifdef PG_OCEAN
 	uniform sampler2D uPgWaterNormal;
+	uniform float uPgHarborX;
+	uniform vec4 uPgChannel;
 #endif
 #ifdef PG_CANAL
 	uniform sampler2D uPgSunkMask;
@@ -1201,12 +1207,21 @@ const PG_FRAGMENT_NORMAL = /* glsl */ `
 		roughnessFactor = mix( 0.07, 0.3, smoothstep( 30.0, 1500.0, dist ) );
 		// shallow water near the beach is lighter; white foam at the edge
 		float off = uPgShoreZ - vPgWorld.z;      // meters out to sea
-		float shallow = exp( - max( off, 0.0 ) / 22.0 );
+		// the harbor of the docks: deep water at a quay wall - no shallows, no surf, a thin line of foam at the wall
+		float harbor = smoothstep( uPgHarborX + 25.0, uPgHarborX - 5.0, vPgWorld.x );
+		// (no quay wall across the mouth of the channel: open water there)
+		off += harbor * step( uPgChannel.x, vPgWorld.x ) * step( vPgWorld.x, uPgChannel.y ) * 40.0;
+	#ifdef PG_HARBOR
+		// the channel into the docks: meters to the nearest of its walls
+		off = min( min( vPgWorld.x - uPgChannel.x, uPgChannel.y - vPgWorld.x ), uPgChannel.z - vPgWorld.z );
+		harbor = 1.0;
+	#endif
+		float shallow = exp( - max( off, 0.0 ) / 22.0 ) * ( 1.0 - harbor );
 		diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.07, 0.19, 0.18 ), shallow * 0.8 );
 		float n = texture2D( uPgNoise, xz * vec2( 0.05, 0.09 ) + t * vec2( 0.01, 0.03 ) ).r;
 		float wave = sin( off * 0.42 - uPgTime * 0.9 + n * 5.0 + sin( xz.x * 0.03 ) * 2.0 );
-		float foam = smoothstep( 0.55, 0.95, wave ) * ( 1.0 - smoothstep( 2.0, 26.0, off ) ) * ( 0.4 + 0.6 * n );
-		foam = max( foam, 1.0 - smoothstep( 0.0, 2.5, off + n * 1.5 ) );
+		float foam = smoothstep( 0.55, 0.95, wave ) * ( 1.0 - smoothstep( 2.0, 26.0, off ) ) * ( 0.4 + 0.6 * n ) * ( 1.0 - harbor );
+		foam = max( foam, 1.0 - smoothstep( 0.0, mix( 2.5, 0.7, harbor ), off + n * mix( 1.5, 0.45, harbor ) ) );
 		diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.82, 0.85, 0.85 ), foam * 0.85 );
 		roughnessFactor = mix( roughnessFactor, 0.75, foam );
 	}
@@ -1437,6 +1452,7 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   tex.leaf = TX.makeLeafTexture();
   tex.frond = TX.makeFrondTexture();
   tex.ivy = TX.makeIvyTexture();
+  tex.chain = TX.makeChainLinkTexture();      // the fences of the docks
   tex.bark = TX.makeBarkTexture();
   tex.palmBark = TX.makePalmBarkTexture();
   tex.glow = TX.makeGlowTexture();
@@ -1565,10 +1581,17 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   mats.leaf = patch(std({ map: tex.leaf, ...leafOpts }), ['PG_FOLIAGE']);
   mats.frond = patch(std({ map: tex.frond, ...leafOpts }), ['PG_FOLIAGE']);
   mats.ivy = patch(std({ map: tex.ivy, ...leafOpts }), ['PG_FOLIAGE']);   // hanging plants under planters
+  // chain-link fence panels (the docks): wire picture with holes, both sides, steel
+  mats.fence = patch(std({ map: tex.chain, alphaTest: 0.32, alphaToCoverage: true, side: THREE.DoubleSide }), ['PG_PROP']);
   // Ocean.
   mats.ocean = patch(
     new THREE.MeshPhysicalMaterial({ color: 0x06222e, roughness: 0.1, metalness: 0, ior: 1.34, reflectivity: 0.5 }),
     ['PG_OCEAN']
+  );
+  // The channel of Rustwater Docks (Chapter 5): the sea between two quay walls
+  mats.harbor = patch(
+    new THREE.MeshPhysicalMaterial({ color: 0x06222e, roughness: 0.1, metalness: 0, ior: 1.34, reflectivity: 0.5 }),
+    ['PG_OCEAN', 'PG_HARBOR']
   );
   // The canals of The Sunk (Chapter 3): dark, a little see-through, foam at the walls, glowing algae.
   // canalLow: the same without rain rings and boat waves (LOW quality)

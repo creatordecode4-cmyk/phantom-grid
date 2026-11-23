@@ -512,6 +512,31 @@ export function createAnimator(THREE, rig, opts = {}) {
   // put a hand at a place (character space); the elbow points along (px, py, pz). The arm is then solved like
   // a real one, so a hand that should rest ON something really is there - it does not hang in the air.
   function handAt(q, x, y, z, px, py, pz) { const A = hand[q]; A.on = true; A.hasPole = true; A.p.set(x, y, z); A.pole.set(px, py, pz); }
+  // CARRY: a box in front of the belly, held with both hands - a palm flat on each side of it, the fingers forward
+  // and a little down. The box sits where this body can hold it (it rides up and down with the hips while
+  // walking), and the arms are solved to its sides like real arms (the elbows down and out), so the hands are ON
+  // the box and never inside it. carrySize = { w, h, d }: the size of the box; carryAt: where its middle is.
+  let carrySize = null, carryOn = false;
+  const carryAt = V(), fingerDir = V(), palmIn = V().set(-1, 0, 0);
+  const grip = [0, 0];       // fingers closed around a handle (degrees), left and right hand: 0 = the normal curl
+  function carryPose() {
+    const w = carrySize ? carrySize.w : 0.38 * k, h = carrySize ? carrySize.h : 0.26 * k, d = carrySize ? carrySize.d : 0.3 * k;
+    const handY = hipsPos.y + 0.17 * k;                                 // the hands: about as high as the navel
+    // (the back of the box a little in front of the belly; it sways a little with the hips)
+    carryAt.set(hipsPos.x * 0.6, handY + h * 0.1, hipsPos.z + 0.15 * k + d / 2);
+    const x = w / 2 + 0.026 * k;                                        // the wrist: half a hand outside the side of the box
+    const z = carryAt.z - d * 0.16 - 0.035 * k;                         // the palm on the back half of the side, the fingers toward the front
+    fingerDir.set(0, -0.3, 1).normalize();
+    for (let q = 0; q < 2; q++) {
+      const { s, tag } = SIDES[q];
+      handAt(q, carryAt.x + s * x, handY, z, s * 0.8, -0.55, -0.25);   // the elbows point down and out
+      // the hand lies along the side of the box: the fingers forward, the palm toward the box. (The palm is on the
+      // +x side of a left hand's own frame and on the -x side of a right hand's, so x = -1 turns both palms inward.)
+      setTarget('hand_' + tag, fingerDir, palmIn);
+      fingers(q, 12, 26);
+    }
+    carryOn = true;
+  }
   // standing poses: they only change the arms (and a little of the spine and head)
   function standingPose(dt) {
     const t = st.time;
@@ -522,7 +547,8 @@ export function createAnimator(THREE, rig, opts = {}) {
       // hands on the hips, the elbows out and a little back
       for (let q = 0; q < 2; q++) { const { s } = SIDES[q]; handAt(q, s * (hipW + 0.075 * k), hipsPos.y + 0.075 * k, hipsPos.z - 0.035 * k, s, -0.05, -0.7); setDelta('hand_' + SIDES[q].tag, 0, 0, -s * 25 * DEG); fingers(q, 40); }
     }
-    else if (pose === 'hold' || pose === 'carry') { for (let q = 0; q < 2; q++) { armAngles(q, pose === 'carry' ? 34 : 24, 3, -36, pose === 'carry' ? 84 : 70 + talkNow * beat * 4, 6); fingers(q, 62); } }
+    else if (pose === 'hold') { for (let q = 0; q < 2; q++) { armAngles(q, 24, 3, -36, 70 + talkNow * beat * 4, 6); fingers(q, 62); } }
+    else if (pose === 'carry') carryPose();
     else if (pose === 'flag') { armAngles(0, 6, 9, 8, 12); armAngles(1, 166, 12, 0, 8); fingers(1, 60); }
     else if (pose === 'phone') {
       // one hand holds something small in front of the chest, the head is bent over it
@@ -777,6 +803,7 @@ export function createAnimator(THREE, rig, opts = {}) {
       return;
     }
     const speed = s.speed || 0;
+    carryOn = false;
     st.heading = s.heading || 0; st.ground = s.groundAt || null;
     if (s.inPlace) { vx += Math.sin(st.heading) * speed * dt; vz += Math.cos(st.heading) * speed * dt; st.x = vx; st.z = vz; st.y = 0; st.ground = null; }
     else { st.x = s.x || 0; st.z = s.z || 0; st.y = s.y || 0; }
@@ -797,6 +824,8 @@ export function createAnimator(THREE, rig, opts = {}) {
     else if (pose === 'lie') sleepPose();
     else if (pose === 'fallen') fallenPose();
     else { locomotion(dt, speed, 0); bodyAndArms(dt, speed); if (pose !== 'idle' || talk > 0 || talkNow > 0.02) standingPose(dt); }
+    // a hand that holds something by its handle (a case): the fingers close around it
+    for (let q = 0; q < 2; q++) if (grip[q] > 0 && mode !== 'drive') fingers(q, grip[q], grip[q] * 0.75);
     apply();
     // the face (faceAnim.js): its expression, blinking, the jaw while speaking; asleep = eyes shut
     if (face) { if (pose === 'lie' && !asleep) { asleep = true; awake = face.name; face.set('asleep', 0.6); } else if (pose !== 'lie' && asleep) { asleep = false; face.set(awake, 0.5); } face.update(dt, talk, asleep); }
@@ -833,6 +862,12 @@ export function createAnimator(THREE, rig, opts = {}) {
     set look(v) { lookAt = v; },
     // 'sitEdge': how far the floor is below the character's root (meters)
     set floorBelow(v) { floorBelow = v; },
+    // a box held with both hands (pose 'carry'): its size { w, h, d } (null = a parcel). carryAt: where the middle of
+    // the box is right now, in the character's own space (null when no box is held this frame)
+    set carry(c) { carrySize = c || null; },
+    get carryAt() { return carryOn ? carryAt : null; },
+    // a hand that holds something by its handle: tag 'L' or 'R', how far the fingers close (degrees, 0 = normal)
+    setGrip(tag, curl) { grip[tag === 'L' ? 0 : 1] = curl || 0; },
     get mode() { return mode; },
     get swimming() { return swimming; },
     // where the stroke is (0..1, one stroke = both arms once) - for the splash of each hand

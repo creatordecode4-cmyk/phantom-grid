@@ -984,6 +984,33 @@ export function makeIvyTexture() {
   return canvasToAlphaTexture(cv, [44, 60, 30]);
 }
 
+// CHAIN-LINK FENCE (the docks): diamonds of grey galvanized wire, see-through between them.
+// u repeats (one copy = 8 diamonds = 40 cm), v = 0 .. 0.86 is the wire (2.25 m of fence),
+// v = 0.9 .. 0.98 a solid strip (not used by the panels; kept for posts if one day needed).
+export function makeChainLinkTexture() {
+  const W = 128, H = 512;
+  const [cv, ctx] = makeCanvas(W, H);
+  const top = Math.round(H * (1 - 0.86));            // the wire fills the canvas from here down
+  const px = 16, py = 9.4;                            // one diamond: 16 px wide, 9.4 px tall (5 x 5 cm)
+  const run = ((H - top) * px) / py;                  // how far a diagonal wire travels across the panel
+  ctx.lineCap = 'round';
+  // the wires: two families of diagonals; a darker line under a light one looks like round wire
+  for (const [col, w] of [['rgba(70,74,76,1)', 2.4], ['rgba(168,172,174,1)', 1.3]]) {
+    ctx.strokeStyle = col; ctx.lineWidth = w;
+    ctx.beginPath();
+    for (let k = -Math.ceil(run / px) - 2; k < Math.ceil((W + run) / px) + 2; k++) {
+      const x0 = k * px;
+      ctx.moveTo(x0, top); ctx.lineTo(x0 + run, H);
+      ctx.moveTo(x0, top); ctx.lineTo(x0 - run, H);
+    }
+    ctx.stroke();
+  }
+  // the twisted top edge of the mesh
+  ctx.fillStyle = 'rgb(120,124,126)'; ctx.fillRect(0, top - 1, W, 3);
+  ctx.fillStyle = 'rgb(120,124,126)'; ctx.fillRect(0, Math.round(H * 0.02), W, Math.round(H * 0.08));
+  return canvasToAlphaTexture(cv, [120, 124, 126], { wrapS: THREE.RepeatWrapping });
+}
+
 // A palm frond seen from above: a strong middle stem with many long, wide
 // leaflets on both sides. The leaflets point outward and toward the tip, they
 // overlap near the stem and open up into single tips at the edge.
