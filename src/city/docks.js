@@ -35,6 +35,8 @@ import { addDecal, addMark } from './ground.js';
 import { MARK } from './textures.js';
 import { shared } from './materials.js';
 import * as M from './models.js';
+import { buildCargoShip } from './ship.js';
+import { forklift, straddleCarrier, droneLoader, rbox, rod, wheel, lin as toLin } from './dockModels.js';
 
 const T = CONFIG.textures;
 const lin = M.lin;
@@ -84,6 +86,13 @@ export function buildDocks(ctx) {
     _m.compose(new THREE.Vector3((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2), _q, _s.set(w, h, len));
     mb.addGeometry(unitBox, _m);
   }
+  // a round bar (a cable, a stay, a pipe) from a to b into the static props: not a square beam
+  const _A = new THREE.Vector3(), _B = new THREE.Vector3();
+  const rodP = (a, b, r) => rod(ps, _A.set(a[0], a[1], a[2]), _B.set(b[0], b[1], b[2]), r);
+  // a rounded block into the static props (screen colors go through paint() as usual)
+  const rboxP = (x0, y0, z0, x1, y1, z1, r = 0.05) => rbox(ps, Math.min(x0, x1), Math.min(y0, y1), Math.min(z0, z1), Math.max(x0, x1), Math.max(y0, y1), Math.max(z0, z1), r);
+  // (the shapes of dockModels.js write screen colors: turned linear for the static props here)
+  const paintS = (c, rough = 0.75, metal = 0, glow = 0) => { const l = toLin(c); paint(l, rough, metal, glow); };
   // an upright round post (cylinder) from y0 to y1
   function post(mb, x, z, r, y0, y1) {
     _m.compose(new THREE.Vector3(x, (y0 + y1) / 2, z), _q.identity(), _s.set(r, y1 - y0, r));
@@ -291,7 +300,14 @@ export function buildDocks(ctx) {
     pbox(x - 8.7, 14, QS - 0.5, x + 8.7, 15, QS + 0.5);
     // bogies (the wheel sets on the rails)
     paint(COL.dark, 0.6, 0.5);
-    for (const lx of [x - 8, x + 8]) for (const lz of [QL, QS]) pbox(lx - 2.2, 0, lz - 0.9, lx + 2.2, 0.9, lz + 0.9);
+    for (const lx of [x - 8, x + 8]) for (const lz of [QL, QS]) {
+      rboxP(lx - 2.2, 0.35, lz - 0.6, lx + 2.2, 1.0, lz + 0.6, 0.12);
+      for (const wx of [-1.5, -0.5, 0.5, 1.5]) for (const wz of [-0.42, 0.42]) {
+        paintS([0.16, 0.16, 0.17], 0.5, 0.7);
+        ps.addGeometry(new THREE.CylinderGeometry(0.38, 0.38, 0.16, 10).rotateX(Math.PI / 2).translate(lx + wx, 0.38, lz + wz), null);
+      }
+      paint(COL.dark, 0.6, 0.5);
+    }
     // the boom: two chords from the back to far over the water, with braces
     paint(color, 0.55, 0.45);
     for (const bx of [x - 2.2, x + 2.2]) {
@@ -302,19 +318,20 @@ export function buildDocks(ctx) {
     for (let z = tip; z < back; z += 6) pbox(x - 2.5, boomY - 0.9, z - 0.2, x + 2.5, boomY - 0.6, z + 0.2);
     // the A-frame on top and the stays to the boom
     for (const bx of [x - 6, x + 6]) { beam(ps, [bx, H, QL], [x, boomY + 16, (QL + QS) / 2], 0.6, 0.6); beam(ps, [bx, H, QS], [x, boomY + 16, (QL + QS) / 2], 0.6, 0.6); }
-    for (const bx of [x - 2.2, x + 2.2]) { beam(ps, [x, boomY + 16, (QL + QS) / 2], [bx, boomY + 1, tip + 4], 0.18, 0.18); beam(ps, [x, boomY + 16, (QL + QS) / 2], [bx, boomY + 1, back - 2], 0.18, 0.18); }
+    // (the stays from the top of the A-frame to the boom are round tie bars)
+    for (const bx of [x - 2.2, x + 2.2]) { rodP([x, boomY + 16, (QL + QS) / 2], [bx, boomY + 1, tip + 4], 0.13); rodP([x, boomY + 16, (QL + QS) / 2], [bx, boomY + 1, back - 2], 0.13); }
     // the machine house at the back, the driver's cabin and trolley out over the ship
-    paint(COL.white, 0.6, 0.2); pbox(x - 4, boomY, back - 9, x + 4, boomY + 5, back);
-    paint(COL.glass, 0.1, 0.4); pbox(x - 4.02, boomY + 3, back - 8, x + 4.02, boomY + 4, back - 1);
+    paint(COL.white, 0.6, 0.2); rboxP(x - 4, boomY, back - 9, x + 4, boomY + 5, back, 0.35);
+    paint(COL.glass, 0.1, 0.4); rboxP(x - 4.04, boomY + 3, back - 8, x + 4.04, boomY + 4, back - 1, 0.1);
     const tz = D.minZ - 20;
     paint(COL.dark, 0.5, 0.6); pbox(x - 2.6, boomY - 1.8, tz - 2, x + 2.6, boomY - 0.9, tz + 2);
-    paint(COL.white, 0.5, 0.3); pbox(x - 1.2, boomY - 4.2, tz - 1.4, x + 1.4, boomY - 1.8, tz + 1.2);
-    paint(COL.glass, 0.1, 0.4); pbox(x - 1.22, boomY - 3.6, tz - 1.42, x + 1.42, boomY - 2.4, tz - 1.2);
+    paint(COL.white, 0.5, 0.3); rboxP(x - 1.2, boomY - 4.2, tz - 1.4, x + 1.4, boomY - 1.8, tz + 1.2, 0.25);
+    paint(COL.glass, 0.1, 0.4); rboxP(x - 1.24, boomY - 3.6, tz - 1.44, x + 1.44, boomY - 2.4, tz + 0.6, 0.22);
     // cables down to the spreader over the ship
     paint(COL.dark, 0.4, 0.8);
     const sy = 16;
-    for (const ox of [-1.1, 1.1]) for (const oz of [-0.9, 0.9]) beam(ps, [x + ox, boomY - 1.8, tz + oz], [x + ox * 2.4, sy + 0.6, tz + oz * 0.6], 0.04, 0.04);
-    paint(COL.yellow, 0.6, 0.3); pbox(x - 6, sy, tz - 1.2, x + 6, sy + 0.6, tz + 1.2);
+    for (const ox of [-1.1, 1.1]) for (const oz of [-0.9, 0.9]) rodP([x + ox, boomY - 1.8, tz + oz], [x + ox * 2.4, sy + 0.6, tz + oz * 0.6], 0.035);
+    paint(COL.yellow, 0.6, 0.3); rboxP(x - 6, sy, tz - 1.2, x + 6, sy + 0.6, tz + 1.2, 0.12);
     // a red warning light on top (always lit)
     paint([1, 0.1, 0.05], 0.4, 0, 1.6); pbox(x - 0.25, boomY + 16, (QL + QS) / 2 - 0.25, x + 0.25, boomY + 16.5, (QL + QS) / 2 + 0.25);
     // rails on the quay
@@ -509,6 +526,58 @@ export function buildDocks(ctx) {
   officeGlass.renderOrder = 16;
   ctx.group.add(officeGlass);
 
+  // ---- things on the market tables: real shapes, not boxes (kind 0..5). col: the color of this place
+  const mrng = new RNG(6188);            // (its own random numbers: the rest of the docks stays as it was)
+  function marketGoods(kind, gx, z, col, top) {
+    const cx = gx + 0.3, y = 0.9;
+    if (kind === 0) {
+      // a crate of fruit
+      paint([0.42, 0.3, 0.18], 0.9, 0); rboxP(gx, y, z - 0.5, gx + 0.6, y + 0.22, z + 0.3, 0.02);
+      paint(col, 0.6, 0);
+      for (let i = 0; i < 8; i++) ps.addGeometry(new THREE.SphereGeometry(0.05, 6, 4).translate(gx + 0.09 + (i % 4) * 0.14, y + 0.25, z - 0.36 + Math.floor(i / 4) * 0.26), null);
+    } else if (kind === 1) {
+      // a full sack, its neck rolled down
+      paint([0.55, 0.45, 0.3], 0.95, 0);
+      ps.addGeometry(new THREE.SphereGeometry(1, 12, 9).scale(0.26, (top - y) * 0.62 + 0.12, 0.24).translate(cx, y + (top - y) * 0.5 + 0.06, z - 0.1), null);
+      ps.addGeometry(new THREE.TorusGeometry(0.17, 0.035, 6, 14).rotateX(Math.PI / 2).translate(cx, y + (top - y) + 0.12, z - 0.1), null);
+    } else if (kind === 2) {
+      // a woven basket with round things in it
+      paint([0.6, 0.47, 0.28], 0.95, 0);
+      ps.addGeometry(new THREE.CylinderGeometry(0.27, 0.22, 0.22, 16, 1, true).translate(cx, y + 0.11, z - 0.1), null);
+      ps.addGeometry(new THREE.CircleGeometry(0.22, 16).rotateX(-Math.PI / 2).translate(cx, y + 0.01, z - 0.1), null);
+      ps.addGeometry(new THREE.TorusGeometry(0.27, 0.02, 5, 18).rotateX(Math.PI / 2).translate(cx, y + 0.22, z - 0.1), null);
+      paint(col, 0.6, 0);
+      for (let i = 0; i < 5; i++) { const a = i * 1.26; ps.addGeometry(new THREE.SphereGeometry(0.065, 6, 4).translate(cx + Math.cos(a) * 0.12 * (i ? 1 : 0), y + 0.22, z - 0.1 + Math.sin(a) * 0.12 * (i ? 1 : 0)), null); }
+    } else if (kind === 3) {
+      // folded cloth in a pile
+      for (let i = 0, yy = y; i < 4; i++) { paint([col[0] * (0.7 + i * 0.12), col[1] * (0.7 + i * 0.1), col[2] * (0.8 + i * 0.08)], 0.95, 0); rboxP(gx + 0.03 + i * 0.01, yy, z - 0.45, gx + 0.57 - i * 0.01, yy + 0.07, z + 0.15, 0.03); yy += 0.07; }
+    } else if (kind === 4) {
+      // bottles and jars
+      for (let i = 0; i < 5; i++) {
+        const bx = gx + 0.08 + (i % 3) * 0.2, bz = z - 0.35 + Math.floor(i / 3) * 0.3, h = 0.18 + (i % 2) * 0.1;
+        paint(col, 0.15, 0.1); ps.addGeometry(new THREE.CylinderGeometry(0.045, 0.05, h, 12).translate(bx, y + h / 2, bz), null);
+        ps.addGeometry(new THREE.CylinderGeometry(0.018, 0.035, 0.06, 10).translate(bx, y + h + 0.03, bz), null);
+        paint([0.2, 0.2, 0.21], 0.5, 0.6); ps.addGeometry(new THREE.CylinderGeometry(0.02, 0.02, 0.025, 10).translate(bx, y + h + 0.07, bz), null);
+      }
+    } else {
+      // a box of old electronics and a small screen that still glows
+      paint([0.12, 0.12, 0.13], 0.6, 0.3); rboxP(gx + 0.02, y, z - 0.45, gx + 0.58, y + 0.3, z + 0.1, 0.04);
+      paint([0.25, 0.55, 0.6], 0.3, 0, 0.6); rboxP(gx + 0.1, y + 0.08, z + 0.1, gx + 0.5, y + 0.26, z + 0.12, 0.01);
+    }
+  }
+  // a cloth stretched between four corners that sags in the middle (side 1: the top face, -1: the underside)
+  function sagCloth(x0, z0, x1, z1, y, sag, side) {
+    const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, 10, 6);
+    g.rotateX(side > 0 ? -Math.PI / 2 : Math.PI / 2);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const u = p.getX(i) / (x1 - x0) * 2, v = p.getZ(i) / (z1 - z0) * 2;
+      p.setY(i, -sag * (1 - u * u) * (1 - v * v) - 0.03 * Math.sin(u * 9 + v * 3) * (1 - u * u));
+    }
+    g.computeVertexNormals();
+    g.translate((x0 + x1) / 2, y, (z0 + z1) / 2);
+    return g;
+  }
   // ---- THE COVERED SMUGGLER MARKET: a long roof on posts, stalls and goods under it, warm bulbs ----
   {
     const r = D.market, h = 5;
@@ -524,18 +593,31 @@ export function buildDocks(ctx) {
     const goods = [[0.5, 0.36, 0.2], [0.2, 0.25, 0.3], [0.55, 0.5, 0.42], [0.3, 0.12, 0.08], [0.15, 0.3, 0.2], [0.6, 0.45, 0.1]];
     for (const z of [r.minZ + 4, r.maxZ - 4]) {
       for (let x = r.minX + 3; x < r.maxX - 3; x += 6.5) {
-        paint(COL.wood, 0.8, 0); pbox(x, 0, z - 1, x + 4.6, 0.9, z + 1);                      // the table
+        // the table: a top on four legs, a shelf with crates under it
+        paint(COL.wood, 0.8, 0);
+        rboxP(x, 0.84, z - 1, x + 4.6, 0.9, z + 1, 0.025);
+        for (const lx of [x + 0.12, x + 4.48]) for (const lz of [z - 0.88, z + 0.88]) rodP([lx, 0, lz], [lx, 0.85, lz], 0.035);
+        rboxP(x + 0.1, 0.2, z - 0.85, x + 4.5, 0.24, z + 0.85, 0.015);
+        paint([0.36, 0.25, 0.15], 0.9, 0);
+        for (const cx of [x + 0.5, x + 1.6, x + 3.4]) rboxP(cx, 0.24, z - 0.5, cx + 0.8, 0.62, z + 0.4, 0.03);
         // (the tea stall: the middle of its table stays free - her tin of drawings stands there. The random numbers are
         //  still drawn, so everything else in the docks stays where it was)
         const tea = z === r.minZ + 4 && r.teaX !== undefined && r.teaX > x && r.teaX < x + 4.6;
         for (let k = 0; k < 6; k++) {
-          paint(rng.pick(goods), 0.8, 0); const gx = x + 0.3 + k * 0.72, top = 0.9 + rng.range(0.15, 0.45);
+          const col = rng.pick(goods), gx = x + 0.3 + k * 0.72, top = 0.9 + rng.range(0.15, 0.45);
           if (tea && gx + 0.6 > r.teaX - 0.2 && gx < r.teaX + 1.4) continue;
-          pbox(gx, 0.9, z - 0.7, gx + 0.6, top, z + 0.5);
+          marketGoods(mrng.int(0, 5), gx, z, col, top);
         }
-        paint(rng.pick([COL.blueTarp, [0.35, 0.08, 0.05], [0.12, 0.2, 0.12], [0.4, 0.33, 0.2]]), 0.9, 0);
-        pbox(x - 0.2, 2.6, z - 1.6, x + 4.8, 2.65, z + 1.4);                                    // a tarp overhead
-        paint(COL.warm, 0.4, 0, 1.1); pbox(x + 2.2, 2.2, z - 0.1, x + 2.4, 2.4, z + 0.1);       // the bulb
+        // a cloth roof that sags between four poles (both sides of the cloth are drawn), tied with ropes
+        const tc = rng.pick([COL.blueTarp, [0.35, 0.08, 0.05], [0.12, 0.2, 0.12], [0.4, 0.33, 0.2]]);
+        paint([0.3, 0.3, 0.31], 0.6, 0.5);
+        for (const [px, pz] of [[x - 0.15, z - 1.55], [x + 4.75, z - 1.55], [x - 0.15, z + 1.35], [x + 4.75, z + 1.35]]) rodP([px, 0, pz], [px, 2.78, pz], 0.03);
+        paint(tc, 0.9, 0);
+        ps.addGeometry(sagCloth(x - 0.2, z - 1.6, x + 4.8, z + 1.4, 2.75, 0.24, 1), null);
+        ps.addGeometry(sagCloth(x - 0.2, z - 1.6, x + 4.8, z + 1.4, 2.74, 0.24, -1), null);
+        // the bulb on its wire under the cloth
+        paint(COL.dark, 0.6, 0.3); rodP([x + 2.3, 2.52, z], [x + 2.3, 2.32, z], 0.006);
+        paint(COL.warm, 0.4, 0, 1.1); ps.addGeometry(new THREE.SphereGeometry(0.07, 10, 8).translate(x + 2.3, 2.27, z), null);
         ctx.lamps.push({ x: x + 2.3, y: 2.3, z, type: 0, h: 2.3, pool: 0.35, size: 0.6, power: 0.03, streak: 0 });
         solid(x, x + 4.6, z - 1, z + 1, 0.9);
       }
@@ -568,14 +650,15 @@ export function buildDocks(ctx) {
   // ---- the gate booth on Dock Road and the barrier arms (up: the port is open) ----
   {
     const x = D.gateX, rd = D.road;
-    paint(COL.white, 0.6, 0.1); pbox(x - 1.4, 0, rd.maxZ + 0.6, x + 1.4, 2.7, rd.maxZ + 3.2);
-    paint(COL.glass, 0.1, 0.4); pbox(x - 1.42, 1.1, rd.maxZ + 0.58, x + 1.42, 2.2, rd.maxZ + 3.22);
-    paint(COL.steel, 0.6, 0.5); pbox(x - 1.6, 2.7, rd.maxZ + 0.4, x + 1.6, 2.9, rd.maxZ + 3.4);
+    // (a modern booth: rounded corners, glass all round, a roof that stands out over it)
+    paint(COL.white, 0.6, 0.1); rboxP(x - 1.4, 0, rd.maxZ + 0.6, x + 1.4, 2.7, rd.maxZ + 3.2, 0.14);
+    paint(COL.glass, 0.1, 0.4); rboxP(x - 1.43, 1.1, rd.maxZ + 0.57, x + 1.43, 2.25, rd.maxZ + 3.23, 0.14);
+    paint(COL.steel, 0.6, 0.5); rboxP(x - 1.7, 2.7, rd.maxZ + 0.35, x + 1.7, 2.92, rd.maxZ + 3.45, 0.1);
     solid(x - 1.4, x + 1.4, rd.maxZ + 0.6, rd.maxZ + 3.2, 2.7);
     for (const [z, s] of [[rd.minZ - 0.5, 1], [rd.maxZ + 0.3, -1]]) {
-      paint(COL.dark, 0.6, 0.5); pbox(x - 0.3, 0, z - 0.3, x + 0.3, 1.1, z + 0.3);
-      paint([0.8, 0.8, 0.78], 0.6, 0.1); beam(ps, [x, 1.05, z], [x - 0.4, 6.5, z + s * 0.6], 0.12, 0.12);
-      paint([0.75, 0.08, 0.05], 0.6, 0.1); beam(ps, [x - 0.1, 2.6, z + s * 0.16], [x - 0.2, 4.0, z + s * 0.32], 0.13, 0.13);
+      paint(COL.dark, 0.6, 0.5); rboxP(x - 0.3, 0, z - 0.3, x + 0.3, 1.1, z + 0.3, 0.08);
+      paint([0.8, 0.8, 0.78], 0.6, 0.1); rodP([x, 1.05, z], [x - 0.4, 6.5, z + s * 0.6], 0.07);
+      paint([0.75, 0.08, 0.05], 0.6, 0.1); rodP([x - 0.1, 2.6, z + s * 0.16], [x - 0.2, 4.0, z + s * 0.32], 0.075);
       solid(x - 0.4, x + 0.4, z - 0.4, z + 0.4, 1.1);
     }
   }
@@ -761,17 +844,8 @@ export function buildDocks(ctx) {
     { geom: new THREE.TorusGeometry(0.29, 0.02, 4, 14), pos: [0, 0.3, 0], rot: [Math.PI / 2, 0, 0], color: [0.6, 0.6, 0.6], rough: 0.5, metal: 0.6, paint: 1 },
     { geom: new THREE.TorusGeometry(0.29, 0.02, 4, 14), pos: [0, 0.6, 0], rot: [Math.PI / 2, 0, 0], color: [0.6, 0.6, 0.6], rough: 0.5, metal: 0.6, paint: 1 },
   ]), mats.prop, { maxDistance: 110, useColor: true });
-  const forkGeo = mergeParts([
-    { geom: new THREE.BoxGeometry(1.1, 0.9, 2.1), pos: [0, 0.75, 0], color: [0.75, 0.5, 0.05], rough: 0.5, metal: 0.3 },
-    { geom: new THREE.BoxGeometry(1.0, 0.1, 1.0), pos: [0, 2.15, -0.15], color: COL.dark, rough: 0.6, metal: 0.4 },
-    ...[[-0.45, -0.6], [0.45, -0.6], [-0.45, 0.35], [0.45, 0.35]].map(([x, z]) => ({ geom: new THREE.BoxGeometry(0.06, 1.0, 0.06), pos: [x, 1.65, z], color: COL.dark, rough: 0.6, metal: 0.4 })),
-    { geom: new THREE.BoxGeometry(0.9, 2.4, 0.12), pos: [0, 1.3, 1.1], color: COL.dark, rough: 0.6, metal: 0.4 },
-    { geom: new THREE.BoxGeometry(0.12, 0.06, 1.1), pos: [-0.3, 0.12, 1.7], color: COL.steel, rough: 0.4, metal: 0.8 },
-    { geom: new THREE.BoxGeometry(0.12, 0.06, 1.1), pos: [0.3, 0.12, 1.7], color: COL.steel, rough: 0.4, metal: 0.8 },
-    { geom: new THREE.BoxGeometry(1.2, 0.5, 0.5), pos: [0, 0.6, -1.2], color: COL.dark, rough: 0.7, metal: 0.4 },
-    ...[[-0.6, 0.6], [0.6, 0.6], [-0.6, -0.7], [0.6, -0.7]].map(([x, z]) => ({ geom: new THREE.CylinderGeometry(0.3, 0.3, 0.25, 12), pos: [x, 0.3, z], rot: [0, 0, Math.PI / 2], color: COL.rubber, rough: 0.9 })),
-    { geom: new THREE.BoxGeometry(0.2, 0.12, 0.12), pos: [0, 2.25, -0.4], color: [1, 0.5, 0.05], rough: 0.4, glow: 1.3 },
-  ]);
+  // (a real forklift made of rounded parts, see dockModels.js)
+  const forkGeo = forklift();
   const forks = new InstancedSet('dockForklift', forkGeo, mats.prop, { maxDistance: 150 });
   sets.dockPallet = pallet; sets.dockDrum = drum; sets.dockForklift = forks;
   const DRUM_COLORS = [[0.06, 0.15, 0.4], [0.5, 0.06, 0.04], [0.6, 0.45, 0.05], [0.08, 0.25, 0.12], [0.3, 0.3, 0.3]];
@@ -819,89 +893,26 @@ export function buildDocks(ctx) {
   // 11. THE SHIPS at the quay (their own meshes: they bob), and the channel water
   // =========================================================================
   const ships = [];
+  // (built from smooth curves in ship.js: the hull lines, the house, the funnel, the lifeboat, railings ...)
   function shipMesh(S) {
-    const mb = new MeshBuilder();
-    const hl = S.len / 2, hb = S.beam / 2, deck = 7, keel = -8;
-    const stations = [];
-    // the hull's half width along its length (stern at -hl, bow at +hl): full in the middle, a sharp bow
-    for (let i = 0; i <= 20; i++) {
-      const t = i / 20, x = -hl + t * S.len;
-      const w = t > 0.78 ? hb * Math.pow(Math.max(0, 1 - (t - 0.78) / 0.22), 0.7) + 0.4 : t < 0.06 ? hb * (0.86 + 0.14 * (t / 0.06)) : hb;
-      stations.push([x, w, t]);
-    }
-    const hullC = S.hull, red = [0.22, 0.03, 0.025], white = [0.6, 0.6, 0.58];
-    // the bow leans forward: low down it ends up to 7 m earlier than at the deck (a raked stem)
-    const X = (x, t, y) => x - (t > 0.78 ? ((t - 0.78) / 0.22) * 7 * (1 - (y - keel) / (deck - keel)) : 0);
-    const side = (s) => {
-      for (let i = 0; i < stations.length - 1; i++) {
-        const [x0, w0, t0] = stations[i], [x1, w1, t1] = stations[i + 1];
-        for (const [ya, yb, c] of [[keel, level - 0.3, red], [level - 0.3, deck - 0.5, hullC], [deck - 0.5, deck, white]]) {
-          mb.color(c[0], c[1], c[2], 1).data(0.6, 0.3, 0, 0);
-          const p0 = [X(x0, t0, ya), ya, s * w0], p1 = [X(x1, t1, ya), ya, s * w1], p2 = [X(x1, t1, yb), yb, s * w1], p3 = [X(x0, t0, yb), yb, s * w0];
-          const k = -(w1 - w0) / (x1 - x0), nl = Math.hypot(k, 1), n = [k / nl, 0, s / nl];   // (leans forward at the bow)
-          if (s > 0) mb.quad(p0, p1, p2, p3, n, [0, 0], [1, 0], [1, 1], [0, 1]);
-          else mb.quad(p1, p0, p3, p2, n, [0, 0], [1, 0], [1, 1], [0, 1]);
-        }
-      }
-    };
-    side(1); side(-1);
-    // the stern (flat) and the deck
-    mb.color(hullC[0], hullC[1], hullC[2], 1).data(0.6, 0.3, 0, 0);
-    mb.quadAuto([-hl, keel, stations[0][1]], [-hl, keel, -stations[0][1]], [-hl, deck, -stations[0][1]], [-hl, deck, stations[0][1]], [-1, 0, 0]);
-    const bw = stations[stations.length - 1][1];
-    mb.quadAuto([X(hl, 1, keel), keel, -bw], [X(hl, 1, keel), keel, bw], [hl, deck, bw], [hl, deck, -bw], [1, 0, 0]);          // the narrow bow plate
-    mb.color(0.2, 0.22, 0.2, 1).data(0.8, 0.1, 0, 0);
-    for (let i = 0; i < stations.length - 1; i++) {
-      const [x0, w0] = stations[i], [x1, w1] = stations[i + 1];
-      mb.quad([x0, deck, -w0], [x0, deck, w0], [x1, deck, w1], [x1, deck, -w1], [0, 1, 0], [0, 0], [0, 1], [1, 1], [1, 0]);
-    }
-    // the bridge house at the stern, the funnel, a mast, lifeboats
-    const bx0 = -hl + 4, bx1 = -hl + 18;
-    mb.color(0.66, 0.66, 0.63, 1).data(0.6, 0.1, 0, 0);
-    mb.box(bx0, deck, -hb + 1.5, bx1, deck + 15, hb - 1.5, 1, 'nsewt');
-    mb.box(bx0 + 2, deck + 15, -hb, bx0 + 10, deck + 17, hb, 1, 'nsewt');                  // the bridge wings
-    mb.color(0.02, 0.03, 0.04, 1).data(0.1, 0.4, 0, 0);
-    for (let y = deck + 2.5; y < deck + 14; y += 2.8) mb.box(bx1, y, -hb + 2.2, bx1 + 0.05, y + 1.1, hb - 2.2, 1, 'w');
-    mb.box(bx0 + 2, deck + 15.6, -hb - 0.02, bx0 + 10, deck + 16.6, hb + 0.02, 1, 'nsw');
-    mb.color(S.hull[0] * 1.3, S.hull[1] * 1.3, S.hull[2] * 1.3, 1).data(0.6, 0.2, 0, 0);
-    mb.box(bx0 - 2, deck + 15, -2.4, bx0 + 3, deck + 23, 2.4, 1, 'nsewt');
-    mb.color(0.02, 0.02, 0.02, 1).data(0.8, 0.1, 0, 0);
-    mb.box(bx0 - 2, deck + 22, -2.45, bx0 + 3, deck + 23, 2.45, 1, 'nsewt');
-    mb.color(0.6, 0.18, 0.04, 1).data(0.6, 0, 0, 0);
-    for (const s of [-1, 1]) mb.box(bx0 + 4, deck + 6, s * (hb - 0.2) - 1.2, bx0 + 11, deck + 8, s * (hb - 0.2) + 1.2, 1, 'nsewt');
-    mb.color(0.5, 0.5, 0.5, 1).data(0.5, 0.6, 0, 0);
-    mb.box(bx0 + 5.9, deck + 17, -0.12, bx0 + 6.1, deck + 26, 0.12, 1, 'nsew');
-    // containers on deck, in bays (their colors vary), with gaps for the hatch covers
-    for (let x = bx1 + 3; x < hl * 0.72; x += L40 + 1.4) {
-      const rows = Math.floor((S.beam - 2) / (CW + 0.06));
-      for (let r = 0; r < rows; r++) {
-        const zc = -((rows - 1) * (CW + 0.06)) / 2 + r * (CW + 0.06);
-        const n = rng.int(1, 4);
-        for (let k = 0; k < n; k++) {
-          const c = pickColor(), f = rng.range(0.75, 1.05);
-          mb.color(c[0] * f, c[1] * f, c[2] * f, 1).data(0.7, 0.4, 0, 0);
-          mb.box(x, deck + k * CH, zc - CW / 2, x + L40, deck + (k + 1) * CH - 0.02, zc + CW / 2, 1, 'nsewt');
-        }
-      }
-    }
-    // the bow mast with a light, and the anchor hawse
-    mb.color(0.9, 0.9, 0.9, 1).data(0.4, 0, 0, 1.2);
-    mb.box(hl - 3, deck + 9, -0.2, hl - 2.6, deck + 9.4, 0.2, 1, 'nsewt');
-    mb.color(0.5, 0.5, 0.5, 1).data(0.5, 0.6, 0, 0);
-    mb.box(hl - 2.95, deck, -0.1, hl - 2.75, deck + 9, 0.1, 1, 'nsew');
-    const m = new THREE.Mesh(mb.build(true), mats.prop);
-    m.castShadow = true; m.receiveShadow = true;
-    m.position.set(S.x, 0, S.z);
-    // (bow to the east: -x)
-    m.rotation.y = Math.PI;
-    ctx.group.add(m);
-    solid(S.x - hl - 1, S.x + hl + 1, S.z - hb - 1, S.z + hb + 1, 12, { boatOnly: true });
-    return m;
+    // ship frame -> world: the ship lies at (S.x, S.z) with its bow to the east (-x): turned half round
+    const { mesh, names } = buildCargoShip({ ...S, band: S.band || (S.hull[2] > S.hull[0] ? [0.85, 0.55, 0.08] : [0.1, 0.45, 0.62]) }, {
+      material: mats.prop, CW, CH, L40, rng,
+      // (the deck containers are the docks' own detailed containers; they do not bob with the ship - it barely moves)
+      addContainer: (x, y, z, rot) => container(S.x - x, y, S.z - z, rot, true),
+    });
+    mesh.position.set(S.x, 0, S.z);
+    mesh.rotation.y = Math.PI;
+    mesh.add(names);
+    ctx.group.add(mesh);
+    const hl = S.len / 2, hb = S.beam / 2;
+    solid(S.x - hl - 4, S.x + hl + 2, S.z - hb - 1, S.z + hb + 1, 12, { boatOnly: true });
+    return mesh;
   }
   for (const S of D.ships) ships.push({ m: shipMesh(S), ph: rng.range(0, 6.28) });
   // mooring lines from the bollards to the ships
   paint(COL.rope || [0.3, 0.26, 0.18], 0.9, 0);
-  for (const S of D.ships) for (const o of [-0.42, -0.3, 0.3, 0.42]) beam(ps, [S.x + o * S.len, 0.6, D.minZ + 0.9], [S.x + o * S.len * 0.92, 6, S.z + S.beam / 2 - 0.5], 0.05, 0.05);
+  for (const S of D.ships) for (const o of [-0.42, -0.3, 0.3, 0.42]) rodP([S.x + o * S.len, 0.6, D.minZ + 0.9], [S.x + o * S.len * 0.92, 6, S.z + S.beam / 2 - 0.5], 0.04);
   // the channel water (the ocean picture, its own small sheet: the sea mesh ends at the beach line)
   // (the sea sheet of backdrop.js stops at the quay line in the docks; this one goes on into the channel)
   const chWater = new THREE.Mesh((() => { const mb = new MeshBuilder(); mb.groundRect(ch.minX, D.minZ, ch.maxX, ch.maxZ, level, 1); return mb.build(false); })(), mats.harbor);
@@ -921,25 +932,14 @@ export function buildDocks(ctx) {
     ctx.group.add(mesh);
     movers.push({ mesh, path, speed, s: rng.range(0, 1) * 300, y: opts.y || 0, bob: opts.bob || 0, r: opts.r || 0, ping: opts.ping !== false, len: 0 });
   }
-  const carrierGeo = mergeParts([
-    ...[[-2.4, -1.4], [2.4, -1.4], [-2.4, 1.4], [2.4, 1.4]].map(([x, z]) => ({ geom: new THREE.BoxGeometry(0.6, 5.6, 0.6), pos: [x, 3.4, z], color: [0.75, 0.75, 0.72], rough: 0.5, metal: 0.4 })),
-    { geom: new THREE.BoxGeometry(5.6, 0.8, 3.4), pos: [0, 6.4, 0], color: [0.75, 0.75, 0.72], rough: 0.5, metal: 0.4 },
-    ...[[-2.4, -1.4], [2.4, -1.4], [-2.4, 1.4], [2.4, 1.4]].map(([x, z]) => ({ geom: new THREE.CylinderGeometry(0.5, 0.5, 0.45, 12), pos: [x, 0.5, z], rot: [Math.PI / 2, 0, 0], color: COL.rubber, rough: 0.9 })),
-    { geom: new THREE.BoxGeometry(L20, CH, CW), pos: [0, 3.1, 0], color: CONTAINER_COLORS[3], rough: 0.7, metal: 0.4 },
-    { geom: new THREE.BoxGeometry(0.3, 0.3, 0.3), pos: [2.6, 6.9, 1.6], color: [0.2, 1, 0.5], rough: 0.4, glow: 1.5 },
-    { geom: new THREE.BoxGeometry(0.3, 0.3, 0.3), pos: [-2.6, 6.9, -1.6], color: [1, 0.55, 0.05], rough: 0.4, glow: 1.5 },
-  ]);
+  // an autonomous straddle carrier and a heavy-lift drone (dockModels.js)
+  const carrierGeo = straddleCarrier(CONTAINER_COLORS[3], L20, CH, CW);
   for (const [i, x0] of [-540, -800].entries()) {
     const m = new THREE.Mesh(carrierGeo, mats.prop);
     m.rotation.y = Math.PI / 2;
     mover(m, [[x0, D.minZ + 9], [x0 - 120, D.minZ + 9]], 3.2 + i * 0.4, { r: 3.2 });
   }
-  const droneGeo = mergeParts([
-    { geom: new THREE.BoxGeometry(1.4, 0.35, 1.4), pos: [0, 0, 0], color: [0.2, 0.21, 0.22], rough: 0.5, metal: 0.5 },
-    ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, z]) => ({ geom: new THREE.CylinderGeometry(0.55, 0.55, 0.05, 12), pos: [x, 0.25, z], color: [0.1, 0.1, 0.1], rough: 0.5 })),
-    { geom: new THREE.BoxGeometry(0.9, 0.8, 0.9), pos: [0, -1.2, 0], color: [0.4, 0.28, 0.16], rough: 0.9 },
-    { geom: new THREE.BoxGeometry(0.2, 0.12, 0.2), pos: [0, -0.2, 0.7], color: [0.2, 1, 0.5], rough: 0.4, glow: 1.6 },
-  ]);
+  const droneGeo = droneLoader();
   for (const [i, x] of [-585, -790].entries()) {
     const m = new THREE.Mesh(droneGeo, mats.prop);
     mover(m, [[x - 20, D.minZ - 8], [x + 15, D.minZ - 12], [x + 10, D.minZ + 12], [x - 25, D.minZ + 10]], 4 + i, { y: 18 + i * 3, bob: 0.4, ping: false });
@@ -972,36 +972,9 @@ export function buildDocks(ctx) {
   //     their work (cranes, sheds, the market, the gate), some walk their rounds. One draw call;
   //     shown only near the port (never more than 24 people).
   // =========================================================================
-  const crewGeo = (() => {
-    const skin = [0.62, 0.46, 0.36], trousers = [0.12, 0.13, 0.15], shoe = [0.05, 0.05, 0.05];
-    const parts = [
-      { geom: new THREE.CylinderGeometry(0.2, 0.165, 0.6, 6), pos: [0, 1.17, 0], scale: [1, 1, 0.62], color: [0.95, 0.95, 0.95], rough: 0.8, paint: 1 },   // the vest (its color per person)
-      { geom: new THREE.CylinderGeometry(0.181, 0.178, 0.045, 6), pos: [0, 1.05, 0], scale: [1, 1, 0.64], color: [0.8, 0.82, 0.78], rough: 0.4, glow: 0.12 },   // reflective stripes
-      { geom: new THREE.CylinderGeometry(0.193, 0.19, 0.045, 6), pos: [0, 1.27, 0], scale: [1, 1, 0.64], color: [0.8, 0.82, 0.78], rough: 0.4, glow: 0.12 },
-      { geom: new THREE.CylinderGeometry(0.05, 0.055, 0.1, 5), pos: [0, 1.5, 0], color: skin, rough: 0.7 },
-      { geom: new THREE.SphereGeometry(0.112, 7, 5), pos: [0, 1.63, 0.005], scale: [0.94, 1.14, 1], color: skin, rough: 0.7 },
-      { geom: new THREE.SphereGeometry(0.128, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), pos: [0, 1.67, 0], color: [0.85, 0.7, 0.08], rough: 0.4 },        // hard hat
-      { geom: new THREE.CylinderGeometry(0.15, 0.15, 0.015, 10), pos: [0, 1.672, 0.02], color: [0.85, 0.7, 0.08], rough: 0.4 },
-    ];
-    for (const sx of [-1, 1]) {
-      parts.push({ geom: new THREE.BoxGeometry(0.15, 0.82, 0.17), pos: [sx * 0.092, 0.46, 0], color: trousers, rough: 0.85 });
-      parts.push({ geom: new THREE.BoxGeometry(0.14, 0.07, 0.27), pos: [sx * 0.092, 0.036, 0.045], color: shoe, rough: 0.6 });
-      parts.push({ geom: new THREE.BoxGeometry(0.1, 0.5, 0.115), pos: [sx * 0.262, 1.2, 0], color: [0.2, 0.21, 0.24], rough: 0.85 });            // dark sleeves (a work shirt under the vest)
-      parts.push({ geom: new THREE.BoxGeometry(0.085, 0.16, 0.095), pos: [sx * 0.262, 0.875, 0], color: [0.12, 0.12, 0.1], rough: 0.8 });       // gloves
-    }
-    const geometry = mergeParts(parts);
-    // arms and legs swing when they walk (the same marks as the city's people, see models.js)
-    const pos = geometry.attributes.position, limb = new Float32Array(pos.count * 3);
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getY(i), sd = x > 0 ? 1 : -1;
-      let pivot = 0, swing = 0;
-      if (Math.abs(x) > 0.2) { pivot = 1.42; swing = -0.42 * sd; }
-      else if (y < 0.875 && Math.abs(x) > 0.01) { pivot = 0.88; swing = 0.5 * sd; }
-      limb[i * 3] = pivot; limb[i * 3 + 1] = swing; limb[i * 3 + 2] = 1;
-    }
-    geometry.setAttribute('aLimb', new THREE.BufferAttribute(limb, 3));
-    return geometry;
-  })();
+  // (the same smooth person as the city's walkers, see makeHumanFigure in models.js: a vest with reflective
+  //  stripes in the person's color, a work shirt, gloves, a hard hat)
+  const crewGeo = M.makeHumanFigure('worker', 1);
   const VESTS = [[1.0, 0.36, 0.02], [1.0, 0.42, 0.04], [0.95, 0.3, 0.02], [0.85, 0.75, 0.05], [0.1, 0.16, 0.12], [0.05, 0.08, 0.16]];   // orange, orange, orange, yellow, rain gear
   // [x, z, compass facing (degrees), walk to x2, z2 (or nothing: stands at work)]
   const CREW = [
@@ -1116,7 +1089,7 @@ export function buildDocks(ctx) {
     update(dt, time, px, pz, dynList) {
       const near = Math.abs(px - (D.minX + D.maxX) / 2) < 380 && pz < D.maxZ + 220;
       for (const s of ships) {
-        s.m.position.y = Math.sin(time * 0.42 + s.ph) * 0.16;
+        s.m.position.y = Math.sin(time * 0.42 + s.ph) * 0.05;      // (moored: it hardly moves)
         s.m.rotation.z = Math.sin(time * 0.31 + s.ph) * 0.005;
         s.m.rotation.x = Math.sin(time * 0.23 + s.ph * 1.7) * 0.003;
       }

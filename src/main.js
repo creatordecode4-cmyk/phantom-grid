@@ -448,7 +448,8 @@ async function boot() {
     if (!film && vehicles.state === 'none' && !player.staged) {
       const cp = camera.position, pp = player.position;
       const hy = clamp(cp.y, pp.y + 0.9, pp.y + 1.8);
-      player.setFade(clamp((Math.hypot(cp.x - pp.x, cp.y - hy, cp.z - pp.z) - 0.4) / 0.45, 0, 1));
+      // (only when the camera is really at his head: the camera rises over the shoulder before that, camera.js)
+      player.setFade(clamp((Math.hypot(cp.x - pp.x, cp.y - hy, cp.z - pp.z) - 0.3) / 0.28, 0, 1));
     } else player.setFade(1);
     {
       // the faster, the wider the view (and a little speed blur at the very top, see postfx.js)
@@ -1038,6 +1039,9 @@ async function boot() {
       }
     }
   }
+
+  // the see-through look of the player (the camera against a wall) is prepared now, not in the middle of play
+  if (player.prewarmFade) player.prewarmFade(renderer, scene, camera);
 
   // tools for testing from the browser console (and for screenshots)
   window.PG = {

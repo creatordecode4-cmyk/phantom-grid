@@ -337,33 +337,131 @@ export function makeLifeguardTower() {
 // The clothes take the per-copy color. Arms and legs swing in the shader:
 // for that every vertex stores "aLimb" = ( height of the joint it turns
 // around, how far it swings (+ or -), 1 ).
+// ---------------------------------------------------------------------------
+// PEOPLE OF THE CROWDS (the walkers on the sidewalks, the dock workers, the race spectators)
+// ---------------------------------------------------------------------------
+// One person made of smooth, rounded shapes - no boxes: a shaped body (hips, waist, chest, shoulders), tapered
+// arms and legs with round knees and elbows, hands, rounded shoes, a head with a nose, ears and hair.
+// Every vertex knows its part and its joints, so a shader moves arms and legs (one draw call for everybody):
+//   aPart  0 body, 1 left arm, 2 right arm, 3 left leg, 4 right leg   (left = +x, the front is +z)
+//   aLimb  x: the height of the joint it turns around (hip or shoulder), y: how far it swings,
+//          z: the height of the knee for the shin and the shoe (0 everywhere else)
+// outfit: 'street' (a jacket in the person's own color), 'worker' (a high-visibility vest, a hard hat, gloves),
+//         'coat' (a long coat: the race crowd). detail: 1 = the walkers (about 1150 triangles), 0 = light (about 650)
+export const FIGURE = { shoulderX: 0.2, shoulderY: 1.42, hipY: 0.9, kneeY: 0.49 };
+export function makeHumanFigure(outfit = 'street', detail = 1) {
+  const hi = detail > 0.5, seg = hi ? 8 : 5;
+  const worker = outfit === 'worker', coat = outfit === 'coat';
+  const skin = [0.7, 0.53, 0.42], hairC = [0.1, 0.08, 0.07];
+  const trousers = worker ? [0.12, 0.13, 0.15] : coat ? [0.13, 0.13, 0.15] : [0.2, 0.21, 0.25];
+  const shoeC = worker ? [0.08, 0.065, 0.05] : [0.06, 0.06, 0.07];
+  const white = [0.95, 0.95, 0.95];                     // (white: the person's own color paints it)
+  const sleeve = worker ? [0.2, 0.21, 0.24] : white;
+  const sleevePaint = worker ? 0 : 1;
+  const { shoulderX: SX, shoulderY: SY, hipY: HY, kneeY: KY } = FIGURE;
+  const mb = new MeshBuilder();
+  const part = [], shin = [];
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+  // a shape that is already in its place: its color, how matte it is, which part, { paint, glow, shin }
+  function put(geom, color, rough, p, o = {}) {
+    const c = lin(color);
+    mb.color(c[0], c[1], c[2], 1);
+    mb.data(rough, o.metal ?? 0, o.paint ?? 0, o.glow ?? 0);
+    const first = mb.count;
+    mb.addGeometry(geom, null);
+    for (let i = first; i < mb.count; i++) { part[i] = p; shin[i] = o.shin ? 1 : 0; }
+  }
+  // a round shape (an ellipsoid)
+  const ell = (rx, ry, rz, x, y, z, ws = seg, hs = hi ? 5 : 4) => new THREE.SphereGeometry(1, ws, hs).scale(rx, ry, rz).translate(x, y, z);
+  // a tapered tube from a (radius ra) to b (radius rb), open at its ends (the joints are round shapes);
+  // flat < 1 makes it thinner front to back
+  const tube = (a, b, ra, rb, flat = 1, s = seg) => {
+    const d = b.clone().sub(a), len = d.length();
+    const g = new THREE.CylinderGeometry(rb, ra, len, s, 1, true);
+    g.scale(1, 1, flat);
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V3(0, 1, 0), d.normalize()));
+    g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    return g;
+  };
+  // ---- the body: a turned shape (hips, waist, chest, shoulders), flattened front to back ----
+  const prof = coat
+    ? [[0.002, 0.6], [0.205, 0.62], [0.21, 0.78], [0.19, 0.94], [0.172, 1.05], [0.182, 1.2], [0.19, 1.32], [0.178, 1.4], [0.13, 1.46], [0.06, 1.49]]
+    : [[0.002, 0.83], [0.152, 0.85], [0.166, 0.92], [0.152, 1.02], [0.158, 1.12], [0.178, 1.24], [0.186, 1.34], [0.172, 1.41], [0.125, 1.463], [0.06, 1.49]];
+  const torso = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), hi ? 10 : 8);
+  torso.scale(1, 1, 0.62);
+  put(torso, white, worker ? 0.7 : 0.85, 0, { paint: 1 });
+  if (worker) {
+    // the reflective stripes of the vest
+    for (const [y, r] of [[1.06, 0.157], [1.25, 0.181]]) {
+      const ring = new THREE.TorusGeometry(r + 0.004, 0.013, 3, hi ? 12 : 8); ring.rotateX(Math.PI / 2); ring.scale(1, 1, 0.63); ring.translate(0, y, 0);
+      put(ring, [0.82, 0.84, 0.8], 0.4, 0, { glow: 0.12 });
+    }
+  } else if (hi) {
+    // a collar
+    const col = new THREE.TorusGeometry(0.064, 0.017, 4, 10); col.rotateX(Math.PI / 2); col.scale(1, 1, 0.85); col.translate(0, 1.473, 0.004);
+    put(col, white, 0.85, 0, { paint: 1 });
+  }
+  // hips (the top of the trousers: the legs turn inside them)
+  put(ell(0.158, 0.1, 0.104, 0, HY, 0, hi ? 8 : 6, 4), trousers, 0.85, 0, { paint: 0.3 });
+  // ---- the neck and the head: a face with a nose and ears, and hair (or a hard hat) ----
+  put(tube(V3(0, 1.45, 0), V3(0, 1.57, 0.006), 0.052, 0.046), skin, 0.7, 0);
+  put(ell(0.091, 0.117, 0.103, 0, 1.646, 0.012, hi ? 10 : 8, hi ? 8 : 6), skin, 0.68, 0);
+  if (hi) {
+    put(ell(0.015, 0.025, 0.02, 0, 1.633, 0.108, 5, 4), skin, 0.68, 0);                  // the nose
+    for (const s of [1, -1]) put(ell(0.011, 0.027, 0.019, s * 0.09, 1.645, 0.006, 5, 4), skin, 0.7, 0);   // ears
+  }
+  if (worker) {
+    const hat = new THREE.SphereGeometry(1, hi ? 10 : 8, 4, 0, Math.PI * 2, 0, Math.PI / 2); hat.scale(0.118, 0.1, 0.128); hat.translate(0, 1.69, 0.008);
+    put(hat, [0.88, 0.7, 0.06], 0.4, 0);
+    const brim = new THREE.CylinderGeometry(0.132, 0.138, 0.012, hi ? 12 : 8, 1, true); brim.scale(1, 1, 1.12); brim.translate(0, 1.693, 0.02);
+    put(brim, [0.88, 0.7, 0.06], 0.4, 0);
+  } else {
+    // hair: a cap over the top and the back of the head
+    const cap = new THREE.SphereGeometry(1, hi ? 10 : 8, 4, 0, Math.PI * 2, 0, Math.PI * 0.55);
+    cap.scale(0.097, 0.123, 0.109); cap.rotateX(-0.32); cap.translate(0, 1.652, 0.0);
+    put(cap, hairC, 0.8, 0);
+  }
+  // ---- arms (left = +x first): a round shoulder, the upper arm, an elbow, the forearm a little forward, a hand ----
+  for (const s of [1, -1]) {
+    const p = s > 0 ? 1 : 2;
+    put(ell(0.062, 0.058, 0.062, s * (SX - 0.012), SY - 0.015, 0, hi ? 7 : 6, 4), sleeve, 0.85, 0, { paint: sleevePaint });   // (stays with the body)
+    const sh = V3(s * SX, SY + 0.01, 0), el = V3(s * (SX + 0.016), 1.15, -0.012), wr = V3(s * (SX + 0.022), 0.925, 0.055);
+    put(tube(sh, el, 0.05, 0.041), sleeve, 0.85, p, { paint: sleevePaint });
+    if (hi) put(ell(0.042, 0.042, 0.042, el.x, el.y, el.z, 6, 4), sleeve, 0.85, p, { paint: sleevePaint });
+    put(tube(el, wr, 0.041, 0.031), sleeve, 0.85, p, { paint: sleevePaint });
+    const hand = new THREE.SphereGeometry(1, hi ? 6 : 5, 4); hand.scale(0.029, 0.077, 0.045); hand.rotateX(0.24); hand.translate(wr.x, 0.862, 0.073);
+    put(hand, worker ? [0.12, 0.12, 0.1] : skin, worker ? 0.8 : 0.7, p);
+  }
+  // ---- legs: the thigh, a round knee, the shin, a rounded shoe (the shin and the shoe bend at the knee) ----
+  for (const s of [1, -1]) {
+    const p = s > 0 ? 3 : 4;
+    const hip = V3(s * 0.09, HY, 0), knee = V3(s * 0.093, KY, 0.006), ankle = V3(s * 0.095, 0.075, -0.01);
+    put(tube(hip, knee, 0.084, 0.06, 1.06), trousers, 0.85, p, { paint: 0.3 });
+    put(ell(0.059, 0.06, 0.061, knee.x, knee.y, knee.z, hi ? 6 : 5, hi ? 4 : 3), trousers, 0.85, p, { paint: 0.3 });
+    put(tube(knee, ankle, 0.057, 0.042), trousers, 0.85, p, { paint: 0.3, shin: true });
+    const shoe = new THREE.CapsuleGeometry(0.046, 0.165, hi ? 2 : 1, hi ? 6 : 5);
+    shoe.rotateX(Math.PI / 2); shoe.scale(1.08, 0.9, 1);
+    const sp = shoe.attributes.position;
+    for (let i = 0; i < sp.count; i++) if (sp.getY(i) < -0.034) sp.setY(i, -0.034);      // a flat sole
+    shoe.computeVertexNormals();
+    shoe.translate(ankle.x, 0.035, 0.045);
+    put(shoe, shoeC, 0.6, p, { shin: true });
+  }
+  const g = mb.build(true);
+  const n = g.attributes.position.count, limb = new Float32Array(n * 3), aPart = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const p = part[i] || 0;
+    aPart[i] = p;
+    if (p === 1 || p === 2) { limb[i * 3] = SY; limb[i * 3 + 1] = p === 1 ? -0.42 : 0.42; }
+    else if (p === 3 || p === 4) { limb[i * 3] = HY; limb[i * 3 + 1] = p === 3 ? 0.5 : -0.5; limb[i * 3 + 2] = shin[i] ? KY : 0; }
+  }
+  g.setAttribute('aLimb', new THREE.BufferAttribute(limb, 3));
+  g.setAttribute('aPart', new THREE.BufferAttribute(aPart, 1));
+  return g;
+}
+// the walkers on the sidewalks
 export function makePedestrian() {
-  const skin = [0.7, 0.53, 0.42], hair = [0.1, 0.08, 0.07], shoe = [0.06, 0.06, 0.07], trousers = [0.2, 0.21, 0.25];
-  const parts = [
-    // body (takes the clothes color), a little wider at the shoulders
-    P(cyl(0.2, 0.165, 0.6, 6), [0, 1.17, 0], [0.95, 0.95, 0.95], 0.85, 0, { paint: 1, scale: [1, 1, 0.62] }),
-    P(cyl(0.05, 0.055, 0.1, 5), [0, 1.5, 0], skin, 0.7, 0),                       // neck
-    P(sph(0.112, 7, 5), [0, 1.63, 0.005], skin, 0.7, 0, { scale: [0.94, 1.14, 1] }), // head
-    P(sph(0.118, 7, 4), [0, 1.665, -0.022], hair, 0.8, 0, { scale: [0.97, 0.95, 1.02] }), // hair
-  ];
-  for (const sx of [-1, 1]) {
-    parts.push(P(box(0.15, 0.82, 0.17), [sx * 0.092, 0.46, 0], trousers, 0.85, 0, { paint: 0.3 }));   // leg
-    parts.push(P(box(0.14, 0.07, 0.27), [sx * 0.092, 0.036, 0.045], shoe, 0.6, 0));                    // shoe
-    parts.push(P(box(0.1, 0.5, 0.115), [sx * 0.262, 1.2, 0], [0.9, 0.9, 0.9], 0.85, 0, { paint: 1 })); // sleeve
-    parts.push(P(box(0.085, 0.16, 0.095), [sx * 0.262, 0.875, 0], skin, 0.7, 0));                      // hand
-  }
-  const geometry = mergeParts(parts);
-  // mark the arms and legs for the walking shader
-  const pos = geometry.attributes.position, limb = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i), side = x > 0 ? 1 : -1;
-    let pivot = 0, swing = 0;
-    if (Math.abs(x) > 0.2) { pivot = 1.42; swing = -0.42 * side; }            // arm: swings against the leg on its side
-    else if (y < 0.875 && Math.abs(x) > 0.01) { pivot = 0.88; swing = 0.5 * side; } // leg
-    limb[i * 3] = pivot; limb[i * 3 + 1] = swing; limb[i * 3 + 2] = 1;
-  }
-  geometry.setAttribute('aLimb', new THREE.BufferAttribute(limb, 3));
-  return { geometry };
+  return { geometry: makeHumanFigure('street', 1) };
 }
 
 // Bike rack: four steel hoops in a row (along x) with two parked bicycles.

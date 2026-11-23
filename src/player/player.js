@@ -346,16 +346,16 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   function setHidden(h) { hidden = h; root.visible = !h && fadeK > 0.02; blob.visible = !h && !swimming; }
 
   // ---- the camera pressed very close to the player (against a wall, in a small room) ----
-  // Instead of the camera cutting through the head and the bag (you would see inside the model),
-  // the character fades out with a fine pattern of dots, and comes back when the camera moves away.
-  // (alphaHash: no sorting problems, and with opacity 1 the character looks exactly as before)
-  let fadeK = 1;
+  // Instead of the camera cutting through the head and the bag (you would see inside the model), the
+  // character becomes see-through for that moment: a soft, even fade (no pattern of white dots), and he
+  // comes back when the camera moves away. The rest of the time he is drawn as a normal solid model.
+  let fadeK = 1, fadeOn = false;
   const fadeMats = [];
   root.traverse((o) => {
     if (!o.material) return;
     for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
       if (fadeMats.includes(m) || m.transparent || m.alphaTest > 0) continue;
-      m.alphaHash = true;
+      m.alphaHash = false;
       fadeMats.push(m);
     }
   });
@@ -363,8 +363,20 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     k = clamp(k, 0, 1);
     if (k === fadeK || (Math.abs(k - fadeK) < 0.01 && k > 0 && k < 1)) return;
     fadeK = k;
-    for (const m of fadeMats) m.opacity = k;
+    const on = k < 0.995;
+    if (on !== fadeOn) { fadeOn = on; for (const m of fadeMats) { m.transparent = on; m.depthWrite = true; m.needsUpdate = true; } }
+    for (const m of fadeMats) m.opacity = on ? k : 1;
     root.visible = !hidden && k > 0.02;
+  }
+  // The see-through version of the shaders is made once at the start (a phone would stutter for a moment the
+  // first time the camera comes close otherwise).
+  function prewarmFade(renderer, scene, camera) {
+    if (!fadeMats.length) return;
+    try {
+      for (const m of fadeMats) { m.transparent = true; m.needsUpdate = true; }
+      renderer.compile(root, camera, scene);
+    } catch (e) { /* only a small stutter later */ }
+    for (const m of fadeMats) { m.transparent = false; m.needsUpdate = true; }
   }
   // y (optional): about how high the place is. In The Sunk a roof and the room under it share x and z:
   // the deck nearest to this height is the one he stands on (without it: the one nearest to where he is now).
@@ -477,7 +489,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     // walking inside a house: its floor, its walls and furniture (null = back in the city)
     setRoom(r) { room = r; },
     get room() { return room; },
-    setFade,
+    setFade, prewarmFade,
     blob,
     get staged() { return staged; },
     set talk(v) { if (mover) mover.talk = v; },

@@ -275,6 +275,16 @@ const PG_VERTEX_MAIN = /* glsl */ `
 const PG_VERTEX_WIND = /* glsl */ `
 #ifdef PG_PED
 	{
+		// (walking: aPhase moves on. Somebody standing keeps aPhase at 0 and does not move the legs)
+		float pgWalk = step( 0.0001, abs( sin( aPhase ) ) + abs( cos( aPhase ) - 1.0 ) );
+		// the knee: while a leg comes forward its shin swings back, like a real step
+		// (aLimb.z = the height of the knee for the shin and the shoe, 0 everywhere else)
+		if ( aLimb.z > 0.0 ) {
+			float pgK = ( max( 0.0, -cos( aPhase ) * sign( aLimb.y ) ) * 0.85 + 0.06 ) * pgWalk;
+			float pgKc = cos( pgK ), pgKs = sin( pgK );
+			vec3 pgR = transformed - vec3( 0.0, aLimb.z, 0.0 );
+			transformed = vec3( pgR.x, pgR.y * pgKc - pgR.z * pgKs, pgR.y * pgKs + pgR.z * pgKc ) + vec3( 0.0, aLimb.z, 0.0 );
+		}
 		float pgA = sin( aPhase ) * aLimb.y;
 		float pgC = cos( pgA );
 		float pgS = sin( pgA );

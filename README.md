@@ -811,7 +811,7 @@ the PASS / WARN table and the face buttons.
 That was the camera, not the faces. A wide lens stretches everything near the edges of the
 picture: people at the sides of a very wide phone looked fat, and on an upright phone the film
 scenes showed only a thin slice of the picture, so faces filled the whole screen. Now:
-- the view left-right is never wider than 90 degrees (`camera.maxHFov` in `config.js`);
+- the view left-right is never wider than 82 degrees (`camera.maxHFov` in `config.js`; it was 90 until version 9.1);
 - on an upright phone a film scene opens its view until the middle of the designed picture fits
   across the screen, and the black film bars get taller (`src/story/director.js`, `index.html`).
 
@@ -1589,6 +1589,82 @@ physics, guards and floodlights in `wanted.js`, the steps `cargo`, `carryTo`, `p
 `src/story/propsDocks.js` (the watch, the crate, the floating crate, the floating junk, the gate, the HALO racks and
 crates, the open container, the package and the drawing, the tin, the bank laptop, the map, the torch, the armchair),
 the docks ambience in `src/audio/music.js`, and `src/story/chapters/chapter05.js` (only data).
+
+## Realism pass: natural shapes, a real camera, clean characters (version 9.1)
+
+Reported from play: "it looks like cubes in places", "everybody looks short in the camera", "white dots on the
+characters", "make the watch premium", "the characters need detail". What changed:
+
+### The camera (`src/player/camera.js`, `camera` in `src/config.js`)
+
+The walking camera was above the head and looked down, so the legs looked short and the head big (everybody looked
+short and squat). Now it works like the big open-world games: the camera is about as high as the eyes (pivot at
+the chest, 1.32 m; distance 3.5 m; a little look-down), the player is bigger in the picture and keeps his real
+proportions, the horizon runs through his head. The view is 50 degrees high and never wider than 82 degrees (people
+at the edges of a wide phone are no longer stretched). When you walk without touching the camera, it comes back to
+this height by itself after about 2 seconds. With a wall right behind the player it rises over his shoulder
+instead of sitting in the back of his head.
+
+### No more white dots on the player (`src/player/player.js`, `src/main.js`)
+
+The white dots came from the old way of hiding the player when the camera was pressed against him: a pattern of
+holes ("alpha hash") through which the bright street showed. Now the player is a normal solid model; only when the
+camera is really at his head (less than about 60 cm) does he turn see-through - a soft even fade, no dots. The
+see-through version of his shaders is prepared at the start, so it does not stutter the first time.
+
+### People in the crowds (`makeHumanFigure` in `src/city/models.js`)
+
+The walkers on the sidewalks, the dock workers and the race spectators were boxes (box legs, box arms, a six-sided
+body). Now every one of them is a smooth person: a shaped body (hips, waist, chest, shoulders), tapered arms and
+legs, round knees and elbows, hands, rounded shoes, a head with a nose, ears and hair (workers: a vest with
+reflective stripes, gloves, a hard hat; spectators: a long coat). Walking, the knee now bends (the shin swings back
+while the leg comes forward). Still one draw call for all of them; about 1270 triangles a person (spectators 680),
+and only the people who are out are drawn (before: always 80).
+
+### The watch (`stopWatch` in `src/story/propsDocks.js`)
+
+Rask's stopped watch is a real watch now: a turned steel case with a polished bezel and a crown, a domed glass, an
+enamel dial (minute track, colored numbers, a little sailing boat), real hands stopped at 4:12 (and the second hand
+at 38), a red leather strap with white stitching, holes and a steel buckle. On the desk the strap lies open; on his
+wrist it goes round the wrist with the dial on top.
+
+### The ships (`src/city/ship.js`)
+
+The two cargo ships were boxes with a pointed end. Now the hull is one curved surface made like a real lines plan:
+round bilges, a full middle body, a raked bow that flares out above the water, a bulbous bow under it, a rounded
+stern with a transom, a deck that rises toward the bow; antifouling red under the water, a black boot top, the hull
+color above, the name on both bows and on the stern. On deck: the accommodation house in tiers with rounded corners
+and window bands, the bridge with its wings over both sides, a mast with radar scanners, a raked funnel with a
+colored band and a black top, an orange free-fall lifeboat on its ramp, hatch covers, railings, bollards, anchors,
+a light mast on the forecastle. The containers on deck are the docks' detailed containers.
+
+### The docks' machines and the market (`src/city/dockModels.js`, `src/city/docks.js`)
+
+- Forklifts: a rounded body with a curved counterweight, wheels with rims, the overhead guard on slanted posts, a
+  seat and steering wheel, the mast with chains, the carriage and two forks, an amber beacon.
+- The autonomous straddle carriers (tapered legs on rubber wheels, lidar domes) and the drone loaders (a rounded
+  body, ducted rotors, a crate on straps).
+- The market stalls: tables on legs with a shelf of crates; on top real goods (fruit in crates, full sacks, woven
+  baskets, piles of folded cloth, bottles and jars, a box of old electronics with a glowing screen); a cloth roof
+  that sags between four poles, the bulb on its wire.
+- Rounded edges on the gate booth, the crane cabins and machine houses, the spreaders; the crane stays, the spreader
+  cables and the mooring lines are round cables; the crane bogies stand on wheels.
+
+### Cost (measured the same way before and after, MEDIUM, phone screen 915 x 412)
+
+Draw calls did not change (a ship view 191 -> 186, the market 260 -> 261, a street 221 -> 221 - these counts include
+the shadow maps). The main picture has more triangles: a ship view 0.74 -> 0.89 million, the market 0.81 -> 1.02
+million, a street 1.07 -> 1.20 million (the smooth people, the ships, the market). This still has to be checked on
+a real phone; if it is too slow, LOW quality halves the crowd.
+
+### Honest limits of this pass
+
+- The main characters (Nate, Lena, Rask, Mace ...) are the model files that were given: AI-made scans of about
+  26 000 triangles with one 1024 x 1024 picture for the whole body. Their detail cannot be raised by code - a sharper
+  face needs a better model file (more triangles, a 2048 or 4096 picture). The faces were already cleaned and lit
+  (`faceClean.js`, `characterLook.js`).
+- The buildings of the city, the cars and the other districts were not rebuilt in this pass; the docks, the crowds,
+  the camera and the watch were.
 
 ## Known limits
 

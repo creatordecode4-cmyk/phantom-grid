@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { makeHumanFigure, FIGURE } from '../city/models.js';
 
 const MAX = 320;
 const CLOTHES = [
@@ -21,25 +21,11 @@ const CLOTHES = [
   [0.36, 0.24, 0.12], [0.16, 0.26, 0.2], [0.5, 0.48, 0.44], [0.22, 0.12, 0.25], [0.6, 0.36, 0.12], [0.1, 0.12, 0.1],
 ];
 
-// one person: legs, body, head and two arms (aPart: 0 still, 1 left arm, 2 right arm). The arms hang from the
-// shoulder joint at (+-0.24, 1.42, 0); the shader turns them around it.
+// one person: the smooth figure of the city's crowds in a long coat (makeHumanFigure in city/models.js, the
+// light version). aPart: 0 still (body, legs), 1 left arm, 2 right arm; the arms hang from the shoulder joint
+// at (+-FIGURE.shoulderX, FIGURE.shoulderY, 0) and the shader turns them around it.
 function personGeometry() {
-  const parts = [];
-  const add = (g, part, x, y, z) => {
-    g.translate(x, y, z);
-    const n = g.attributes.position.count;
-    g.setAttribute('aPart', new THREE.Float32BufferAttribute(new Array(n).fill(part), 1));
-    parts.push(g);
-  };
-  add(new THREE.BoxGeometry(0.15, 0.84, 0.17), 0, 0.1, 0.42, 0);             // legs
-  add(new THREE.BoxGeometry(0.15, 0.84, 0.17), 0, -0.1, 0.42, 0);
-  add(new THREE.CylinderGeometry(0.2, 0.18, 0.62, 7), 0, 0, 1.13, 0);        // body (a coat)
-  add(new THREE.SphereGeometry(0.115, 8, 6), 0, 0, 1.6, 0.01);               // head
-  add(new THREE.BoxGeometry(0.09, 0.58, 0.1), 1, 0.25, 1.13, 0);             // arms (hanging)
-  add(new THREE.BoxGeometry(0.09, 0.58, 0.1), 2, -0.25, 1.13, 0);
-  const g = mergeGeometries(parts.map((p) => p.toNonIndexed()));
-  g.computeVertexNormals();
-  return g;
+  return makeHumanFigure('coat', 0);
 }
 
 export function createSpectators(scene) {
@@ -47,22 +33,27 @@ export function createSpectators(scene) {
   const phase = new Float32Array(MAX), cheerA = new Float32Array(MAX);
   geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phase, 1));
   geo.setAttribute('aCheer', new THREE.InstancedBufferAttribute(cheerA, 1).setUsage(THREE.DynamicDrawUsage));
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
+  // (vertex colors: skin, hair and shoes keep their own color, the coat takes the person's color - aData.z marks it)
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0, vertexColors: true });
   const uTime = { value: 0 };
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = uTime;
-    sh.vertexShader = 'attribute float aPart;\nattribute float aPhase;\nattribute float aCheer;\nuniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+    sh.vertexShader = 'attribute float aPart;\nattribute float aPhase;\nattribute float aCheer;\nattribute vec4 aData;\nuniform float uTime;\n' + sh.vertexShader.replace('#include <color_vertex>', `#include <color_vertex>
+	#ifdef USE_INSTANCING_COLOR
+		vColor.xyz = color.xyz * mix( vec3( 1.0 ), instanceColor.xyz, aData.z );
+	#endif`).replace('#include <begin_vertex>', `#include <begin_vertex>
 	// the arms turn around the shoulder: a little swing standing, thrown up and waving when cheering
-	if ( aPart > 0.5 ) {
+	// (parts 3 and 4 are the legs: they stand still)
+	if ( aPart > 0.5 && aPart < 2.5 ) {
 		float side = aPart < 1.5 ? 1.0 : -1.0;
 		float wave = sin( uTime * 7.0 + aPhase * 6.28 + side ) * 0.35;
 		float a = mix( sin( uTime * 1.3 + aPhase * 9.0 ) * 0.08, 2.6 + wave, aCheer );
-		vec3 p = transformed - vec3( side * 0.25, 1.42, 0.0 );
+		vec3 p = transformed - vec3( side * ${FIGURE.shoulderX.toFixed(3)}, ${FIGURE.shoulderY.toFixed(3)}, 0.0 );
 		float c = cos( a ), s = sin( a );
 		// (forward and up: around the left-right axis, a little outward too)
 		p = vec3( p.x, p.y * c - p.z * s, p.y * s + p.z * c );
 		p.x += side * sin( a ) * 0.08;
-		transformed = p + vec3( side * 0.25, 1.42, 0.0 );
+		transformed = p + vec3( side * ${FIGURE.shoulderX.toFixed(3)}, ${FIGURE.shoulderY.toFixed(3)}, 0.0 );
 	}
 	// a small bounce on the toes when cheering
 	transformed.y += aCheer * max( 0.0, sin( uTime * 9.0 + aPhase * 12.0 ) ) * 0.06;`);

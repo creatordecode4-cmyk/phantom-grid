@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 8',
+  version: 'Phase 8.1',
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {
@@ -53,18 +53,22 @@ export const CONFIG = {
   },
 
   // ----- CAMERA (third person, over the right shoulder) ---------------------
+  // Like the big open-world games: the camera is about as high as the eyes and looks a little down, so
+  // people keep their real proportions (a camera high above the head makes everybody look short and squat).
   camera: {
-    fov: 55,           // vertical field of view on a wide (landscape) screen
+    fov: 50,           // vertical field of view on a wide (landscape) screen
     portraitHFov: 46,  // on a tall (portrait) screen we keep this horizontal view
-    maxHFov: 90,       // on a very wide phone the view left-right never gets wider than this (wider = fat people at the edges)
+    maxHFov: 82,       // on a very wide phone the view left-right never gets wider than this (wider = stretched people at the edges)
     near: 0.2,
     far: 9000,
-    distance: 3.6,     // meters behind the player
-    pivotHeight: 1.55, // the camera looks at a point near the shoulders
-    shoulder: 0.55,    // sideways offset (meters, to the right)
-    minPitch: -0.45,   // radians, looking up
-    maxPitch: 1.0,     // radians, looking down
-    startPitch: 0.1,
+    distance: 3.5,     // meters behind the player
+    pivotHeight: 1.32, // the camera turns around a point at the chest, its own height is then about 1.55 m
+    shoulder: 0.52,    // sideways offset (meters, to the right)
+    minPitch: -0.4,    // radians, looking up
+    maxPitch: 0.85,    // radians, looking down
+    startPitch: 0.07,
+    recenter: 2.2,     // walking without touching the camera for this many seconds: it comes back to the normal height
+    minDistance: 0.85, // a wall behind the player: the camera comes no closer than this (it rises a little instead)
     touchSensitivity: 0.0052, // radians per pixel of finger drag
     mouseSensitivity: 0.0026,
     collisionRadius: 0.3,     // keeps the camera this far from walls

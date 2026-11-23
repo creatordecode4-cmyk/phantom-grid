@@ -19,26 +19,76 @@ export function docksProps(H) {
   const glowMat = (color, opacity = 0.6) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, map: tex('glow', glowTexture), fog: true });
   const canvas = (w, h, draw) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d'), w, h); const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = 4; return tx; };
 
-  // the dial of the child's watch: big friendly numbers, a little boat at the bottom, the hands stopped at 4:12
-  const watchFace = () => tex('watchFace', () => canvas(256, 256, (g, w) => {
+  // the dial of the child's watch: an enamel dial (a soft cream with a little shine in the middle), a fine minute
+  // track, friendly colored numbers and a small sailing boat. (The hands are real, see stopWatch.)
+  const watchFace = () => tex('watchFace2', () => canvas(512, 512, (g, w) => {
     const c = w / 2;
-    g.fillStyle = '#f3efe2'; g.beginPath(); g.arc(c, c, c - 2, 0, Math.PI * 2); g.fill();
-    const cols = ['#d6392f', '#2a6fc9', '#e3a21a', '#3a9a4a'];
-    g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '700 30px Arial, sans-serif';
-    for (let i = 1; i <= 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      g.fillStyle = cols[i % 4];
-      g.fillText(String(i), c + Math.sin(a) * 92, c - Math.cos(a) * 92);
+    const bg = g.createRadialGradient(c - 40, c - 50, 10, c, c, c);
+    bg.addColorStop(0, '#fbf8ef'); bg.addColorStop(0.7, '#f1ead8'); bg.addColorStop(1, '#ddd3bb');
+    g.fillStyle = bg; g.beginPath(); g.arc(c, c, c - 1, 0, Math.PI * 2); g.fill();
+    // the minute track: 60 fine marks, every fifth one longer and darker
+    for (let i = 0; i < 60; i++) {
+      const a = (i / 60) * Math.PI * 2, big = i % 5 === 0;
+      g.strokeStyle = big ? '#2b2f3a' : '#5d6170'; g.lineWidth = big ? 5 : 2;
+      const r0 = big ? c - 34 : c - 26, r1 = c - 14;
+      g.beginPath(); g.moveTo(c + Math.sin(a) * r0, c - Math.cos(a) * r0); g.lineTo(c + Math.sin(a) * r1, c - Math.cos(a) * r1); g.stroke();
     }
-    // a small sailing boat painted on the dial
-    g.fillStyle = '#2a6fc9'; g.beginPath(); g.moveTo(c - 30, c + 42); g.lineTo(c + 30, c + 42); g.lineTo(c + 20, c + 56); g.lineTo(c - 20, c + 56); g.fill();
-    g.fillStyle = '#d6392f'; g.beginPath(); g.moveTo(c + 2, c + 40); g.lineTo(c + 2, c + 10); g.lineTo(c + 24, c + 40); g.fill();
-    // the hands: stopped (4:12)
-    const hand = (ang, len, wdt, col) => { g.save(); g.translate(c, c); g.rotate(ang); g.fillStyle = col; g.fillRect(-wdt / 2, -len, wdt, len + 10); g.restore(); };
-    hand(((4 + 12 / 60) / 12) * Math.PI * 2, 56, 9, '#222');
-    hand((12 / 60) * Math.PI * 2, 84, 6, '#222');
-    g.fillStyle = '#d6392f'; g.beginPath(); g.arc(c, c, 8, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#3a3f4c'; g.lineWidth = 2; g.beginPath(); g.arc(c, c, c - 12, 0, Math.PI * 2); g.stroke();
+    // the numbers: four friendly colors, with a thin dark outline so they look printed on the enamel
+    const cols = ['#c9342c', '#2b63b8', '#d99413', '#2f8a45'];
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '800 46px "Trebuchet MS", "Arial Rounded MT Bold", Arial, sans-serif';
+    for (let i = 1; i <= 12; i++) {
+      const a = (i / 12) * Math.PI * 2, x = c + Math.sin(a) * (c - 74), y = c - Math.cos(a) * (c - 74) + 2;
+      g.lineWidth = 3; g.strokeStyle = 'rgba(30,30,40,0.55)'; g.strokeText(String(i), x, y);
+      g.fillStyle = cols[i % 4]; g.fillText(String(i), x, y);
+    }
+    // a small sailing boat under the middle, and two thin waves
+    g.fillStyle = '#2b63b8'; g.beginPath(); g.moveTo(c - 56, c + 78); g.lineTo(c + 56, c + 78); g.quadraticCurveTo(c + 40, c + 104, c + 30, c + 104); g.lineTo(c - 30, c + 104); g.quadraticCurveTo(c - 40, c + 104, c - 56, c + 78); g.fill();
+    g.fillStyle = '#c9342c'; g.beginPath(); g.moveTo(c + 4, c + 74); g.lineTo(c + 4, c + 18); g.quadraticCurveTo(c + 34, c + 44, c + 46, c + 74); g.closePath(); g.fill();
+    g.fillStyle = '#f7f3e8'; g.beginPath(); g.moveTo(c - 2, c + 74); g.lineTo(c - 2, c + 30); g.lineTo(c - 34, c + 74); g.closePath(); g.fill();
+    g.strokeStyle = '#2b2f3a'; g.lineWidth = 3; g.beginPath(); g.moveTo(c + 1, c + 78); g.lineTo(c + 1, c + 14); g.stroke();
+    g.strokeStyle = '#2b63b8'; g.lineWidth = 3;
+    for (const dy of [116, 128]) { g.beginPath(); for (let x = -60; x <= 60; x += 4) g.lineTo(c + x, c + dy + Math.sin(x * 0.18) * 3); g.stroke(); }
   }));
+  // the leather of the strap: deep red, a fine grain, white stitches along both edges (u: along the strap)
+  const strapLeather = () => tex('strapLeather', () => canvas(256, 64, (g, w, h) => {
+    g.fillStyle = '#7c1f19'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 900; i++) { const x = Math.random() * w, y = Math.random() * h; g.fillStyle = `rgba(${Math.random() < 0.5 ? '40,8,6' : '200,90,80'},${0.06 + Math.random() * 0.08})`; g.fillRect(x, y, 1 + Math.random() * 2, 1); }
+    g.fillStyle = '#f2ece0';
+    for (let x = 3; x < w; x += 12) { g.fillRect(x, 7, 7, 3); g.fillRect(x, h - 10, 7, 3); }
+    const sh = g.createLinearGradient(0, 0, 0, h); sh.addColorStop(0, 'rgba(0,0,0,0.25)'); sh.addColorStop(0.18, 'rgba(0,0,0,0)'); sh.addColorStop(0.82, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,0.25)');
+    g.fillStyle = sh; g.fillRect(0, 0, w, h);
+  }));
+  // a strap: a flat band along a line of points. wAxis: the direction of its width; u of the texture runs along it
+  function ribbon(points, wAxis, width, thick) {
+    const n = points.length, pos = [], uv = [], idx = [];
+    const T = new THREE.Vector3(), N = new THREE.Vector3(), W = wAxis.clone().normalize();
+    let len = 0;
+    for (let i = 0; i < n; i++) {
+      const a = points[Math.max(0, i - 1)], b = points[Math.min(n - 1, i + 1)];
+      T.subVectors(b, a).normalize();
+      N.crossVectors(T, W).normalize();
+      if (i > 0) len += points[i].distanceTo(points[i - 1]);
+      const p = points[i];
+      // four corners: top left, top right, bottom right, bottom left
+      for (const [sw, sn] of [[-1, 1], [1, 1], [1, -1], [-1, -1]]) {
+        pos.push(p.x + W.x * sw * width / 2 + N.x * sn * thick / 2, p.y + W.y * sw * width / 2 + N.y * sn * thick / 2, p.z + W.z * sw * width / 2 + N.z * sn * thick / 2);
+        uv.push(len / 0.12, sw > 0 ? 1 : 0);
+      }
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const a = i * 4, b = (i + 1) * 4;
+      for (let k = 0; k < 4; k++) { const k2 = (k + 1) % 4; idx.push(a + k, b + k, b + k2, a + k, b + k2, a + k2); }
+    }
+    // the two ends
+    for (const e of [0, (n - 1) * 4]) idx.push(e, e + 1, e + 2, e, e + 2, e + 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    return geo;
+  }
 
   // A CHILD'S DRAWING OF A SHIP (in the sealed package): wax crayons on cheap paper
   const shipDrawing = () => tex('shipDrawing', () => canvas(512, 360, (g, w, h) => {
@@ -101,23 +151,77 @@ export function docksProps(H) {
     // ---- THE WATCH: a child's wristwatch, plastic, a red strap with yellow stars. It stopped at 4:12.
     //      o.wrist: the strap closed in a loop (on Rask's wrist); else lying open, face up
     stopWatch(o = {}) {
-      const g = new THREE.Group();
-      const caseMat = std(0x2a6fc9, 0.45), strapMat = std(0xb8322a, 0.7);
-      const body = cyl(0.021, 0.021, 0.009, 24, caseMat); g.add(body);
-      const face = new THREE.Mesh(new THREE.CircleGeometry(0.0175, 24), new THREE.MeshStandardMaterial({ map: watchFace(), roughness: 0.3 }));
-      face.rotation.x = -Math.PI / 2; face.position.y = 0.0048; g.add(face);
-      const glass = new THREE.Mesh(new THREE.CircleGeometry(0.0182, 24), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.12 }));
-      glass.rotation.x = -Math.PI / 2; glass.position.y = 0.0052; g.add(glass);
-      const crown = box(0.004, 0.004, 0.004, std(0xc9c9c9, 0.3, 0.8)); crown.position.set(0.023, 0, 0); g.add(crown);
+      // A child's watch, but a well-made one: a polished steel case with curved sides and a domed glass, the
+      // enamel dial, real hands stopped at 4:12, a red leather strap with white stitching and a steel buckle.
+      // Lying on the desk: dial up, the strap open to both sides. On the wrist (o.wrist): the dial on the back of
+      // the wrist (-x of the hand bone), the strap round the wrist (the bone's y axis).
+      const g = new THREE.Group(), head = new THREE.Group();
+      const steel = std(0xe2e5e8, 0.16, 1.0), dark = std(0x1d2a44, 0.28, 0.7);
+      const leather = new THREE.MeshStandardMaterial({ map: strapLeather(), roughness: 0.5 });
+      // the case: turned like a real one (a curved side, a polished bezel)
+      const prof = [[0.0001, -0.0046], [0.0128, -0.0046], [0.0155, -0.0036], [0.0167, -0.0012], [0.0168, 0.0016], [0.0161, 0.0036], [0.0153, 0.0045], [0.0146, 0.0047], [0.0145, 0.0038]];
+      const caseGeo = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 48);
+      head.add(new THREE.Mesh(caseGeo, steel));
+      // the dial and the hands (12 o'clock is -z, 3 o'clock +x)
+      const dial = new THREE.Mesh(new THREE.CircleGeometry(0.0146, 48), new THREE.MeshStandardMaterial({ map: watchFace(), roughness: 0.32 }));
+      dial.rotation.x = -Math.PI / 2; dial.position.y = 0.0036; head.add(dial);
+      const handMesh = (len, w, tail, mat, y, clock) => {
+        const sh = new THREE.Shape();
+        sh.moveTo(0, -tail); sh.lineTo(w / 2, 0); sh.lineTo(w * 0.32, len * 0.82); sh.lineTo(0, len); sh.lineTo(-w * 0.32, len * 0.82); sh.lineTo(-w / 2, 0); sh.closePath();
+        const geo = new THREE.ShapeGeometry(sh); geo.rotateX(-Math.PI / 2); geo.rotateY(-clock);
+        const m = new THREE.Mesh(geo, mat); m.position.y = y; return m;
+      };
+      head.add(handMesh(0.0078, 0.0016, 0.0018, dark, 0.0039, ((4 + 12 / 60) / 12) * Math.PI * 2));   // hour hand
+      head.add(handMesh(0.0118, 0.0011, 0.0022, dark, 0.0041, (12 / 60) * Math.PI * 2));              // minute hand
+      const red = std(0xc9342c, 0.4, 0.2);
+      head.add(handMesh(0.0128, 0.0004, 0.0035, red, 0.0043, (38 / 60) * Math.PI * 2));               // the second hand, stopped too
+      const cap = cyl(0.0011, 0.0011, 0.0009, 12, steel); cap.position.y = 0.0045; head.add(cap);
+      // the domed glass (it only shows as a reflection)
+      const th = Math.asin(0.0147 / 0.03);
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(0.03, 40, 6, 0, Math.PI * 2, 0, th), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.02, metalness: 0, transparent: true, opacity: 0.16, depthWrite: false }));
+      dome.position.y = 0.0045 - 0.03 * Math.cos(th); head.add(dome);
+      // the crown at 3 o'clock (fine ridges) and the four lugs that hold the strap
+      const crown = cyl(0.0021, 0.0021, 0.0026, 14, steel); crown.rotation.z = Math.PI / 2; crown.position.set(0.0181, 0.0004, 0); head.add(crown);
+      const tube = cyl(0.0011, 0.0011, 0.0016, 10, steel); tube.rotation.z = Math.PI / 2; tube.position.set(0.0166, 0.0004, 0); head.add(tube);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        const lug = new THREE.Mesh(new THREE.CapsuleGeometry(0.0011, 0.0042, 3, 8), steel);
+        lug.rotation.x = Math.PI / 2 + sz * 0.35; lug.position.set(sx * 0.0068, -0.0006, sz * 0.0172); head.add(lug);
+      }
+      const V = (x, y, z) => new THREE.Vector3(x, y, z);
+      const buckle = (at, axisW) => {
+        // a rounded steel frame and its pin
+        const b = new THREE.Group();
+        const frame = new THREE.Mesh(new THREE.TorusGeometry(0.0062, 0.0009, 6, 24), steel); frame.scale.set(1.45, 1, 1); b.add(frame);
+        const pin = cyl(0.00045, 0.00045, 0.0085, 6, steel); pin.rotation.z = Math.PI / 2; pin.position.y = 0.0008; b.add(pin);
+        b.position.copy(at);
+        // (desk: the frame lies flat, its long side across the strap (x); wrist: it stands on the side of the wrist,
+        //  its long side along the wrist (y))
+        if (axisW === 'x') b.rotation.x = Math.PI / 2; else b.rotation.set(0, Math.PI / 2, Math.PI / 2);
+        return b;
+      };
       if (o.wrist) {
-        const loop = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.004, 6, 24), strapMat);
-        loop.scale.set(1, 0.75, 1.6); loop.position.y = -0.02; loop.rotation.x = Math.PI / 2; loop.rotation.y = Math.PI / 2; g.add(loop);
+        // round the wrist: the band goes round the bone's y axis, the case on the back of the wrist (-x)
+        head.rotation.z = Math.PI / 2; head.position.x = -0.0305;
+        g.add(head);
+        const pts = [];
+        for (let i = 0; i <= 48; i++) { const a = (i / 48) * Math.PI * 2; pts.push(V(-Math.cos(a) * 0.029, 0, Math.sin(a) * 0.033)); }
+        g.add(new THREE.Mesh(ribbon(pts, V(0, 1, 0), 0.016, 0.0024), leather));
+        g.add(buckle(V(0.0305, 0, 0), 'y'));
       } else {
-        for (const s of [-1, 1]) {
-          const strap = box(0.016, 0.0025, 0.075, strapMat); strap.position.set(0, -0.003, s * 0.058); g.add(strap);
-          for (let k = 0; k < 3; k++) { const star = box(0.004, 0.003, 0.004, std(0xf2c230, 0.5)); star.position.set(0, -0.0012, s * (0.035 + k * 0.016)); g.add(star); }
+        g.add(head);
+        // lying open on the desk: each half of the strap leaves the lugs and settles on the wood
+        for (const sz of [-1, 1]) {
+          const pts = [];
+          for (let i = 0; i <= 14; i++) {
+            const t = i / 14, z = sz * (0.019 + t * (sz < 0 ? 0.072 : 0.085));
+            pts.push(V(0, -0.0012 - 0.0031 * Math.min(1, t * 2.2) + Math.max(0, t - 0.92) * 0.004, z));
+          }
+          g.add(new THREE.Mesh(ribbon(pts, V(1, 0, 0), 0.0158, 0.0025), leather));
+          if (sz < 0) g.add(buckle(V(0, -0.0035, -0.0905), 'x'));
+          else for (let k = 0; k < 5; k++) { const h = cyl(0.0011, 0.0011, 0.003, 8, std(0x2a0c0a, 0.9)); h.position.set(0, -0.0036, 0.058 + k * 0.0055); g.add(h); }
         }
       }
+      g.traverse((m) => { if (m.isMesh) m.castShadow = true; });
       return g;
     },
     // ---- a small wooden crate (one man can carry it): o.size

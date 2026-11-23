@@ -176,7 +176,7 @@ export function createPedestrians(ctx) {
     wanted = Math.min(cap, Math.round(baseCount * (1 - 0.5 * night) * (1 - 0.4 * rain)));
     const tt = time % 40;
     const m = mesh.instanceMatrix.array, ph = phaseAttr.array;
-    let moved = 0;
+    let moved = 0, top = 0;
     for (let i = 0; i < MAX; i++) {
       const p = people[i];
       const o = i * 16;
@@ -185,6 +185,7 @@ export function createPedestrians(ctx) {
       if (p.alive && (d > FAR || (i >= wanted && (d > 45 || capNow)))) p.alive = false;
       if (!p.alive && i < wanted && (first || moved < 6)) { moved++; placePerson(p, px, pz, first ? 6 : 48, FAR - 8); }
       if (!p.alive) { for (let k = 0; k < 16; k++) m[o + k] = 0; continue; } // hidden: size zero
+      top = i + 1;
 
       let x, z, dirX, dirZ, walking = p.speed > 0;
       if (p.mode === 'cross') {
@@ -292,7 +293,8 @@ export function createPedestrians(ctx) {
       m[o + 12] = x; m[o + 13] = p.y + hop + sl * 0.12; m[o + 14] = z; m[o + 15] = 1;
       ph[i] = walking ? p.phase : 0;
     }
-    mesh.count = MAX;
+    // (only up to the last person who is out: the empty places are not drawn at all)
+    mesh.count = top;
     mesh.instanceMatrix.needsUpdate = true;
     phaseAttr.needsUpdate = true;
   }

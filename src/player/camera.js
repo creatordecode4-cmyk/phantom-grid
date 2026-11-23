@@ -78,10 +78,13 @@ export function createCameraRig(camera, city) {
       const d = angleDelta(yaw, player.heading);
       if (Math.abs(d) < 2.3) yaw += d * (1 - Math.exp(-0.9 * dt));
     }
+    // ... and after a little longer it also comes back to its normal height (a camera left looking down from
+    // above makes people look short)
+    if (idle > (C.recenter ?? 2.2) && player.speed > 0.6) pitch += (C.startPitch - pitch) * (1 - Math.exp(-0.8 * dt));
 
     // the point the camera turns around: the player's shoulders (follows smoothly).
     // Swimming, the root is at the water surface and only the head is out: the camera comes down to it.
-    const tx = player.position.x, ty = player.position.y + C.pivotHeight - (player.swimming ? 1.05 : 0), tz = player.position.z;
+    const tx = player.position.x, ty = player.position.y + (player.swimming ? 0.5 : C.pivotHeight), tz = player.position.z;
     if (first) { pivot.set(tx, ty, tz); first = false; }
     pivot.x = damp(pivot.x, tx, 22, dt);
     pivot.y = damp(pivot.y, ty, 12, dt);
@@ -104,6 +107,10 @@ export function createCameraRig(camera, city) {
     dist = want < dist ? want : damp(dist, want, 4, dt); // go in at once, come out slowly
 
     let cx = sx - dir.x * dist, cy = pivot.y - dir.y * dist, cz = sz - dir.z * dist;
+    // a wall right behind the player: the camera rises a little and looks over the shoulder instead of sitting
+    // in the back of his head (it keeps the whole body in view, no see-through character)
+    const close = clamp(((C.minDistance ?? 0.85) + 0.5 - dist) / ((C.minDistance ?? 0.85) + 0.05), 0, 1);
+    cy += close * 0.42;
     // never below the ground, nor under the water
     cy = Math.max(cy, city.groundHeight(cx, cz) + 0.28);
     if (!room && city.water) { const w = city.water.at(cx, cz); if (w) cy = Math.max(cy, w.surface + 0.3); }
