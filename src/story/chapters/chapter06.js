@@ -42,7 +42,7 @@ const SPOT = {
   carBack: [-5.62, -4.9],           // Mace at the car, by the cloth (a cold night: his back to the stairs)
   help: [-5.45, -2.7],              // where HELP MACE / BACK TO WORK is pressed: the car's left side
   benchNate: [-0.52, -2.0], benchMace: [-0.52, -0.75],      // the two of them at the bench (the paper between them)
-  door: [-3.9, 6.05],               // in front of the roller door
+  door: [-2.75, 6.05],              // in front of the roller door (beside the armchair, not behind it)
   macePark: [-1.6, -0.2],           // Mace steps back from the bench
 };
 const PT = {
@@ -299,7 +299,7 @@ function LEAVE() {
         { seconds: 5.2, cam: { from: g(-0.12, 1.55, -0.95), to: g(-0.15, 1.56, -1.1), look: { of: 'player', p: [0, 1.58, 0] }, fov: 28 },
           do: [{ do: 'player', look: PT.clothFloor, mood: 'sad' }] },
         // he turns away and walks to the big door; the roller door goes up, the rain comes in loud
-        { seconds: 5.6, cam: { from: g(-4.25, 1.7, -1.7), to: g(-4.2, 1.68, -1.3), look: g(-3.95, 1.3, 6.1), fov: 40 },
+        { seconds: 5.6, cam: { from: g(-1.75, 1.55, 2.0), to: g(-1.8, 1.53, 2.45), look: g(-2.8, 1.3, 6.1), fov: 38 },
           do: [NATE_AT(at(SPOT.door), 270, 'idle', { hands: null, look: null, mood: 'sad' }), MACE_AT(at(SPOT.benchMace), 0, { pose: 'idle', hands: null, look: 'player', mood: 'sad' })],
           lines: [{ at: 2.2, do: [{ do: 'sound', name: 'rattle' }, { do: 'music', motif: 'leave' }] }] },
         // the car, unfinished, under its work lamp
@@ -343,7 +343,7 @@ function LEAVE() {
       shots: [
         // he drives away. Behind him, the garage door, Mace in it, the light getting smaller. The radio, faintly.
         { seconds: 10.5, cam: { from: { of: 'van', p: [0.3, 1.55, -4.2] }, look: g(-4.5, 1.7, 6.7), fov: 38 },
-          do: [{ do: 'autoDrive', gas: 0.3, steer: 0 }] },
+          do: [{ do: 'autoDrive', gas: 0.3, steer: 0, brake: 0 }] },      // (brake: 0 - else the story holds the car still)
         // the street in the rain, the light of the door, the van's tail lights far away. Three seconds of silence.
         { seconds: 7.0, fade: 'out', fadeSeconds: 3.2, cam: { from: g(1.5, 1.5, 9.6), to: g(1.3, 1.48, 9.5), look: g(-60, 1.2, 11.0), fov: 42 },
           do: [{ do: 'music', silence: 3.2 }] },
