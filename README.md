@@ -1951,8 +1951,9 @@ While the chapter runs, the city is not drawn at all (the camera sees only "laye
 people are taken away, and the camera stays inside the bay. The city also sleeps: its props, the train, the cranes and
 the canal water are not updated while the garage is the whole picture (they wake up the frame it is gone). The city is
 not taken out of memory - building it again would take far longer on a phone than keeping it - but nothing of it costs
-time on the screen. In the garage the robot measured **PERF_CALLS** draw calls
-and **PERF_TRIS** triangles with both people in view (the limit asked for was 150).
+time on the screen. In the garage the robot measured **44 to 110** draw calls
+(44 looking at the door, 61 at the bench, 58 at the back shelves, 109 looking at Theo's car with both people beside
+it, 110 in the first station's close-up) and **171,000 to 217,000** triangles. The limit asked for was 150 draw calls.
 
 ### What was built for it
 
