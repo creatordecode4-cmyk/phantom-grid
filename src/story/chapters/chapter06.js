@@ -341,17 +341,17 @@ function LEAVE() {
     {
       do: 'cutscene',
       shots: [
-        // he drives away. Behind him (what he sees going), the garage door, Mace in it, the light getting smaller. The
-        // radio, faintly. (The camera goes back up the middle of the street, so no sidewalk tree comes between it and
-        // the door.)
-        { seconds: 9.5, cam: { from: g(-13, 1.9, 14.6), to: g(-40, 2.3, 14.6), look: g(-4.5, 1.6, 6.9), fov: 40 },
-          do: [{ do: 'autoDrive', gas: 0.26, steer: 0, brake: 0 }] },     // (brake: 0 - else the story holds the car still)
+        // he drives away: his eyes on the wet street ahead; in the rear-view mirror the garage door, Mace in it, the
+        // light getting smaller (src/story/rearView.js). The radio, faintly.
+        { seconds: 10.5, pov: true, cam: { from: { cabin: 'van', at: 'eye', p: [0, 0.02, 0.04] }, look: { cabin: 'van', at: 'eye', p: [0, -0.16, 8] }, fov: 50, near: NEAR },
+          do: [{ do: 'autoDrive', gas: 0.26, steer: 0, brake: 0 }, { do: 'rearView', car: 'van' }] },   // (brake: 0 - else the story holds the car still)
         // the street in the rain, the light of the door, the van's tail lights far away. Three seconds of silence.
         { seconds: 7.0, fade: 'out', fadeSeconds: 3.2, cam: { from: g(1.5, 1.5, 9.6), to: g(1.3, 1.48, 9.5), look: g(-60, 1.2, 11.0), fov: 42 },
-          do: [{ do: 'music', silence: 3.2 }] },
+          do: [{ do: 'rearView', off: true }, { do: 'music', silence: 3.2 }] },
       ],
     },
     { do: 'autoDrive', off: true },
+    { do: 'rearView', off: true },                 // (also when the scene was skipped)
     { do: 'light' },
     { do: 'wait', seconds: 1.4 },
     { do: 'end', over: 'c6.end.over', title: 'c6.title', lines: ['c6.end.1', 'c6.end.l2', 'c6.end.l3'], locked: 'c6.end.locked' },

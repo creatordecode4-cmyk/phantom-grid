@@ -58,6 +58,7 @@ import { createSpectators } from './race/spectators.js';
 import { createZero } from './ai/zero.js';
 import { raceLook } from './story/propsRace.js';
 import { createGarageSet } from './story/garageSet.js';
+import { createRearView } from './story/rearView.js';
 
 const hud = createHUD();
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -202,6 +203,8 @@ async function boot() {
   // CHAPTER 6: Mace's garage at night as a room of its own (src/story/garageSet.js) - built the first time the story
   // shows it; while it is shown the city is not drawn at all
   if (GARAGE.ready) world.garageSet = createGarageSet({ scene, renderer, camera, GARAGE, mats: materials.mats, lighting, colliders: city.colliders, sound });
+  // a rear-view mirror for a film shot (Chapter 6, "Leave": the garage door behind the van, getting smaller)
+  world.rearView = createRearView({ renderer, scene, camera });
   // (what the set's camera must see besides the room: the player, the story's people and things - a fresh list four
   //  times a second, see garageSet.update)
   const garageCast = () => [player.root, ...actors.list.map((a) => a.root), ...[...story.things.values()].map((o) => o.holder)];
@@ -758,8 +761,13 @@ async function boot() {
     postfx.setSun(sx, sy, c[0] * k, c[1] * k, c[2] * k);
   }
 
+  let drawnAt = 0;
   function draw() {
     renderer.info.reset();
+    // (the film's rear-view mirror is made first: its small picture is then part of the big one)
+    const nowS = performance.now() / 1000, ddt = Math.min(0.1, drawnAt ? nowS - drawnAt : 0.016);
+    drawnAt = nowS;
+    if (world.rearView) world.rearView.render(ddt);
     if (usePost) postfx.render(scene, camera, time);
     else {
       renderer.setRenderTarget(null);

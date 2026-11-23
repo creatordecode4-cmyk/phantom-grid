@@ -927,6 +927,8 @@ export function createStory(G) {
     }, () => { ui.paint(null); sound.setSpray(false); removeThing('_mist'); if (s.cam && !s.keep) leaveCine(); });
   };
   STEP.mirror = (s) => { mirrorOn = !!s.on; };
+  // the film's rear-view mirror (src/story/rearView.js): { car: id } shows what is behind that car, { off: true } ends it
+  STEP.rearView = (s) => { if (world.rearView) world.rearView.set(s.off ? null : car(s.car)); };
   STEP.quiet = (s) => { quietOn = !!s.on; ui.quiet(quietOn); };
   STEP.cine = (s) => { if (s.on === false) leaveCine(); else { cine = true; ui.cine(true); } };
   STEP.cam = (s) => {
@@ -1571,6 +1573,7 @@ export function createStory(G) {
     if (world.races) world.races.stop(true);
     if (world.zero) world.zero.stopStrike();
     if (world.slow) world.slow.set(1, 0);
+    if (world.rearView) world.rearView.set(null);
     vehicles.autoDrive = null; raceOn = false;
     if (jacketOn && world.jacket) world.jacket(false);
     jacketOn = false;
