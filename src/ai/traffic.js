@@ -13,6 +13,8 @@
 //   * at the edge of the walkable city it has to turn, so nobody drives away
 //   * honks when the player blocks it, steers a little around things, pulls
 //     over to the right for a siren, stops for a moment after being hit
+//   * never drives INTO another car: before it moves it checks where its nose
+//     will be (other traffic, the player's car, police and story cars)
 //
 // Only cars within 250 m of the player exist. A car that gets too far away
 // is put back on a road closer to the player (out of sight if possible).
@@ -202,7 +204,37 @@ export function createTraffic(ctx, beamTexture) {
   const events = [];      // things main.js turns into sound: { type: 'honk', x, z }
   const _m = new THREE.Matrix4();
 
-  // obstacles: [{ x, z, r }] things the cars must not hit (the player, the player's car)
+  // ---- THE LAST CHECK: never INTO another car ----
+  // The rules in update keep the cars apart. This is the last check before a car moves: where would its nose be
+  // after the move? If that touches another car (traffic, the player's car, a police or story car, the player on
+  // foot) IN FRONT of it, it does not move this time - it stands, like a driver who brakes hard. Something that only
+  // comes close at the SIDE (a car passing on the other lane) is no reason to stop.
+  const PROBE_R = 0.92;                         // (a little smaller than the car's own circles of 1.0)
+  const BODY_K = [-1.45, 0, 1.45];              // the circles of a traffic car along its length
+  const inFront = (ex, ez, fx, fz) => { const f = ex * fx + ez * fz; return f > 0 && f > 0.6 * Math.abs(ex * fz - ez * fx); };
+  function noseHits(car, i, adv, obstacles) {
+    const h = car.heading, fx = Math.sin(h), fz = Math.cos(h);
+    const nx = car.x - fz * car.side + fx * (1.45 + adv), nz = car.z + fx * car.side + fz * (1.45 + adv);
+    for (let j = 0; j < carCount; j++) {
+      const b = cars[j];
+      if (j === i || !b.alive) continue;
+      const dx = b.wx - nx, dz = b.wz - nz;
+      if (dx > 4.5 || dx < -4.5 || dz > 4.5 || dz < -4.5) continue;
+      const bs = Math.sin(b.heading), bc = Math.cos(b.heading);
+      for (const k of BODY_K) {
+        const ex = b.wx + bs * k - nx, ez = b.wz + bc * k - nz;
+        if (ex * ex + ez * ez < (PROBE_R + 1.0) ** 2 && inFront(ex, ez, fx, fz)) return true;
+      }
+    }
+    for (const ob of obstacles) {
+      const ex = ob.x - nx, ez = ob.z - nz, m = PROBE_R + ob.r;
+      if (ex * ex + ez * ez < m * m && inFront(ex, ez, fx, fz)) return true;
+    }
+    return false;
+  }
+
+  // obstacles: [{ x, z, r, speed?, dx?, dz? }] things the cars must not hit: the player or the player's car, the
+  //            police, story and race cars and the cars left at the curb (main.js), a trailer
   // people:    the walking people (cars brake for the ones on the road)
   // sirens:    [{ x, z }] police cars with the siren on (the traffic pulls over)
   function update(dt, time, px, pz, obstacles = [], people = null, night = 0, sirens = []) {
@@ -228,23 +260,31 @@ export function createTraffic(ctx, beamTexture) {
       const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
       const slowTo = (dist, speed) => { want = Math.min(want, Math.sqrt(speed * speed + 2 * BRAKE * 0.6 * Math.max(dist, 0))); };
       // ---- things in front of the car: the player, the player's car, people ----
-      let sideWant = 0, blocked = false;
+      let sideWant = 0, blocked = false, makeWay = false;
       for (const ob of obstacles) {
         const ax = ob.x - car.x, az = ob.z - car.z;
         const ahead = ax * fx + az * fz, right = -ax * fz + az * fx, side = Math.abs(right);
-        if (ahead > -1 && ahead < 22 && side < 1.3 + ob.r) { slowTo(ahead - 3.4 - ob.r * 1.6, 0); if (ahead < 9) blocked = true; }
+        // (a car driving away in front: follow it at about its speed, like the car in front on the lane)
+        const away = ob.speed > 0.5 ? Math.max(0, ob.speed * (ob.dx * fx + ob.dz * fz)) * 0.5 : 0;
+        if (ahead > -1 && ahead < 22 && side < 1.3 + ob.r) { slowTo(ahead - 3.4 - ob.r * 1.6, away); if (ahead < 9) blocked = true; }
         // something close to the lane: steer a little away from it
         if (ahead > 0 && ahead < 16 && side > 0.5 && side < 3.2 + ob.r) sideWant = right > 0 ? -0.8 : 0.8;
         // a broken car at the roadside: pass slowly
         if (ob.damaged && Math.abs(ax) < 16 && Math.abs(az) < 16) want = Math.min(want, 4);
+        // a car of the story (moved exactly, it cannot steer round) comes up behind on my lane: make way for it
+        if (ob.kin && !car.turn && ahead < 0 && ahead > -32 && side < 2.2 && ob.speed > 2 && ob.dx * fx + ob.dz * fz > 0.7) makeWay = true;
       }
       // a siren close by: move to the right edge of the road and stop
+      // (2.4 m: over toward the curb, far enough that a police car on the lane passes without touching)
       if (!car.turn) for (const s of sirens) {
         const sd = Math.hypot(s.x - car.x, s.z - car.z);
-        if (sd < 65) { sideWant = 1.5; want = Math.min(want, sd < 38 ? 0 : 3); }
+        if (sd < 80) { sideWant = 2.4; want = Math.min(want, sd < 45 ? 0 : 3); }
       }
-      // somebody drove into this car: it stops for a moment and honks
-      if (car.bumped > 0) { car.stun = 2 + Math.min(3, car.bumped * 0.3); car.v = Math.max(0, car.v - car.bumped * 0.6); car.bumped = 0; events.push({ type: 'honk', x: car.x, z: car.z }); }
+      // (making way: over to the right, onto the outer lane, and slowly - it passes on the left)
+      if (makeWay) { sideWant = Math.max(sideWant, 2.4); want = Math.min(want, 4); }
+      // somebody drove into this car: it stops for a moment and honks (the hit itself already pushed it along its
+      // lane and to the side - vehicle.js)
+      if (car.bumped > 0) { car.stun = 2 + Math.min(3, car.bumped * 0.3); car.bumped = 0; events.push({ type: 'honk', x: car.x, z: car.z }); }
       if (car.stun > 0) { car.stun -= dt; want = 0; }
       // the player blocks the road: honk after a moment, then again and again
       car.honkT -= dt;
@@ -295,6 +335,7 @@ export function createTraffic(ctx, beamTexture) {
         want = Math.min(want, Q.speed);
         car.v += Math.max(-BRAKE * 1.6 * dt, Math.min(ACCEL * dt, want - car.v));
         if (car.v < 0) car.v = 0;
+        if (car.v > 0 && noseHits(car, i, car.v * dt + 0.15, obstacles)) car.v = 0;
         Q.th += (car.v * dt) / Q.R;
         const th = Math.min(Q.th, Math.PI / 2), cs = Math.cos(th), sn = Math.sin(th);
         car.x = Q.ox + (-Q.s * Q.rx * cs + Q.dx * sn) * Q.R;
@@ -341,6 +382,7 @@ export function createTraffic(ctx, beamTexture) {
         if (want < 0.15) want = 0;
         car.v += Math.max(-BRAKE * 1.6 * dt, Math.min(ACCEL * dt, want - car.v));
         if (car.v < 0) car.v = 0;
+        if (car.v > 0 && noseHits(car, i, car.v * dt + 0.15, obstacles)) car.v = 0;
         car.t += car.v * dt * car.dir;
         car.x = car.road.axis === 'ns' ? car.c : car.t;
         car.z = car.road.axis === 'ns' ? car.t : car.c;

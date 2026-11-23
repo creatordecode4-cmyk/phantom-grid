@@ -493,6 +493,8 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     blob,
     get staged() { return staged; },
     set talk(v) { if (mover) mover.talk = v; },
+    // the words of a line Nate says, and how long it stays: his mouth says them (speech.js)
+    say(text, seconds) { if (mover) mover.say(text, seconds); },
     set look(v) { if (mover) mover.look = v; },
     // the expression of the face ('smile', 'sad' ... see src/characters/faceAnim.js)
     set mood(v) { if (mover) mover.setFace(v || 'neutral'); },

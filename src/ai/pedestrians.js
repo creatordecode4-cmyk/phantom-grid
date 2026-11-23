@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { blockEdges } from '../city/ground.js';
 import * as M from '../city/models.js';
+import { RNG } from '../utils/math.js';
 
 // clothes (screen colors); every person gets one
 const CLOTHES = [
@@ -22,6 +23,27 @@ const CLOTHES = [
 ];
 const MAX = 80;
 const FAR = 100;          // people further away than this are moved closer
+
+// HOW THE PEOPLE WALK (the same styles as the characters of the story, see WALK_STYLES in proceduralAnim.js; here
+// as numbers for the crowd shader in materials.js):
+//   arm: arm swing (x)  step: step length (x)  sway: the body over the standing foot and the shoulders turning
+//   lean: forward (+) / back (-)  out: arms held out from the body (radians)  bounce: up and down (x)
+//   pace: walking speed (x)  share: how many people walk like this
+const WALKS = [
+  { name: 'normal', arm: 1, step: 1, sway: 0.3, lean: 0, out: 0, bounce: 1, pace: 1, share: 0.32 },
+  { name: 'confident', arm: 1.1, step: 1.05, sway: 0.45, lean: -0.2, out: 0.03, bounce: 1.15, pace: 1.02, share: 0.14 },
+  { name: 'brisk', arm: 1.15, step: 1.06, sway: 0.25, lean: 0.35, out: 0, bounce: 0.9, pace: 1.12, share: 0.13 },
+  { name: 'femme', arm: 0.72, step: 0.9, sway: 1, lean: -0.2, out: -0.02, bounce: 1, pace: 1, share: 0.12 },
+  { name: 'swagger', arm: 1.3, step: 0.95, sway: 0.85, lean: -0.45, out: 0.1, bounce: 1.9, pace: 0.9, share: 0.07 },
+  { name: 'posh', arm: 0.7, step: 1.08, sway: 0.12, lean: -0.5, out: 0.02, bounce: 0.6, pace: 0.98, share: 0.06 },
+  { name: 'tough', arm: 0.85, step: 1, sway: 0.6, lean: 0.45, out: 0.18, bounce: 1.2, pace: 0.97, share: 0.08 },
+  { name: 'old', arm: 0.55, step: 0.82, sway: 0.6, lean: 0.9, out: 0.06, bounce: 0.6, pace: 0.74, share: 0.08 },
+];
+function pickWalk(rng) {
+  let r = rng.next();
+  for (const W of WALKS) { if (r < W.share) return W; r -= W.share; }
+  return WALKS[0];
+}
 
 export function createPedestrians(ctx) {
   const L = ctx.layout;
@@ -106,6 +128,11 @@ export function createPedestrians(ctx) {
   const phaseAttr = new THREE.InstancedBufferAttribute(new Float32Array(MAX), 1);
   phaseAttr.setUsage(THREE.DynamicDrawUsage);
   pedGeo.setAttribute('aPhase', phaseAttr);
+  // how each person walks (the shader in materials.js): it never changes, so it is written once
+  const gaitAttr = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 4), 4);
+  const gaitBAttr = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 2), 2);
+  pedGeo.setAttribute('aGait', gaitAttr);
+  pedGeo.setAttribute('aGaitB', gaitBAttr);
   const mesh = new THREE.InstancedMesh(pedGeo, ctx.mats.ped, MAX);
   mesh.name = 'people';
   mesh.frustumCulled = false;
@@ -117,14 +144,21 @@ export function createPedestrians(ctx) {
   ctx.group.add(mesh);
 
   const people = [];
+  // (the walking styles have their own dice: everything else about the people stays as it was)
+  const wrng = new RNG(9137);
   for (let i = 0; i < MAX; i++) {
     const c = lin(rng.pick(CLOTHES)), k = rng.range(0.85, 1.1);
     mesh.instanceColor.setXYZ(i, c[0] * k, c[1] * k, c[2] * k);
+    // a walking style (WALKS above), a little different for everybody
+    const W = pickWalk(wrng), j = () => wrng.range(0.92, 1.08);
+    gaitAttr.setXYZW(i, W.arm * j(), W.step * j(), W.sway * j(), W.lean + wrng.range(-0.15, 0.15));
+    gaitBAttr.setXY(i, W.out, W.bounce * j());
     people.push({
       loop: null, s: 0, segIndex: 0, x: 0, z: 0, y: 0, heading: 0, alive: false,
       mode: 'walk',          // walk | wait (at a red light) | cross (on the crosswalk)
       link: null, crossT: 0, fromX: 0, fromZ: 0, cool: 0,
-      speed: rng.chance(0.08) ? 0 : rng.range(1.05, 1.65),   // a few people just stand around
+      speed: rng.chance(0.08) ? 0 : rng.range(1.05, 1.65) * W.pace,   // a few people just stand around
+      stepK: W.step,                  // (a longer step: fewer steps for the same way)
       phase: rng.range(0, 6.28),
       size: rng.range(0.86, 1.1),     // different heights
       wide: rng.range(0.9, 1.12),
@@ -278,7 +312,7 @@ export function createPedestrians(ctx) {
       let turn = Math.atan2(dirX, dirZ) - p.heading;
       turn = Math.atan2(Math.sin(turn), Math.cos(turn));
       p.heading += turn * Math.min(1, dt * 7);
-      if (walking) p.phase += Math.max(p.speed, 1.2) * dt * 4.4; // one full leg swing every 1.4 m
+      if (walking) p.phase += (Math.max(p.speed, 1.2) * dt * 4.4) / p.stepK; // one full leg swing every 1.4 m (x the step)
 
       p.y = L.groundHeight(x, z);
       // lean: 0 = standing .. 1.45 = lying on the back (falls fast, lies, gets up slowly)

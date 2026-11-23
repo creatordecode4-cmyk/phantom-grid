@@ -43,6 +43,7 @@
 
 import * as THREE from 'three';
 import { stepSimpleCar, stepBoat } from '../vehicles/physics.js';
+import { keepRight, roadAhead, laneOffset, goRound, stopGap } from './roadSense.js';
 import { CAR_TYPES } from '../vehicles/carModels.js';
 
 const HIDE_SECONDS = 20;              // hidden this long = one star less
@@ -219,7 +220,7 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
       // (computer drivers never load the detailed model: a Guard car costs only a few draw calls)
       const v = vehicles.spawn(kind, s.x, s.z, Math.atan2(target.x - s.x, target.z - s.z), kinds.length ? [1, 1, 1] : [0.02, 0.02, 0.03], { npc: true, keep: true, noDetail: true });
       if (!v) return null;
-      const u = { v, mode: 'search', goal: { x: near.x, z: near.z }, wait: 0, route: null, t: 0, check: 1.2, lastX: s.x, lastZ: s.z, back: 0, sees: false, gone: 0 };
+      const u = { v, mode: 'search', goal: { x: near.x, z: near.z }, wait: 0, route: null, t: 0, check: 1.2, lastX: s.x, lastZ: s.z, back: 0, sees: false, gone: 0, pass: {}, skip: [null, null] };
       v.guard = u;
       v.ai = (car, dt, world) => driveUnit(u, car, dt, world);
       units.push(u);
@@ -243,26 +244,48 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     u.t -= dt;
     if (u.t <= 0) { u.t = 0.6; u.route = dist > 28 ? gps.route(car.x, car.z, goal.x, goal.z, { ignoreAvoid: true }) : null; }
     let aim = u.route && u.route.length > 1 ? gps.pointAhead(u.route, 14) || goal : goal;
+    // (the GPS line is the middle of the street: drive on the right half of it, where the lane is)
+    if (aim !== goal) aim = keepRight(car.x, car.z, aim.x, aim.z, laneOffset(layout, aim.x, aim.z));
     const top = car.type.topSpeed / 3.6;
     let want;
     if (chase) {
       const stars = Math.ceil(level - 0.001);
-      // close behind: ram from 3 stars on (aim a little ahead of the player), else keep close and box in
-      if (dist < 16 && stars >= 3 && ram) { aim = { x: target.x + target.vx * 0.5, z: target.z + target.vz * 0.5 }; want = Math.min(top, target.speed + 4); }
-      else want = dist < 9 ? Math.min(target.speed, 4) : Math.min(top * (stars >= 5 ? 0.92 : 0.82), Math.max(12, target.speed + 9));
+      // close behind: ram from 3 stars on while the player flees (aim a little ahead of the player), else keep close
+      // and box in. (The cars really hit each other now: next to a stopped player a Guard car stops, a car length
+      // away, instead of pushing into it - the BUSTED check needs it close, not on top of the player)
+      if (dist < 16 && stars >= 3 && ram && target.speed > 3) { aim = { x: target.x + target.vx * 0.5, z: target.z + target.vz * 0.5 }; want = Math.min(top, target.speed + 4); }
+      else {
+        // (next to a stopped player it rolls in slowly and stops close - about 5.6 m between the middles of the two
+        //  cars, so the bumpers nearly touch: BUSTED needs a Guard car close, not on top of the player)
+        want = dist < 9 ? (target.speed < 2 ? Math.min(4, Math.max(0, (dist - 5.6) * 1.5)) : Math.min(target.speed, 4)) : Math.min(top * (stars >= 5 ? 0.92 : 0.82), Math.max(12, target.speed + 9));
+        // (closing in on a slow or stopped player: brake in time, it does not crash in)
+        want = Math.min(want, target.speed + Math.sqrt(2 * 7 * Math.max(0, dist - 5.6)));
+      }
     } else if (u.mode === 'leave') want = 12;
     else {
       want = u.mode === 'patrol' ? 9.5 : 13;
       if (dist < 7) { want = 0; u.wait -= dt; if (u.wait <= 0) { u.wait = 1 + Math.random() * 2.5; u.goal = u.mode === 'patrol' && patrol ? searchPoint(patrol.x, patrol.z, patrol.r) : searchPoint(lastKnown.x, lastKnown.z, searchR); } }
     }
+    // a car in front on its line (traffic, a parked car, another Guard car): slow down behind it. (With the siren on
+    // the traffic pulls over to the right and the way gets free; in a chase the player's car is not counted here.)
+    // A car that stands still is driven round (at once; a traffic car in a queue after 3 s), not waited for ever.
+    const pc = vehicles.state === 'driving' ? vehicles.active : null;
+    u.skip[0] = chase ? pc : null; u.skip[1] = u.pass.obj;
+    const ra = roadAhead(car, city.traffic ? city.traffic.cars : null, vehicles.live, 32, u.skip);
+    const round = goRound(u.pass, car, ra, dt, city.colliders, city.traffic ? city.traffic.cars : null, vehicles.live);
+    if (round) { aim = round; want = u.pass.speed < 0 ? 0 : Math.min(want, u.pass.speed); }
+    if (ra.gap < 32 && ra.obj !== u.pass.obj) want = Math.min(want, ra.speed + Math.sqrt(2 * 7 * Math.max(0, ra.gap - stopGap(ra))));
     const before = Math.hypot(car.x - u.lastX, car.z - u.lastZ);
     stepSimpleCar(car, aim.x, aim.z, want, dt, world);
     if (car.spin !== undefined && car.info) car.spin += (car.forward * dt) / car.info.wheelR;
     car.braking = car.forward > want + 1;
-    // stuck against something: back up for a moment
+    // stuck against something: back up for a moment. (Only after trying to drive on for a while: waiting behind a
+    // car, or next to the player, is not being stuck.)
+    if (want < 2) { u.check = 1.2; u.lastX = car.x; u.lastZ = car.z; }
     u.check -= dt;
     if (u.check <= 0) { u.check = 1.2; if (before < 0.6 && dist > 10 && want > 2) u.back = 0.9; u.lastX = car.x; u.lastZ = car.z; }
     if (u.back > 0) { u.back -= dt; car.forward = -4; }
+    if (u.pass.obj && u.pass.speed < 0) car.forward = -3;          // (backing up a little to go round a car)
   }
   function removeUnit(i) {
     const u = units[i], v = u.v;

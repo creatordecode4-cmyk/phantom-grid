@@ -222,6 +222,11 @@ export function stepCar(v, input, dt, world) {
     v.x += (v.vx * dt) / steps; v.z += (v.vz * dt) / steps;
     const hit = world.collide(v);
     if (!hit) continue;
+    // (another CAR: the collision itself already shared the speed, turned and damaged both cars - only the sound
+    //  and the shaking come from here. hit.car = the closing speed of that hit)
+    const car = hit.car || 0;
+    if (car > 0.05) { if (car < 3.2) fx.scrape = Math.max(fx.scrape, Math.hypot(v.vx, v.vz) > 3 ? 1 : 0); fx.impact = Math.max(fx.impact, car); }
+    if (hit.impact < 0.05) continue;
     const s = hit.impact / Math.sqrt(T.armor || 1);              // heavy, armored cars shrug it off
     if (hit.impact < 3.2) fx.scrape = Math.max(fx.scrape, Math.hypot(v.vx, v.vz) > 3 ? 1 : 0);   // light touch: scrape along
     else {
@@ -264,6 +269,8 @@ export function stepSimpleCar(v, targetX, targetZ, wantSpeed, dt, world) {
   const speed = Math.hypot(v.vx, v.vz);
   const maxTurn = clamp(1.9 - speed * 0.03, 0.5, 1.9) * Math.min(1, speed / 3 + 0.25);
   v.heading += clamp(turn, -maxTurn * dt, maxTurn * dt);
+  // hit at a corner by another car (vehicle.js): it is turned for a moment, then the driver steers back
+  if (v.yawSpin) { v.heading += v.yawSpin * dt; v.yawSpin *= Math.exp(-3 * dt); if (Math.abs(v.yawSpin) < 0.02) v.yawSpin = 0; }
   // slow down for sharp turns
   const limit = Math.abs(turn) > 0.5 ? Math.max(6, wantSpeed * 0.35) : wantSpeed;
   let fwd = v.forward;

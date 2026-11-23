@@ -178,7 +178,7 @@ export function createStory(G) {
       const p = a.p || a.player || [0, 0, 0];
       let x, y, z, h;
       const v = a.of && a.of !== 'player' ? car(a.of) : null, who = !v && a.of && a.of !== 'player' ? actors.get(a.of) : null;
-      if (v) { x = v.x; y = v.y; z = v.z; h = v.heading; }
+      if (v) { x = v.rx ?? v.x; y = v.ry ?? v.y; z = v.rz ?? v.z; h = v.rh ?? v.heading; }     // (a car: its smooth pose, the film camera glides)
       else if (who) { x = who.x; y = who.y; z = who.z; h = who.heading; }
       else { x = player.position.x; y = player.position.y; z = player.position.z; h = player.heading; }
       const s = Math.sin(h), c = Math.cos(h);
@@ -314,10 +314,17 @@ export function createStory(G) {
   function speak(l, now = false) {
     const who = l.who || '', kind = l.kind || (who === 'wren' ? 'wren' : '');
     const a = who && who !== 'nate' ? actors.get(l.actor || who) : null;
-    return ui.say(who ? t('name.' + who) : '', t(l.text), {
+    const text = t(l.text);
+    // (a thought is not said out loud: no mouth moves)
+    const aloud = kind !== 'thought';
+    return ui.say(who ? t('name.' + who) : '', text, {
       seconds: l.seconds, kind, now,
-      // the speaker moves a hand with the words; WREN has her own soft sound
-      onShow: () => { quietTalk(); lineMoods(l); if (kind === 'wren') sound.wren(); if (a) a.talking = 1; else if (who === 'nate') player.talk = 1; },
+      // the speaker's mouth says the words of the line (speech.js), a hand moves with them; WREN has her own soft sound
+      onShow: (seconds) => {
+        quietTalk(); lineMoods(l); if (kind === 'wren') sound.wren();
+        if (!aloud) return;
+        if (a) { a.talking = 1; if (a.anim) a.anim.say(text, seconds); } else if (who === 'nate') { player.talk = 1; player.say(text, seconds); }
+      },
       onDone: () => { if (a) a.talking = 0; else if (who === 'nate') player.talk = 0; },
     });
   }
@@ -536,6 +543,7 @@ export function createStory(G) {
       };
       return;
     }
+    v.kin = false;                                             // (only a "kin" path moves a car exactly, see drivers.js)
     if (mode === 'stop') drivers.stopCar(v);
     else if (mode === 'path' || mode === 'race') {
       drivers.path(v, {
@@ -559,6 +567,7 @@ export function createStory(G) {
     const a = actors.spawn(s.id, {
       model: s.model || null, extra: s.extra || null, name: s.name ? t(s.name) : '', at: p, heading: angle(s.face || 0), pose: s.pose || 'idle', scale: s.scale || 1,
       tag: !!s.tag, fixed: !!s.fixed, hidden: !!s.hidden, ghost: !!s.ghost, floorBelow: s.floorBelow, look: s.look === undefined ? 'auto' : lookOf(s.look), mood: s.mood, jacket: s.jacket || null,
+      gait: s.gait || null,                                    // how this person walks (a WALK_STYLES name; left out: by who it is)
       // (only a plain [x, z] place follows the street; a point with a height is a floor, a roof, the highway)
       keepY: !(Array.isArray(s.at) && s.at.length === 2),
     });
@@ -581,6 +590,7 @@ export function createStory(G) {
     if ('fixed' in s) a.fixed = !!s.fixed;
     if (s.mood) actors.setMood(a, s.mood, s.moodSeconds === undefined ? 0.45 : s.moodSeconds);
     if ('jacket' in s) actors.setJacket(a, s.jacket);                // somebody else's jacket on (Chapter 4) or off (null)
+    if (s.gait) actors.setWalk(a, s.gait);                           // another way of walking (WALK_STYLES)
   };
   // the faces of several people at once: { do: 'mood', set: { theo: 'sad', nate: 'tired' }, seconds }
   STEP.mood = (s) => { for (const id in s.set || {}) setMood(id, s.set[id], s.seconds === undefined ? 0.45 : s.seconds); };

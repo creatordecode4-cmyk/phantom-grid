@@ -15,7 +15,7 @@
 
 import * as THREE from 'three';
 import { autoRig, cloneRig, analyzeCharacter } from '../characters/autoRig.js';
-import { createAnimator } from '../characters/proceduralAnim.js';
+import { createAnimator, WALK_STYLES } from '../characters/proceduralAnim.js';
 import { applyCharacterLook } from '../characters/characterLook.js';
 import { makeMannequin } from '../city/models.js';
 import { CONFIG } from '../config.js';
@@ -92,7 +92,36 @@ export function jacketLook(rig, j) {
   return m;
 }
 
-export function createActors({ scene, city, materials, player, vehicles }) {
+// HOW EACH ONE WALKS (WALK_STYLES in proceduralAnim.js). The story can give an actor another style ("gait").
+// Somebody in a copy of the player's body (the crowds of the story) gets a style from their name.
+const WALKS = {
+  Lena_Marchetti: 'brisk',        // quick, decided steps
+  Viktor_Rask: 'old',             // a heavy old dock man
+  Mace_Doyle: 'tough',            // the mechanic: shoulders, fists
+  Dante_Rios: 'swagger',          // the racer who owns the street
+  Juno_Kade: 'soldier',           // the Guard's sniper in her gear
+  Ingrid_Solberg: 'elegant',      // the doctor
+  Sloane_Harrow: 'posh',          // the captain of the Guard in The Crown
+  Theo_Calloway: 'confident',
+  Nate_Calloway: 'confident',
+  Adrian_Vance: 'posh',
+  Calder_Voss: 'tough',
+};
+// (by what the person is: the id or the name says it - a guard walks like a soldier, a mechanic like a tough guy)
+const WALK_HINTS = [[/officer|guard|sentry|soldier|^g\d/, 'soldier'], [/girl|\btea\b|woman|mother|lady/, 'femme'], [/marshal|boss|captain/, 'confident'],
+  [/wolf|racer/, 'swagger'], [/mech|crew|worker|docker/, 'tough'], [/^rep\d|reporter|press/, 'brisk'], [/\bold\b|grand/, 'old']];
+const CROWD_WALKS = ['normal', 'normal', 'confident', 'brisk', 'tough', 'old', 'swagger'];
+function walkFor(id, spec) {
+  if (spec.gait && WALK_STYLES[spec.gait]) return spec.gait;
+  if (spec.model && WALKS[spec.model]) return WALKS[spec.model];
+  const who = (id + ' ' + (spec.name || '')).toLowerCase();
+  for (const [re, style] of WALK_HINTS) if (re.test(who)) return style;
+  let h = 7;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return CROWD_WALKS[h % CROWD_WALKS.length];
+}
+
+export function createActors({ scene, city, materials, player, vehicles, camera = null }) {
   const list = [];
   const rigs = new Map();          // model name -> promise of the first rig (later ones are copies)
   let loaderPromise = null, worker = null, workerBroken = false, nextJob = 1;
@@ -200,7 +229,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
   // spec: { model: 'Mace_Doyle' | null, extra: [r, g, b] (a dark copy of the player's body) or { pants, coat, patch, scarf, head }
   //         (a copy in salvaged clothes), name: text for the tag,
   //         at: [x, y, z], heading (radians), pose, scale, tag: always show the name, fixed: never steps aside,
-  //         mood: the expression of the face }
+  //         mood: the expression of the face, gait: how this one walks (WALK_STYLES; left out: WALKS below) }
   function spawn(id, spec) {
     const old = get(id);
     if (old) remove(id);
@@ -216,6 +245,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
       jacket: spec.jacket || null,  // somebody else's jacket painted over the clothes (Chapter 4: Dante in Theo's jacket)
       ghost: !!spec.ghost,       // true: the player can walk through (far away figures)
       carried: null,             // a box held with both hands: { object, size } (see carry)
+      walkStyle: walkFor(id, spec), // how this one walks and stands (WALKS above)
       grips: {},                 // hands closed around a handle: { L: degrees, R: degrees }
     };
     root.position.set(a.x, a.y, a.z);
@@ -227,6 +257,7 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     const finish = (rig) => {
       if (!list.includes(a)) return;                    // (removed again before the model arrived)
       a.rig = rig; a.anim = createAnimator(THREE, rig);
+      a.anim.walkStyle = a.walkStyle;
       if (a.jacket) setJacket(a, a.jacket);
       a.anim.setPose(a.pose, 0); a.anim.floorBelow = a.floorBelow; a.anim.setFace(a.mood, 0);
       if (a.carried) a.anim.carry = a.carried.size;
@@ -294,6 +325,8 @@ export function createActors({ scene, city, materials, player, vehicles }) {
   // a hand that holds something by a handle (Dr. Solberg's case): the fingers close around it. curl 0 = normal
   function grip(a, tag, curl) { a.grips[tag] = curl || 0; if (a.anim) a.anim.setGrip(tag, curl || 0); }
   function setPose(a, pose, seconds = 0.4) { a.pose = pose; if (a.anim) a.anim.setPose(pose, seconds); }
+  // another way of walking for this actor (a name from WALK_STYLES)
+  function setWalk(a, name) { a.walkStyle = WALK_STYLES[name] ? name : a.walkStyle; if (a.anim) a.anim.walkStyle = a.walkStyle; }
   // the expression of the face: 'smile', 'sad', 'angry' ... (FACES in src/characters/faceAnim.js)
   function setMood(a, mood, seconds = 0.45) { a.mood = mood; if (a.anim) a.anim.setFace(mood, seconds); }
   // walk to a place (speed in m/s), then turn to "face" (radians) if given
@@ -327,10 +360,14 @@ export function createActors({ scene, city, materials, player, vehicles }) {
         continue;
       }
       const dist = Math.hypot(a.x - px, a.z - pz);
-      // far away: only now and then (nobody sees the difference)
+      // far away from the player AND from the camera: only now and then (nobody sees the difference).
+      // (A film scene often shows people far from the player: near the camera they always move every frame -
+      //  breathing, speaking, the head and the hands stay smooth while the camera moves.)
+      const camD = camera ? Math.hypot(a.x - camera.position.x, a.z - camera.position.z) : dist;
+      const far = Math.min(dist, camD) > 55;
       a.far += dt;
-      if (dist > 55 && a.far < 0.4 && !a.walk) continue;
-      const step = dist > 55 ? a.far : dt;
+      if (far && a.far < 0.4 && !a.walk) continue;
+      const step = far ? a.far : dt;
       a.far = 0;
       // ---- walking ----
       let speed = 0;
@@ -391,5 +428,5 @@ export function createActors({ scene, city, materials, player, vehicles }) {
     }
   }
 
-  return { list, spawn, get, remove, clear, unload, preload, update, tags, attach, carry, grip, setPose, setMood, walkTo, place, sitIn, setJacket };
+  return { list, spawn, get, remove, clear, unload, preload, update, tags, attach, carry, grip, setPose, setMood, setWalk, walkTo, place, sitIn, setJacket };
 }

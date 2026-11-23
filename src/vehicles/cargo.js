@@ -151,7 +151,9 @@ export function createCargo({ scene, city, mats }) {
   }
   const _e = new THREE.Euler();
   function place(v, load) {
-    const h = hitch(v);
+    // (drawn at the truck's smooth pose, the one we see - vehicle.js)
+    const b = (v.info.backZ || -2.5) + 0.2, H = v.rh ?? v.heading;
+    const h = { x: (v.rx ?? v.x) + Math.sin(H) * b, z: (v.rz ?? v.z) + Math.cos(H) * b };
     load.mesh.position.set(h.x, city.groundHeight(h.x, h.z), h.z);
     _e.set(0, load.heading, 0);
     load.mesh.rotation.copy(_e);
@@ -246,6 +248,14 @@ export function createCargo({ scene, city, mats }) {
     info(v) { const l = v ? loads.get(v) : null; return l ? { integrity: l.integrity, label: l.label, kind: l.kind } : null; },
     // the trailer of a vehicle: where its back is (the story checks it is inside the back warehouse)
     tail(v) { const l = loads.get(v); return l && l.kind === 'trailer' ? { x: l.ax, z: l.az } : null; },
+    // the circles of every trailer: cb(x, z, r) (the traffic must not drive through a trailer either)
+    circles(cb) {
+      for (const [v, l] of loads) {
+        if (l.kind !== 'trailer' || v.away) continue;
+        const fx = Math.sin(l.heading), fz = Math.cos(l.heading), h = hitch(v);
+        for (const off of [-1.3, -3.4, -5.6]) cb(h.x + fx * off, h.z + fz * off, 1.25);
+      }
+    },
     clear() { for (const v of [...loads.keys()]) detach(v); },
   };
 }

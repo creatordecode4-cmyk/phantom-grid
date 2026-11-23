@@ -141,6 +141,7 @@ export function createZero({ vehicles, drivers, music, sound, effects, flags }) 
     S.v = spawnCar(P.x + P.dz * S.d, P.z - P.dx * S.d, Math.atan2(-P.dx, -P.dz));
     if (!S.v) { S.active = false; S.stage = 'gone'; S.events.push('gone'); return false; }
     S.v.ai = () => {};                                         // (moved by the strike itself, exactly)
+    S.v.ghost = true;                                          // (its touches are the strike's own: spinOut)
     S.v.lights = 'bar';
     return true;
   }

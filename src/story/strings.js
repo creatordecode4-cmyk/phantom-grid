@@ -59,6 +59,10 @@ export const STRINGS = {
     'ui.busted': 'BUSTED', 'ui.fine': 'FINE', 'ui.money_left': 'CREDITS LEFT', 'ui.open': 'OPEN', 'ui.sit': 'SIT',
     'ui.enter': 'ENTER', 'ui.exit': 'EXIT',
     'ui.difficulty': 'DRIVING', 'ui.easy': 'EASY', 'ui.normal': 'NORMAL', 'ui.hard': 'HARD',
+    // how Nate walks (settings: a button that goes through them)
+    'ui.walk': 'WALK STYLE',
+    'walk.confident': 'CONFIDENT', 'walk.normal': 'NORMAL', 'walk.swagger': 'SWAGGER', 'walk.posh': 'POSH', 'walk.tough': 'TOUGH',
+    'walk.soldier': 'SOLDIER', 'walk.femme': 'FEMME', 'walk.brisk': 'BRISK', 'walk.elegant': 'ELEGANT', 'walk.old': 'OLD',
     'ui.jacket': "THEO'S JACKET",
 
     // ---- names ----

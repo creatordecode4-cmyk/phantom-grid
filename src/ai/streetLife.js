@@ -116,7 +116,9 @@ export function createStreetLife({ actors, props, vehicles, ui, scene, player, c
         made.said = time;
         for (const [who, key] of m.lines) {
           const a = actors.get(made.people[who]);
-          ui.say(a ? a.name : '', t(key), { onShow: () => { if (a) a.talking = 1; }, onDone: () => { if (a) a.talking = 0; } });
+          const text = t(key);
+          // (the speaker's mouth says the words: speech.js)
+          ui.say(a ? a.name : '', text, { onShow: (seconds) => { if (a) { a.talking = 1; if (a.anim) a.anim.say(text, seconds); } }, onDone: () => { if (a) a.talking = 0; } });
         }
       }
       for (const o of made.things) props.animate(o, time);

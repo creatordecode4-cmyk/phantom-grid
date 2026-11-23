@@ -17,6 +17,9 @@
 
 import { t } from '../story/strings.js';
 
+// the ways of walking the player can pick in the settings (names from WALK_STYLES in proceduralAnim.js)
+const WALK_CHOICES = ['confident', 'normal', 'swagger', 'posh', 'tough', 'soldier', 'brisk', 'elegant', 'femme', 'old'];
+
 export function createStoryUI() {
   const $ = (id) => document.getElementById(id);
   const body = document.body;
@@ -34,7 +37,8 @@ export function createStoryUI() {
 
   // ------------------------------------------------------------ settings kept on the phone
   // difficulty: how good the other drivers of a race are (e = easy, n = normal, h = hard)
-  const settings = { ctl: 'm', subs: 'm', volume: 1, muted: false, tilt: false, difficulty: 'n' };
+  // walk: how Nate walks (a name from WALK_STYLES in src/characters/proceduralAnim.js)
+  const settings = { ctl: 'm', subs: 'm', volume: 1, muted: false, tilt: false, difficulty: 'n', walk: 'confident' };
   try { Object.assign(settings, JSON.parse(localStorage.getItem('pg-settings') || '{}')); } catch (e) { /* private mode */ }
   const saveSettings = () => { try { localStorage.setItem('pg-settings', JSON.stringify(settings)); } catch (e) { /* private mode */ } };
   function applyLook() {
@@ -75,7 +79,7 @@ export function createStoryUI() {
     el.text.classList.toggle('thought', s.kind === 'thought');
     subLeft = s.seconds;
     el.wren.classList.toggle('on', s.kind === 'wren');
-    if (s.onShow) s.onShow();
+    if (s.onShow) s.onShow(s.seconds);         // (how long the line stays: the speaker's mouth is timed to it)
   }
   // how long a line stays: long enough to read it
   const readTime = (text) => Math.max(1.9, Math.min(7, 1.1 + text.length * 0.062));
@@ -302,6 +306,18 @@ export function createStoryUI() {
     row(t('ui.tilt'), [[false, t('ui.off')], [true, t('ui.on')]], settings.tilt, 'tilt');
     row(t('ui.difficulty'), [['e', t('ui.easy')], ['n', t('ui.normal')], ['h', t('ui.hard')]], settings.difficulty, 'difficulty');
     row(t('ui.sub_size'), [['s', t('ui.small')], ['m', t('ui.medium')], ['l', t('ui.large')]], settings.subs, 'subs');
+    // WALK STYLE: one button, "< SWAGGER >": every press goes to the next way of walking
+    {
+      const r = document.createElement('div'); r.className = 'set-row'; r.innerHTML = '<span></span><span class="opts"></span>';
+      r.firstElementChild.textContent = t('ui.walk');
+      const styles = WALK_CHOICES, b = button('');
+      const show = () => { b.textContent = '\u2039 ' + t('walk.' + settings.walk) + ' \u203a'; };
+      if (!styles.includes(settings.walk)) settings.walk = styles[0];
+      show();
+      press(b, () => { set('walk', styles[(styles.indexOf(settings.walk) + 1) % styles.length]); show(); });
+      r.lastElementChild.appendChild(b);
+      col.appendChild(r);
+    }
     row(t('ui.sound'), [[false, t('ui.on')], [true, t('ui.off')]], settings.muted, 'muted');
     const vr = document.createElement('div'); vr.className = 'set-row'; vr.innerHTML = `<span>${t('ui.volume')}</span><input type="range" min="0" max="100" step="5">`;
     const slider = vr.querySelector('input'); slider.value = String(Math.round(settings.volume * 100));

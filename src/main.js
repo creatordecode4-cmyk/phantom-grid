@@ -175,7 +175,7 @@ async function boot() {
   const ui = createStoryUI();                           // film bars, subtitles, choices, menus
   const music = createMusic(sound);                     // the mixtape, rain, the chase pad
   const save = createSave();
-  const actors = createActors({ scene, city, materials, player, vehicles });
+  const actors = createActors({ scene, city, materials, player, vehicles, camera });
   const drivers = createDrivers({ vehicles, gps, city, player, sound });
   // free roam: small moments in the streets (people with their own business, overheard lines)
   const streetLife = createStreetLife({ actors, props: storyProps, vehicles, ui, scene, player, city });
@@ -240,7 +240,8 @@ async function boot() {
   let route = null;             // list of points along the roads (for the minimap)
   let routeTimer = 0, nearTimer = 0, lastSteps = 0, lastSplashes = 0, lastStrokes = 0, wasDriving = false;
   let missionState = missions.state;
-  const obstacles = [];         // what the traffic must not hit: the player or the player's car
+  const obstacles = [];         // what the people step away from: the player or the player's car
+  const carObstacles = [];      // what the traffic must not drive into: the same, and every other real vehicle
   const _mark = new THREE.Vector3();
 
   // -------------------------------------------------------------------- quality
@@ -259,7 +260,7 @@ async function boot() {
   // frame rate drops (never below 80 % of the normal setting). Address option dynres=0 switches it off (tests).
   let resK = 1;
   const dynRes = urlOption('dynres') !== '0';
-  let resFrames = 0, resTime = 0, resGood = 0;
+  let resFrames = 0, resTime = 0, resGood = 0, resHold = 0;     // resHold: seconds before the next change is allowed
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     const dpr = window.devicePixelRatio || 1;
@@ -392,7 +393,19 @@ async function boot() {
       const sp = Math.hypot(car.vx, car.vz), flying = car.role === 'drone' && car.alt > 2.5, atSea = car.role === 'boat';
       if (!flying && !atSea) for (const k of car.circles) obstacles.push({ x: car.x + fx * k, z: car.z + fz * k, r: car.radius, speed: sp, dx: sp > 0.1 ? car.vx / sp : fx, dz: sp > 0.1 ? car.vz / sp : fz, damaged: car.damage > 0.6 });
     } else obstacles.push({ x: px, z: pz, r: 0.4 });
-    city.traffic.update(dt, time, px, pz, obstacles, city.people.people, night, police.sirens(sirens));
+    // the traffic also sees the police, the story and race cars and the cars standing at the curb (it brakes and
+    // waits for them, it never drives through them), and a trailer behind a truck
+    carObstacles.length = 0;
+    for (const o of obstacles) carObstacles.push(o);
+    for (const q of vehicles.live) {
+      if (q === car && !onFoot) continue;
+      if (q.away || q.ghost || q.role === 'boat' || (q.role === 'drone' && q.alt > 2.5) || !q.circles) continue;
+      if (Math.abs(q.x - px) > 160 || Math.abs(q.z - pz) > 160 || q.y > 2.5) continue;
+      const fx = Math.sin(q.heading), fz = Math.cos(q.heading), sp = Math.hypot(q.vx || 0, q.vz || 0);
+      for (const k of q.circles) carObstacles.push({ x: q.x + fx * k, z: q.z + fz * k, r: q.radius, speed: sp, dx: sp > 0.1 ? q.vx / sp : fx, dz: sp > 0.1 ? q.vz / sp : fz, damaged: q.damage > 0.6, kin: !!q.kin });
+    }
+    vehicles.cargo.circles((x, z, r) => carObstacles.push({ x, z, r }));
+    city.traffic.update(dt, time, px, pz, carObstacles, city.people.people, night, police.sirens(sirens));
     city.people.update(dt, time, px, pz, obstacles, night, rain > 0.3 ? 1 : 0);
     for (const e of city.traffic.events) if (e.type === 'honk') sound.honk(clamp(1.3 - Math.hypot(e.x - px, e.z - pz) / 45, 0, 1));
 
@@ -613,7 +626,9 @@ async function boot() {
       const want = P.fillDay + (P.fillNight - P.fillDay) * (1 - bright);
       setCharacterFill(typeof test === 'number' ? test : want / Math.max(li.exposure || 1, 0.25));
     }
-    city.update(dt, time, px, pz, quality.propDistance);
+    // (in a film scene the near detail - props, the docks' crews and machines - is around the CAMERA, which may be
+    //  far from where the player stands: nothing pops in or is missing in the shot)
+    city.update(dt, time, film ? camera.position.x : px, film ? camera.position.z : pz, quality.propDistance);
     updateSunGlow(dt);
   }
   // Get into the nearest car, or (when driving) stop and get out.
@@ -957,12 +972,14 @@ async function boot() {
       else if (key === 'tilt') controls.setTilt(value);
       else if (key === 'volume') sound.setVolume(value);
       else if (key === 'muted') { sound.setMuted(value); hud.setSoundButton(!value); }
+      else if (key === 'walk' && player.anim) player.anim.walkStyle = value;     // how Nate walks
       // (button size and subtitle size are style settings: storyUI.js applies them itself)
     }, back);
   }
   ui.onPauseButton(openPause);
   controls.onTiltChange = (on) => ui.setSetting('tilt', on);
   if (ui.settings.tilt) controls.setTilt(true);
+  if (player.anim) player.anim.walkStyle = ui.settings.walk || 'confident';      // how Nate walks (SETTINGS: WALK STYLE)
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyP' && e.code !== 'Escape') return;
     if (paused && !document.getElementById('pause').hidden) closePause(); else openPause();
@@ -1017,20 +1034,26 @@ async function boot() {
         const r = renderer.info.render;
         hud.setStats(`${Math.round(fps)} FPS  ·  ${r.calls} DRAW CALLS\n${Math.round(r.triangles / 1000)}K TRIANGLES  ·  ${quality.label} ${renderer.getPixelRatio().toFixed(2)}x`);
       }
-      // dynamic resolution (see resize): look at the frame rate of the last 2.5 seconds
+      // dynamic resolution (see resize): look at the frame rate of the last 2.5 seconds.
+      // (Never in the middle of a film scene - a change of resolution makes the picture jump for a moment - and
+      //  at least 8 seconds between two changes.)
       resFrames += frames_; resTime += span_;
-      if (dynRes && resTime >= 2.5 && !document.hidden && gameMode !== 'title') {
+      resHold = Math.max(0, resHold - span_);
+      const filmNow = !!story && story.cameraActive;
+      if (filmNow) { resFrames = 0; resTime = 0; }
+      if (dynRes && resTime >= 2.5 && !document.hidden && gameMode !== 'title' && !filmNow && resHold <= 0) {
         const rf = resFrames / resTime, prNow = renderer.getPixelRatio();
         resFrames = 0; resTime = 0;
-        if (rf < 47) { resGood = 0; const k = Math.max(0.8, resK - 0.12); if (k !== resK) { resK = k; resize(); } }
+        if (rf < 47) { resGood = 0; const k = Math.max(0.8, resK - 0.12); if (k !== resK) { resK = k; resize(); resHold = 8; } }
         else if (rf >= 57) {
           resGood++;
           // (two calm windows in a row before it gets sharper: no back and forth)
-          if (resGood >= 2) { resGood = 0; const k = Math.min(2.2, resK + 0.08); if (k !== resK) { resK = k; resize(); if (renderer.getPixelRatio() === prNow) resK -= 0.08; } }
+          if (resGood >= 2) { resGood = 0; const k = Math.min(2.2, resK + 0.08); if (k !== resK) { resK = k; resize(); resHold = 8; if (renderer.getPixelRatio() === prNow) resK -= 0.08; } }
         } else resGood = 0;
       } else if (resTime >= 2.5) { resFrames = 0; resTime = 0; }
       // AUTO quality: if the game runs slowly for a while, go one level down
-      if (mode === 'auto' && sinceChange > 5 && !document.hidden) {
+      // (not during a film scene: changing the quality rebuilds the shaders, the scene would freeze for a moment)
+      if (mode === 'auto' && sinceChange > 5 && !document.hidden && !(story && story.cameraActive)) {
         slowTime = fps < 42 ? slowTime + 0.5 : Math.max(0, slowTime - 0.25);
         if (slowTime >= 3 && active !== 'low') {
           applyQuality(active === 'high' ? 'medium' : 'low');

@@ -17,6 +17,7 @@
 // ---------------------------------------------------------------------------
 
 import { stepSimpleCar } from '../vehicles/physics.js';
+import { keepRight, roadAhead, laneOffset, goRound, stopGap } from '../ai/roadSense.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -57,7 +58,9 @@ export function createDrivers({ vehicles, gps, city, player, sound }) {
   // o: { path, speed (m/s), kin, end: 'stop' | 'remove' | 'hold', offset (meters to the left of the line),
   //      race: { lead: meters this car wants to be ahead of the player, min, max (m/s) }, onEnd() }
   function path(v, o) {
-    let s = progressOn(o.path, v.x, v.z), done = false;
+    let s = progressOn(o.path, v.x, v.z), done = false, waited = 0, drift = 0, heldBack = 0;
+    // (kin: the car is moved exactly - other cars cannot push it, see vehicle.js)
+    v.kin = !!o.kin;
     v.ai = (car, dt, world) => {
       if (done) { stop(car, dt, world); return; }
       let want = o.speed;
@@ -67,7 +70,12 @@ export function createDrivers({ vehicles, gps, city, player, sound }) {
         want = clamp(t.speed + (ps + o.race.lead - s) * 0.22, o.race.min, o.race.max);
       }
       if (o.kin) {
-        // moved exactly along the line
+        // moved exactly along the line. Something standing or driving in front of it on the line (a traffic car,
+        // a parked car, the player): it slows down and waits behind it instead of driving through it. (The story
+        // must go on: after 3 s of waiting it drives on all the same - the other car is pushed out of its way.)
+        const gap = waited < 3 ? gapAhead(car) : 1e9;
+        if (gap < 40) want = Math.min(want, gap < 0.6 ? 0 : Math.sqrt(2 * 5 * (gap - 0.6)));
+        waited = want < 0.3 && o.speed > 1 ? waited + dt : 0;
         car.forward += clamp(want - car.forward, -9 * dt, 6 * dt);
         s += car.forward * dt;
         pointOn(o.path, s, P);
@@ -81,10 +89,29 @@ export function createDrivers({ vehicles, gps, city, player, sound }) {
         s = Math.max(s, progressOn(o.path, car.x, car.z));
         const ahead = 7 + Math.abs(car.forward) * 0.45;
         pointOn(o.path, s + ahead, P);
-        const side = o.offset || 0;
+        let side = o.offset || 0;
         // slow down before a sharp bend in the line
         const here = pointOn(o.path, s, {}), bend = 1 - (here.dx * P.dx + here.dz * P.dz);
         if (bend > 0.04) want = Math.min(want, Math.max(9, want * (1 - bend * 1.6)));
+        // THE PLAYER ON THE SAME LINE (the cars really hit each other): in front and slower - brake behind him;
+        // right behind and faster (a race of the story) - move over to the other side and let him by
+        // (a player the story has hidden is not in anybody's way)
+        const t = target(), seen = !!playerCar() || !player.hidden, ax = t.x - car.x, az = t.z - car.z;
+        const along = seen ? ax * here.dx + az * here.dz : -1e9, lat = ax * here.dz - az * here.dx;   // (lat: on the +offset side)
+        // (the story must go on: after 4 s of standing behind the player it drives on, like the scripted cars -
+        //  until the player is out of its way)
+        const inWay = along > 0 && along < 26 && Math.abs(lat) < 2.4;
+        if (!inWay) heldBack = 0;
+        else if (heldBack < 4) {
+          want = Math.min(want, t.speed + Math.sqrt(2 * 6 * Math.max(0, along - 6)));
+          if (along < 9 && car.forward < 0.5 && o.speed > 1) heldBack += dt;
+        }
+        // (a racer also goes round a slower player in front of it, on the other side)
+        let dodge = 0;
+        const behindFaster = along < -1 && along > -32 && t.speed > car.forward + 1, aheadSlower = along > 1 && along < 26 && t.speed + 2 < o.speed;
+        if (o.race && Math.abs(lat) < 3 && (behindFaster || aheadSlower)) dodge = lat > 0 ? -3.4 : 3.4;
+        drift += (dodge - drift) * Math.min(1, dt * (dodge ? 1.6 : 0.6));
+        side += drift;
         stepSimpleCar(car, P.x + P.dz * side, P.z - P.dx * side, want, dt, world);
       }
       car.braking = car.forward > want + 1.5;
@@ -98,6 +125,23 @@ export function createDrivers({ vehicles, gps, city, player, sound }) {
     };
     v.aiInfo = { mode: 'path', get s() { return s; } };
   }
+  // how many meters of free road there are in front of a car (to the back of the next car on its way, or the player)
+  function gapAhead(car) {
+    const fx = Math.sin(car.heading), fz = Math.cos(car.heading), half = (car.info && car.info.length ? car.info.length / 2 : 2.3);
+    let best = 1e9;
+    const look = (x, z, len, wide) => {
+      const ax = x - car.x, az = z - car.z, along = ax * fx + az * fz;
+      if (along <= 0 || along > 45) return;
+      if (Math.abs(ax * fz - az * fx) > (car.radius || 0.95) + wide + 0.25) return;
+      best = Math.min(best, along - half - len);
+    };
+    const T = city.traffic;
+    if (T) for (const t of T.cars) if (t.alive) look(t.wx, t.wz, 2.45, 1.0);
+    for (const q of vehicles.live) if (q !== car && !q.away && !q.ghost && q.circles && q.role !== 'boat' && q.role !== 'drone') look(q.x, q.z, (q.info && q.info.length ? q.info.length / 2 : 2.3), q.radius);
+    if (!playerCar() && !player.hidden) look(player.position.x, player.position.z, 0.3, 0.35);
+    return best;
+  }
+
   // brake to a stop and stay
   function stop(car, dt, world) {
     if (Math.abs(car.forward) < 0.05 && Math.abs(car.vx) + Math.abs(car.vz) < 0.05) { car.forward = 0; car.vx = car.vz = 0; car.braking = false; return; }
@@ -114,7 +158,7 @@ export function createDrivers({ vehicles, gps, city, player, sound }) {
   function shadow(v, o) {
     trailOn = true;
     const S = { gap: o.gap || 16, k: Math.max(0, trail.length - 1), stuck: 0 };
-    v.aiInfo = S;
+    v.aiInfo = S; v.kin = false;
     v.ai = (car, dt, world) => {
       const t = target();
       if (!trail.length) { stop(car, dt, world); return; }
@@ -151,23 +195,37 @@ export function createDrivers({ vehicles, gps, city, player, sound }) {
 
   // ------------------------------------------------------------------ pursue (Meridian Guard)
   function pursue(v, o = {}) {
-    const C = { t: 0, route: null, check: 1.2, lastX: v.x, lastZ: v.z, back: 0, hold: o.hold || 0 };
-    v.aiInfo = C;
+    const C = { t: 0, route: null, check: 1.2, lastX: v.x, lastZ: v.z, back: 0, hold: o.hold || 0, pass: {}, skip: [null, null] };
+    v.aiInfo = C; v.kin = false;
     v.ai = (car, dt, world) => {
       const t = target(), dist = Math.hypot(t.x - car.x, t.z - car.z);
       C.t -= dt;
       if (C.t <= 0) { C.t = 0.5; C.route = dist > 26 ? gps.route(car.x, car.z, t.x, t.z) : null; }
-      const aim = C.route && C.route.length > 1 ? gps.pointAhead(C.route, 14) || t : t;
+      let aim = C.route && C.route.length > 1 ? gps.pointAhead(C.route, 14) || t : t;
+      // (the GPS line is the middle of the street: drive on the right half of it, where the lane is)
+      if (aim !== t) aim = keepRight(car.x, car.z, aim.x, aim.z, laneOffset(city.layout, aim.x, aim.z));
       const top = (car.type.topSpeed / 3.6) * (o.pace || 0.8);
       // (C.hold: stay this far back - the story uses it to let the player get away)
-      const want = dist < 9 + C.hold ? Math.min(t.speed, 4) : Math.min(top, Math.max(12, t.speed + 8 - C.hold * 0.2));
+      let want = dist < 9 + C.hold ? Math.min(t.speed, 4) : Math.min(top, Math.max(12, t.speed + 8 - C.hold * 0.2));
+      // (closing in on a slow or stopped car: brake in time, so it stops a car length away and does not crash into it)
+      want = Math.min(want, t.speed + Math.sqrt(2 * 7 * Math.max(0, dist - 6.5 - C.hold)));
+      // (a car in front on its line - traffic, a parked car: slow down behind it; the player's car is the chase itself.
+      //  A car that stands still is driven round - at once, or after 3 s for a traffic car in a queue.)
+      C.skip[0] = playerCar(); C.skip[1] = C.pass.obj;
+      const ra = roadAhead(car, city.traffic ? city.traffic.cars : null, vehicles.live, 32, C.skip);
+      const round = goRound(C.pass, car, ra, dt, city.colliders, city.traffic ? city.traffic.cars : null, vehicles.live);
+      if (round) { aim = round; want = C.pass.speed < 0 ? 0 : Math.min(want, C.pass.speed); }
+      if (ra.gap < 32 && ra.obj !== C.pass.obj) want = Math.min(want, ra.speed + Math.sqrt(2 * 7 * Math.max(0, ra.gap - stopGap(ra))));
       const moved = Math.hypot(car.x - C.lastX, car.z - C.lastZ);
       stepSimpleCar(car, aim.x, aim.z, want, dt, world);
       car.braking = car.forward > want + 1;
       spinWheels(car, dt);
+      // (stuck: back up a moment - only after trying to drive on for a while; waiting behind a car is not stuck)
+      if (want < 2) { C.check = 1.2; C.lastX = car.x; C.lastZ = car.z; }
       C.check -= dt;
       if (C.check <= 0) { C.check = 1.2; if (moved < 0.6 && dist > 10) C.back = 0.9; C.lastX = car.x; C.lastZ = car.z; }
       if (C.back > 0) { C.back -= dt; car.forward = -4; }
+      if (C.pass.obj && C.pass.speed < 0) car.forward = -3;          // (backing up a little to go round a car)
     };
   }
 
@@ -177,6 +235,7 @@ export function createDrivers({ vehicles, gps, city, player, sound }) {
   //      axis: 'x' | 'z' (the road runs along this), speed, onPass() }
   function overtake(v, o) {
     let lane = o.lanes[0], passed = false, life = 0;
+    v.kin = false;
     const across = (x, z) => (o.axis === 'x' ? z : x);
     v.ai = (car, dt, world) => {
       life += dt;
@@ -206,6 +265,7 @@ export function createDrivers({ vehicles, gps, city, player, sound }) {
   // straight at the player (nothing stops it). o: { speed, hitAt (meters), onHit() }
   function ram(v, o) {
     let hit = false;
+    v.ghost = true; v.kin = false;                // (it touches nothing on the way: the story's crash is the hit)
     v.ai = (car, dt, world) => {
       if (hit) return;
       const t = target(), dx = t.x - car.x, dz = t.z - car.z, d = Math.hypot(dx, dz) || 1;

@@ -55,6 +55,50 @@ export const LIMITS = {
 };
 const lim = (name, deg) => clamp(deg, LIMITS[name][0], LIMITS[name][1]);
 
+// ---------------------------------------------------------------------------
+// WALKING STYLES. Nobody walks exactly like anybody else. A style changes a few numbers of the walk (and of the
+// way the character stands); running is about the same for everybody. Made from watching game footage of walk
+// styles (normal, femme, gangster, posh, tough guy, a soldier in gear) and real people.
+//   stride    step length (x normal; a longer step is also a slower one)   width   feet apart while walking (x)
+//   stance    feet apart while standing (x)          toeOut  feet turned out (degrees)
+//   lift      how high a foot goes (x)               heel    toes up when the heel lands (x)
+//   hipYaw    the hips turning with the legs (x)     hipDrop the hip of the swinging leg dropping (x)
+//   sway      the body over the standing foot, side to side (x)          bounce  up and down at each step (x)
+//   crouch    knees a little bent: the body lower (meters)
+//   lean      the body forward (+) / back (-), degrees        chest  chest out (+) / round back (-), degrees
+//   chin      head up (+) / down (-), degrees                 shoulders  the shoulders turning against the hips (x)
+//   roll      the shoulders rocking side to side at each step (degrees)  shrug  shoulders pulled up (degrees)
+//   arm       how far the arms swing (x)                      out    arms held away from the body (degrees)
+//   elbow     elbows bent more (+) / straighter (-), degrees  wrist  hands turned out at the wrist (degrees)
+//   fist      fingers closed more (+) / more open (-), degrees
+//   lopsided  the right arm swings more than the left (0..1)
+const WALK_BASE = { stride: 1, width: 1, stance: 1, toeOut: 3, lift: 1, heel: 1, hipYaw: 1, hipDrop: 1, sway: 1, bounce: 1, crouch: 0,
+  lean: 0, chest: 0, chin: 0, shoulders: 1, roll: 0, shrug: 0, arm: 1, out: 0, elbow: 0, wrist: 0, fist: 0, lopsided: 0 };
+export const WALK_STYLES = {
+  // plain and natural: relaxed arms, a quiet head, the shoulders turning a little against the hips
+  normal: {},
+  // sure of himself: a slightly longer step, chest up, a bit more shoulder
+  confident: { stride: 1.04, toeOut: 5, hipYaw: 1.05, bounce: 1.1, lean: -0.6, chest: 2, chin: 1.5, shoulders: 1.2, roll: 0.8, arm: 1.06, out: 2, elbow: 2, stance: 1.12 },
+  // feet placed almost on one line, the hips swinging, arms close with a little turn of the hands
+  femme: { stride: 0.9, width: 0.42, stance: 0.62, toeOut: 2, lift: 0.92, heel: 0.9, hipYaw: 1.45, hipDrop: 2.1, sway: 1.7, bounce: 1.05, lean: -1, chest: 2.5, chin: 2, shoulders: 0.75, arm: 0.72, elbow: 13, wrist: 12, fist: -8 },
+  // quick and decided: short neat steps, a light hip swing, the arms working
+  brisk: { stride: 0.97, width: 0.62, stance: 0.72, toeOut: 3, heel: 1.05, hipYaw: 1.2, hipDrop: 1.45, sway: 1.2, bounce: 0.95, lean: 1.5, chest: 2, chin: 1, shoulders: 0.9, arm: 0.92, elbow: 14, wrist: 6 },
+  // the gangster roll: a bounce in every step, shoulders rocking, leaning back, arms out, one swings more
+  swagger: { stride: 0.96, width: 1.3, stance: 1.38, toeOut: 11, lift: 0.9, heel: 0.8, hipYaw: 1.1, hipDrop: 1.2, sway: 1.65, bounce: 2.3, lean: -3, chest: 1, chin: 3, shoulders: 1.75, roll: 3.6, shrug: 2, arm: 1.15, out: 6, elbow: 10, wrist: 6, fist: 6, lopsided: 0.25 },
+  // upright and measured: chest out, chin up, long even steps, stiff straight arms, hardly any sway
+  posh: { stride: 1.1, width: 0.85, stance: 0.9, toeOut: 9, lift: 1.15, heel: 1.25, hipYaw: 0.7, hipDrop: 0.6, sway: 0.5, bounce: 0.6, lean: -2.5, chest: 5, chin: 6, shoulders: 0.55, shrug: -1, arm: 0.8, out: 2, elbow: -6, wrist: -4, fist: -6 },
+  // posh, but light: narrow steps and a soft hip swing (a doctor, a captain)
+  elegant: { stride: 1.02, width: 0.55, stance: 0.62, toeOut: 5, lift: 1.05, heel: 1.15, hipYaw: 1.2, hipDrop: 1.5, sway: 1.1, bounce: 0.7, lean: -1.5, chest: 4, chin: 4, shoulders: 0.6, shrug: -1, arm: 0.66, elbow: 6, wrist: 8, fist: -6 },
+  // tough guy: wide steps, big shoulders, arms held out from the body (as if too strong to let them hang), fists
+  tough: { stride: 1, width: 1.35, stance: 1.42, toeOut: 7, lift: 0.95, hipDrop: 0.9, sway: 1.3, bounce: 1.2, lean: 3, chest: 1.5, chin: -1.5, shoulders: 1.35, roll: 2, shrug: 3, arm: 0.85, out: 11, elbow: 10, fist: 30, lopsided: 0.15 },
+  // a soldier in gear: low and steady, the body leaning into the step, no bounce, short arm swing, hands closed
+  soldier: { stride: 0.95, width: 1.25, stance: 1.32, toeOut: 5, lift: 1.1, heel: 1.1, hipYaw: 0.6, hipDrop: 0.5, sway: 0.6, bounce: 0.5, crouch: 0.03, lean: 4, chest: 1, chin: -1, shoulders: 0.6, shrug: 1, arm: 0.55, out: 7, elbow: 20, fist: 28 },
+  // heavy and old: short slow steps, a little stooped, the weight rolling from foot to foot
+  old: { stride: 0.8, width: 1.25, stance: 1.25, toeOut: 10, lift: 0.7, heel: 0.6, hipYaw: 0.8, hipDrop: 1.3, sway: 1.6, bounce: 0.6, crouch: 0.014, lean: 6, chest: -4, chin: -2, shoulders: 0.7, roll: 1.5, shrug: 2, arm: 0.6, out: 5, elbow: 12, fist: 8, lopsided: 0.1 },
+};
+export const WALK_STYLE_NAMES = Object.keys(WALK_STYLES);
+const walkStyle = (name) => ({ ...WALK_BASE, ...(WALK_STYLES[name] || {}) });
+
 import { createFaceAnimator } from './faceAnim.js';
 
 export function createAnimator(THREE, rig, opts = {}) {
@@ -263,6 +307,10 @@ export function createAnimator(THREE, rig, opts = {}) {
   const step = SIDES.map(({ s }) => ({ planted: true, wx: 0, wz: 0, wy: 0, yaw: 0, fx: 0, fz: 0, fy: 0, fyaw: 0, t: 1, dur: 0.3, lift: 0, off: s > 0 ? 0 : 0.5, first: true, strikeT: 9, phase: 0 }));
   const st = { x: 0, z: 0, heading: 0, y: 0, ground: null, phase: 0, speed: 0, time: 0, bob: 0, drop: 0, lean: 0, moving: 0, run: 0 };
   let vx = 0, vz = 0;       // virtual position, for walking on the spot (test screen)
+  // the WALKING STYLE: G = the numbers in use; they glide to the chosen style's numbers (Gt) in about half a second
+  const G = walkStyle('normal'), Gt = walkStyle('normal');
+  let styleName = 'normal', styleSet = false;
+  function styleStep(dt) { const a = 1 - Math.exp(-5 * dt); for (const key in Gt) G[key] += (Gt[key] - G[key]) * a; }
   const toWorld = (lx, lz, out) => { const c = Math.cos(st.heading), sn = Math.sin(st.heading); out.x = st.x + lx * c + lz * sn; out.z = st.z - lx * sn + lz * c; return out; };
   const toLocal = (wx, wz, out) => { const c = Math.cos(st.heading), sn = Math.sin(st.heading), dx = wx - st.x, dz = wz - st.z; out.x = dx * c - dz * sn; out.z = dx * sn + dz * c; return out; };
   // (no ground function: the character stands on a flat floor at its own height - a room, a roof, the highway)
@@ -273,18 +321,20 @@ export function createAnimator(THREE, rig, opts = {}) {
     const moving = smooth((Math.abs(speed) - 0.12) / 0.5), run = smooth((speed - 2.3) / 2.2);
     st.moving = lerp(st.moving, moving, 1 - Math.exp(-10 * dt)); st.run = lerp(st.run, run, 1 - Math.exp(-8 * dt));
     // how long a step is and how long a foot stays on the ground
-    const stepLen = (0.4 + 0.235 * Math.abs(speed)) * (legLen / 0.86) * (speed < 0 ? 0.7 : 1);
+    const stepLen = (0.4 + 0.235 * Math.abs(speed)) * (legLen / 0.86) * (speed < 0 ? 0.7 : 1) * lerp(G.stride, 1, st.run);
     const duty = lerp(0.62, 0.3, st.run);
     const cycleTime = Math.abs(speed) > 0.05 ? (2 * stepLen) / Math.abs(speed) : 1e9;
     if (moving > 0.01) st.phase = frac(st.phase + dt / cycleTime);
     const sign = speed < 0 ? -1 : 1;
-    const lateral = lerp(footHomeX, footHomeX * 0.45, st.run);          // runners put their feet almost on one line
+    const lateral = lerp(footHomeX * G.width, footHomeX * 0.45, st.run);   // runners put their feet almost on one line
 
     for (let q = 0; q < 2; q++) {
       const S = step[q], { s } = SIDES[q], p = frac(st.phase + S.off);
       S.phase = p;
       S.strikeT += dt;
-      if (S.first) { toWorld(s * footHomeX, 0, w2); S.wx = w2.x; S.wz = w2.z; S.wy = groundAt(w2.x, w2.z); S.yaw = st.heading; S.first = false; }
+      // (the style: feet turned out a little - less when running - and how far apart they stand)
+      const turnOut = s * G.toeOut * DEG * (1 - 0.7 * st.run), standX = s * footHomeX * G.stance;
+      if (S.first) { toWorld(standX, 0, w2); S.wx = w2.x; S.wz = w2.z; S.wy = groundAt(w2.x, w2.z); S.yaw = st.heading + turnOut; S.first = false; }
       if (moving > 0.05) {
         // ---- walking / running: the phase says when to lift the foot ----
         if (S.planted && p >= duty) { S.planted = false; S.fx = S.wx; S.fz = S.wz; S.fy = S.wy; S.fyaw = S.yaw; S.t = 0; S.gait = true; }
@@ -303,16 +353,16 @@ export function createAnimator(THREE, rig, opts = {}) {
             S.wx = lerp(S.fx, w2.x, e); S.wz = lerp(S.fz, w2.z, e);
             const gy = groundAt(w2.x, w2.z);
             S.wy = lerp(S.fy, gy, e);
-            S.yaw = S.fyaw + Math.atan2(Math.sin(st.heading - S.fyaw), Math.cos(st.heading - S.fyaw)) * e;
-            S.lift = Math.sin(Math.PI * Math.pow(sw, 0.8)) * lerp(0.075, 0.2, st.run) * k + Math.max(0, Math.max(S.fy, gy) - S.wy) * Math.sin(Math.PI * sw);
+            S.yaw = S.fyaw + Math.atan2(Math.sin(st.heading + turnOut - S.fyaw), Math.cos(st.heading + turnOut - S.fyaw)) * e;
+            S.lift = Math.sin(Math.PI * Math.pow(sw, 0.8)) * lerp(0.075 * G.lift, 0.2, st.run) * k + Math.max(0, Math.max(S.fy, gy) - S.wy) * Math.sin(Math.PI * sw);
           }
         }
       } else {
         // ---- standing: take a small step when a foot is too far from where it should stand ----
         S.gait = false;
-        toWorld(s * footHomeX, 0, w2);
+        toWorld(standX, 0, w2);
         if (S.planted) {
-          const err = Math.hypot(S.wx - w2.x, S.wz - w2.z), turnErr = Math.abs(Math.atan2(Math.sin(st.heading - S.yaw), Math.cos(st.heading - S.yaw)));
+          const err = Math.hypot(S.wx - w2.x, S.wz - w2.z), turnErr = Math.abs(Math.atan2(Math.sin(st.heading + turnOut - S.yaw), Math.cos(st.heading + turnOut - S.yaw)));
           if ((err > 0.09 * k || turnErr > 0.5) && step[1 - q].planted && step[1 - q].strikeT > 0.12) { S.planted = false; S.fx = S.wx; S.fz = S.wz; S.fy = S.wy; S.fyaw = S.yaw; S.t = 0; S.dur = 0.26; }
           else S.lift = 0;
         }
@@ -320,7 +370,7 @@ export function createAnimator(THREE, rig, opts = {}) {
           S.t = Math.min(1, S.t + dt / S.dur);
           const e = smooth(S.t), gy = groundAt(w2.x, w2.z);
           S.wx = lerp(S.fx, w2.x, e); S.wz = lerp(S.fz, w2.z, e); S.wy = lerp(S.fy, gy, e);
-          S.yaw = S.fyaw + Math.atan2(Math.sin(st.heading - S.fyaw), Math.cos(st.heading - S.fyaw)) * e;
+          S.yaw = S.fyaw + Math.atan2(Math.sin(st.heading + turnOut - S.fyaw), Math.cos(st.heading + turnOut - S.fyaw)) * e;
           S.lift = Math.sin(Math.PI * S.t) * 0.045 * k;
           if (S.t >= 1) { S.planted = true; S.strikeT = 0; S.lift = 0; }
         }
@@ -343,7 +393,7 @@ export function createAnimator(THREE, rig, opts = {}) {
         const m = st.moving;
         if (S.planted) {
           // CONTACT: the heel lands first with the toes up, then the foot rolls flat (walking only)
-          const strike = (1 - smooth(p / (duty * 0.22))) * lerp(18, 4, st.run) * DEG * m * sign;
+          const strike = (1 - smooth(p / (duty * 0.22))) * lerp(18 * G.heel, 4, st.run) * DEG * m * sign;
           // UP / toe-off: late in the stance the heel rises while the ball of the foot stays down
           heelUp = smooth((p - duty * 0.58) / (duty * 0.42)) * lerp(38, 48, st.run) * DEG * m * (sign > 0 ? 1 : 0.3);
           pitch += heelUp - strike;
@@ -351,7 +401,7 @@ export function createAnimator(THREE, rig, opts = {}) {
         } else {
           // in the air: toes down right after toe-off, toes up before the heel lands
           const sw = S.t;
-          pitch += (lerp(lerp(34, 46, st.run), -lerp(16, 4, st.run), smooth(sw * 1.25)) * DEG) * m * sign;
+          pitch += (lerp(lerp(34, 46, st.run), -lerp(16 * G.heel, 4, st.run), smooth(sw * 1.25)) * DEG) * m * sign;
           toe = (1 - smooth(sw * 3)) * 0.5;
           // a runner's foot kicks up behind
           lift += Math.sin(Math.PI * clamp(sw * 1.5, 0, 1)) * 0.16 * k * st.run;
@@ -373,23 +423,34 @@ export function createAnimator(THREE, rig, opts = {}) {
 
   // ---------------------------------------------------------------- the body above the legs
   const look = { yaw: 0, pitch: 0, tYaw: 0, tPitch: 0, next: 2 }, elbowLag = [12, 12];
+  // SPEAKING (faceAnim.js / speech.js): a small nod on a stressed word, the head tilted a little at a question
+  let nod = 0, tiltQ = 0;
+  function speechHead(dt) {
+    nod += ((face ? face.stress : 0) - nod) * (1 - Math.exp(-14 * dt));
+    tiltQ += ((face ? face.question : 0) - tiltQ) * (1 - Math.exp(-5 * dt));
+    return { pitch: (nod * 3.2 - tiltQ * 1.5) * DEG, roll: tiltQ * 4 * DEG };
+  }
   let sway = 0;
   function bodyAndArms(dt, speed) {
     const m = st.moving, r = st.run, t = st.time, ph = st.phase * TAU;
     const sgn = speed < 0 ? -1 : 1;
+    // (the walking style counts fully when walking and standing; a runner runs like everybody else)
+    const wk = 1 - r;
     // ---- hips: turn with the leading leg, drop on the side of the leg in the air, lean when running ----
     // (phase 0 = the left foot lands in front; turning by a positive angle around 'up' brings the RIGHT hip forward)
-    const hipYaw = -Math.cos(ph) * lerp(5, 9, r) * DEG * m * sgn;          // the hip of the leading leg goes forward
-    const hipRoll = Math.sin(ph - 0.38) * lerp(3.2, 4.5, r) * DEG * m;     // the hip of the swinging leg drops a little
-    const leanF = (lerp(2.5, 9, r) * m * sgn + st.lean) * DEG;
+    const hipYaw = -Math.cos(ph) * lerp(5 * G.hipYaw, 9, r) * DEG * m * sgn;          // the hip of the leading leg goes forward
+    const hipRoll = Math.sin(ph - 0.38) * lerp(3.2 * G.hipDrop, 4.5, r) * DEG * m;    // the hip of the swinging leg drops a little
+    const leanF = (lerp(2.5, 9, r) * m * sgn + st.lean + G.lean * (1 - r * m)) * DEG;
     // ---- idle: breathing and shifting the weight ----
     const breathe = Math.sin(t * 1.45) * (1 - m * 0.6), idle = 1 - m;
     sway = Math.sin(t * 0.43) * 0.6 + Math.sin(t * 0.171 + 1.3) * 0.4;
     const shift = sway * 0.022 * k * idle;
     bodyQ.setFromEuler(euler.set(leanF, hipYaw, hipRoll + sway * 1.6 * DEG * idle, 'YXZ'));
     // ---- hips height: as high as the legs allow (so the body sinks when the feet are far apart) ----
-    const lateralSway = Math.sin(ph - 0.38) * lerp(0.018, 0.008, r) * k * m;          // over the standing foot
-    const nominal = hipsRest.y - (0.012 + 0.03 * r) * k * m - 0.006 * k + breathe * 0.0025 * k;
+    const lateralSway = Math.sin(ph - 0.38) * lerp(0.018 * G.sway, 0.008, r) * k * m;          // over the standing foot
+    // (a little up at each step, when the standing leg is straight under the body - more for a bouncy walk)
+    const stepBob = (0.5 - 0.5 * Math.cos(2 * ph)) * 0.006 * G.bounce * k * m * wk;
+    const nominal = hipsRest.y - (0.012 + 0.03 * r) * k * m - 0.006 * k + breathe * 0.0025 * k - G.crouch * k * wk + stepBob;
     let y = nominal + st.bob;
     hipsPos.set(lateralSway + shift, y, hipsRest.z + lerp(0, 0.03, r) * k * m * sgn);
     const reach = legLen * 0.992;
@@ -406,38 +467,46 @@ export function createAnimator(THREE, rig, opts = {}) {
     st.bob = Math.max(0, Math.cos(ph * 2 - 5.4)) * 0.035 * k * r * m;
 
     // ---- spine: turns against the hips, so the shoulders swing opposite to them; breathing in the chest ----
-    const counter = -hipYaw * 1.55;
+    const counter = -hipYaw * 1.55 * lerp(G.shoulders, 1, r);
     const spineBend = (v) => lim('spine', v / DEG) * DEG;
+    // (the style: chest out or a round back; the shoulders rocking side to side at each step)
+    const chestOut = G.chest * DEG * wk, rock = Math.sin(ph - 0.38) * G.roll * DEG * m * wk;
     setDelta('spine', spineBend(-leanF * 0.25 + breathe * 0.2 * DEG), spineBend(counter * 0.3), spineBend(-hipRoll * 0.5 - sway * 0.9 * DEG * idle));
-    setDelta('spine1', spineBend(-leanF * 0.2 - breathe * 0.7 * DEG), spineBend(counter * 0.35), spineBend(-hipRoll * 0.4 - sway * 0.5 * DEG * idle));
-    setDelta('chest', spineBend(-breathe * 0.9 * DEG), spineBend(counter * 0.35), spineBend(-hipRoll * 0.1));
+    setDelta('spine1', spineBend(-leanF * 0.2 - breathe * 0.7 * DEG - chestOut * 0.45), spineBend(counter * 0.35), spineBend(-hipRoll * 0.4 - sway * 0.5 * DEG * idle - rock * 0.4));
+    setDelta('chest', spineBend(-breathe * 0.9 * DEG - chestOut * 0.55), spineBend(counter * 0.35), spineBend(-hipRoll * 0.1 - rock * 0.6));
     // ---- head: stays level and looks where the body goes; when idle it looks around slowly ----
     look.next -= dt;
     if (look.next <= 0) { look.next = 2.5 + Math.random() * 4; look.tYaw = (Math.random() - 0.5) * 50 * DEG * idle; look.tPitch = (Math.random() - 0.4) * 12 * DEG * idle; }
     if (m > 0.3 && !lookAt) { look.tYaw = 0; look.tPitch = 0; }
+    // (speaking, a person looks ahead at the one they talk to - not around; after the line the eyes wander again)
+    if (!lookAt && face && face.speaking) { look.tYaw = 0; look.tPitch = 0; look.next = Math.max(look.next, 1.2); }
     if (lookAt) { look.tYaw = clamp(lookAt.yaw, -1.3, 1.3); look.tPitch = clamp(lookAt.pitch || 0, -0.5, 0.5); look.next = 1; }     // the story says where to look
     const quick = lookAt ? 5 : 1.6;
     look.yaw += (look.tYaw - look.yaw) * (1 - Math.exp(-quick * dt)); look.pitch += (look.tPitch - look.pitch) * (1 - Math.exp(-quick * dt));
-    const chestYaw = hipYaw + counter, headYaw = -chestYaw + look.yaw, headPitch = -leanF * 0.55 + look.pitch + breathe * 0.2 * DEG;
-    setDelta('neck', lim('neck', headPitch * 0.4 / DEG) * DEG, lim('neck', headYaw * 0.45 / DEG) * DEG, hipRoll * 0.15);
-    setDelta('head', lim('head', headPitch * 0.6 / DEG) * DEG, lim('head', headYaw * 0.55 / DEG) * DEG, hipRoll * 0.15);
+    const sh = speechHead(dt);
+    const chestYaw = hipYaw + counter, headYaw = -chestYaw + look.yaw, headPitch = -leanF * 0.55 + look.pitch + breathe * 0.2 * DEG - G.chin * DEG * wk + chestOut * 0.5 + sh.pitch;
+    setDelta('neck', lim('neck', headPitch * 0.4 / DEG) * DEG, lim('neck', headYaw * 0.45 / DEG) * DEG, hipRoll * 0.15 + sh.roll * 0.4);
+    setDelta('head', lim('head', headPitch * 0.6 / DEG) * DEG, lim('head', headYaw * 0.55 / DEG) * DEG, hipRoll * 0.15 + sh.roll * 0.6);
 
     // ---- arms: swing opposite to the leg of the same side; the elbow follows a little later ----
     for (let q = 0; q < 2; q++) {
       const { tag, s } = SIDES[q];
       const a = ph + (q === 0 ? Math.PI : 0);                               // left arm is forward when the right leg is
       const sw = Math.cos(a) * sgn, late = Math.cos(a - 0.5) * sgn;         // (the forearm is 0.5 rad late: overlap)
-      const flexWalk = 4 + sw * 22 + (sw < 0 ? sw * 6 : 0), flexRun = 2 + sw * 42;
-      const elbowWalk = 14 + Math.max(0, late) * 22 + Math.max(0, -late) * 4, elbowRun = 88 + late * 18;
+      // (the style: how far this arm swings - a lopsided walk swings the right arm more)
+      const armK = G.arm * (1 + (q === 1 ? G.lopsided : -0.5 * G.lopsided));
+      const flexWalk = 4 + (sw * 22 + (sw < 0 ? sw * 6 : 0)) * armK, flexRun = 2 + sw * 42;
+      const elbowWalk = 14 + G.elbow + (Math.max(0, late) * 22 + Math.max(0, -late) * 4) * Math.min(1.3, armK), elbowRun = 88 + late * 18;
       const flex = lerp(lerp(2, flexWalk, m), flexRun, r) + breathe * 0.6 * idle;
-      const side = lerp(lerp(9, 8, m), 11, r) + breathe * 0.5 * idle + Math.max(0, -s * sway) * 1.2 * idle;
-      const want = lerp(lerp(10 + Math.sin(t * 0.7 + q * 2) * 2 * idle, elbowWalk, m), elbowRun, r);
+      // (never closer to the body than the plain walk: the hands would go into the hips)
+      const side = lerp(lerp(9, 8, m), 11, r) + Math.max(0, G.out) * wk + breathe * 0.5 * idle + Math.max(0, -s * sway) * 1.2 * idle;
+      const want = lerp(lerp(10 + G.elbow * 0.6 + Math.sin(t * 0.7 + q * 2) * 2 * idle, elbowWalk, m), elbowRun, r);
       elbowLag[q] += (want - elbowLag[q]) * (1 - Math.exp(-18 * dt));
-      armAngles(q, flex, side, lerp(8, 0, m), elbowLag[q], lerp(6, 10, r));
-      // shoulders: rise a little when breathing in, and swing with the arm
-      setDelta('clavicle_' + tag, -sw * 2.5 * DEG * m, 0, s * (breathe * 1.3 + 1) * DEG * (1 - r * 0.5));
-      // fingers: relaxed curl, a bit more when running, tiny movements when idle
-      fingers(q, lerp(26, 52, r) + Math.sin(t * 0.9 + q * 1.7) * 3 * idle + Math.sin(t * 2.3 + q) * 1.2 * idle, lerp(16, 30, r), 1);
+      armAngles(q, flex, side, lerp(8, 0, m), Math.max(0, elbowLag[q]), lerp(6 + G.wrist, 10, r));
+      // shoulders: rise a little when breathing in, and swing with the arm (pulled up a little in some styles)
+      setDelta('clavicle_' + tag, -sw * 2.5 * DEG * m, 0, s * (breathe * 1.3 + 1 + G.shrug * wk) * DEG * (1 - r * 0.5));
+      // fingers: relaxed curl, a bit more when running, tiny movements when idle (fists in some styles)
+      fingers(q, Math.max(0, lerp(26 + G.fist, 52, r) + Math.sin(t * 0.9 + q * 1.7) * 3 * idle + Math.sin(t * 2.3 + q) * 1.2 * idle), lerp(16 + G.fist * 0.4, 30, r), 1);
     }
   }
 
@@ -453,7 +522,7 @@ export function createAnimator(THREE, rig, opts = {}) {
     const seatY = 0.1 * k;
     hipsPos.set(0, seatY + (hipsRest.y - R.thigh_L.head[1]), 0);
     setDelta('spine', 6 * DEG, 0, 0); setDelta('spine1', 5 * DEG, -steer * 3 * DEG, 0); setDelta('chest', 3 * DEG + Math.sin(t * 1.4) * 0.5 * DEG, -steer * 3 * DEG, 0);
-    setDelta('neck', -2 * DEG, steer * 6 * DEG, 0); setDelta('head', -2 * DEG, steer * 8 * DEG, 0);
+    { const sh = speechHead(dt); setDelta('neck', -2 * DEG + sh.pitch * 0.4, steer * 6 * DEG, sh.roll * 0.4); setDelta('head', -2 * DEG + sh.pitch * 0.6, steer * 8 * DEG, sh.roll * 0.6); }
     // legs: thighs forward, knees bent, feet on the pedals
     for (let q = 0; q < 2; q++) {
       const { s } = SIDES[q], F = foot[q];
@@ -541,7 +610,8 @@ export function createAnimator(THREE, rig, opts = {}) {
   function standingPose(dt) {
     const t = st.time;
     talkNow += (talk - talkNow) * (1 - Math.exp(-6 * dt));
-    const beat = Math.sin(t * 5.2) * 0.5 + Math.sin(t * 3.1 + 1) * 0.5;               // small hand movements while speaking
+    // small hand movements while speaking: with the words (a short downward beat on every stressed word), else slow
+    const beat = face && face.speaking ? (nod * 1.6 - 0.4) + Math.sin(t * 2.3 + 1) * 0.25 : Math.sin(t * 5.2) * 0.5 + Math.sin(t * 3.1 + 1) * 0.5;
     if (pose === 'crossed') { for (let q = 0; q < 2; q++) { armAngles(q, 26 + q * 6, 2, -66, 102 - q * 8, 8); fingers(q, 30); } }
     else if (pose === 'hips') {
       // hands on the hips, the elbows out and a little back
@@ -575,7 +645,8 @@ export function createAnimator(THREE, rig, opts = {}) {
     setDelta('spine', (edge ? 10 : 6) * DEG); setDelta('spine1', (edge ? 8 : 5) * DEG); setDelta('chest', 3 * DEG + Math.sin(t * 1.4) * 0.6 * DEG);
     if (lookAt) { look.yaw += (clamp(lookAt.yaw, -1.4, 1.4) - look.yaw) * (1 - Math.exp(-4 * dt)); look.pitch += (clamp(lookAt.pitch || 0, -0.5, 0.5) - look.pitch) * (1 - Math.exp(-4 * dt)); }
     else { look.yaw *= Math.exp(-2 * dt); look.pitch += ((edge ? 0.2 : 0) - look.pitch) * (1 - Math.exp(-2 * dt)); }
-    setDelta('neck', (edge ? 10 : -2) * DEG + look.pitch * 0.4, look.yaw * 0.45, 0); setDelta('head', (edge ? 8 : -2) * DEG + look.pitch * 0.6, look.yaw * 0.55, 0);
+    const sh = speechHead(dt);
+    setDelta('neck', (edge ? 10 : -2) * DEG + look.pitch * 0.4 + sh.pitch * 0.4, look.yaw * 0.45, sh.roll * 0.4); setDelta('head', (edge ? 8 : -2) * DEG + look.pitch * 0.6 + sh.pitch * 0.6, look.yaw * 0.55, sh.roll * 0.6);
     for (let q = 0; q < 2; q++) {
       const { s } = SIDES[q], F = foot[q];
       if (edge) F.ankle.set(s * hipW * 1.25, seatY - floorBelow + ankleH, thighLen * 0.92);        // feet flat on the floor in front of the bed
@@ -793,7 +864,9 @@ export function createAnimator(THREE, rig, opts = {}) {
   // s: { speed (m/s, forward +), x, z (where the character stands in the world), y (height of its root), heading (radians),
   //      groundAt(x, z) -> height, inPlace (walk on the spot), swim (true: in deep water, the root is at the surface) }
   function update(dt, s = {}) {
-    dt = Math.min(dt, 0.05);
+    // (up to 1/10 s - the longest frame the game makes. A smaller cap made the feet fall behind the body on a slow
+    //  phone: the body moved the whole way, the steps only part of it, and the strides grew far too long)
+    dt = Math.min(dt, 0.1);
     st.time += dt;
     blendT = Math.min(1, blendT + dt / blendLen);
     if (mode === 'apose') {
@@ -804,6 +877,7 @@ export function createAnimator(THREE, rig, opts = {}) {
     }
     const speed = s.speed || 0;
     carryOn = false;
+    styleStep(dt);
     st.heading = s.heading || 0; st.ground = s.groundAt || null;
     if (s.inPlace) { vx += Math.sin(st.heading) * speed * dt; vz += Math.cos(st.heading) * speed * dt; st.x = vx; st.z = vz; st.y = 0; st.ground = null; }
     else { st.x = s.x || 0; st.z = s.z || 0; st.y = s.y || 0; }
@@ -852,7 +926,15 @@ export function createAnimator(THREE, rig, opts = {}) {
   return {
     update, setMode, reset, LIMITS, setPose,
     get pose() { return pose; },
+    // how this character walks: a name from WALK_STYLES ('normal', 'swagger', 'posh' ...). It changes softly.
+    set walkStyle(name) {
+      styleName = WALK_STYLES[name] ? name : 'normal'; Object.assign(Gt, walkStyle(styleName));
+      if (!styleSet) { styleSet = true; Object.assign(G, Gt); }          // (the first style is there at once, not glided into)
+    },
+    get walkStyle() { return styleName; },
     set talk(v) { talk = v; },
+    // the words being said (a subtitle line) and how long the line stays: the mouth says them (speech.js)
+    say(text, seconds) { if (face) face.say(text, seconds); },
     // the expression of the face: a name from FACES in faceAnim.js ('smile', 'sad', 'angry' ...). seconds: how softly it changes.
     setFace(name, seconds = 0.35) { if (!face) return; if (asleep) awake = name; else face.set(name, seconds); },
     set face(name) { this.setFace(name); },

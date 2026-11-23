@@ -586,7 +586,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       for (const off of v.circles) {
         const cx = v.x + fx * off, cz = v.z + fz * off;
         const cell = v.arena ? NO_CELL : city.colliders.near(cx, cz);
-        let px = 0, pz = 0, owner = null;
+        let px = 0, pz = 0;
         for (const b of cell.boxes) {
           if (b.h < 0.3) continue;
           const qx = clamp(cx, b.minX, b.maxX), qz = clamp(cz, b.minZ, b.maxZ);
@@ -600,12 +600,12 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
           }
         }
         const hitCircle = (c) => {
-          if (c.veh === v) return;
+          // (cars are not here: the traffic and the real vehicles are pushed apart below, both of them)
+          if (c.veh || c.car) return;
           const dx = cx + px - c.x, dz = cz + pz - c.z, min = R + c.r, d2 = dx * dx + dz * dz;
           if (d2 >= min * min) return;
           const d = Math.sqrt(d2) || 0.001;
           px += (dx / d) * (min - d); pz += (dz / d) * (min - d);
-          if (c.veh || c.car) owner = c;
         };
         for (const c of cell.circles) hitCircle(c);
         for (const c of city.colliders.dynamic || []) hitCircle(c);
@@ -619,16 +619,11 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
           v.vx -= 1.22 * vn * nx; v.vz -= 1.22 * vn * nz;
           if (-vn > impact) { impact = -vn; v.hitX = cx - nx * R; v.hitZ = cz - nz * R; }
           lever += off * (nx * fz - nz * fx) * 0.5;
-          // hitting another car pushes it
-          if (owner && -vn > 1) {
-            const share = clamp(v.type.mass / 1500, 0.4, 2.5);
-            if (owner.veh) { owner.veh.vx -= nx * -vn * 0.55 * share / clamp(owner.veh.type.mass / 1500, 0.5, 3); owner.veh.vz -= nz * -vn * 0.55 * share / clamp(owner.veh.type.mass / 1500, 0.5, 3); }
-            if (owner.car) owner.car.bumped = Math.max(owner.car.bumped || 0, -vn);
-            if (-vn > 3) events.push({ type: owner.car ? 'hitCar' : 'hitParked', strength: -vn, police: !!(owner.veh && owner.veh.type.role === 'police') });
-          }
         }
       }
     }
+    // other cars: the traffic, and the real vehicles (police, story cars, race cars, cars at the curb)
+    const carHit = v.ghost ? 0 : Math.max(hitTraffic(v), hitCars(v));
     if (v.arena) {
       // an arena has its own side walls (the crash walls of the raised highway) and its own way out
       const A = v.arena, r0 = v.radius;
@@ -638,8 +633,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       // out of the arena (the foot of the ramp): the normal city rules again (not while the car is still in the
       // arena's way in, heading into it: entry)
       if (v.z < A.minZ && !(A.entry && A.entry(v))) v.arena = null;
-      if (impact < 0.05) return null;
-      hitOut.impact = impact; hitOut.lever = lever;
+      if (impact < 0.05 && carHit < 0.05) return null;
+      hitOut.impact = impact; hitOut.lever = lever; hitOut.car = carHit;
       return hitOut;
     }
     // the edge of the map is a soft wall
@@ -647,9 +642,178 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     if (v.x > B.maxX - 1) { v.x = B.maxX - 1; if (v.vx > 0) { impact = Math.max(impact, v.vx); v.vx *= -0.25; } }
     if (v.z < B.minZ + 1) { v.z = B.minZ + 1; if (v.vz < 0) { impact = Math.max(impact, -v.vz); v.vz *= -0.25; } }
     if (v.z > B.maxZ - 1) { v.z = B.maxZ - 1; if (v.vz > 0) { impact = Math.max(impact, v.vz); v.vz *= -0.25; } }
-    if (impact < 0.05) return null;
-    hitOut.impact = impact; hitOut.lever = lever;
+    if (impact < 0.05 && carHit < 0.05) return null;
+    hitOut.impact = impact; hitOut.lever = lever; hitOut.car = carHit;
     return hitOut;
+  }
+
+  // ---- CAR AGAINST CAR ----
+  // Two cars that touch are pushed apart and both feel the hit, by their weight: a light car moves more, a heavy one
+  // less (the momentum is shared; crumpled metal gives little of the speed back). The hit can turn a car (hit at a
+  // corner it spins), and hard hits damage both. A car the story moves exactly ("kin": Zero arriving, Dante's car)
+  // does not give way to anything; a "ghost" (Zero's strike, the ram of the prologue) touches nothing, as before.
+  // Returns the strongest closing speed (m/s) of this car's hits, for the sounds and the shaking.
+  const CAR_BOUNCE = 0.18;           // the part of the closing speed that comes back as a bounce
+  const TRAFFIC_K = [-1.45, 0, 1.45]; // the circles of a traffic car along its length (radius 1.0, see traffic.js)
+  let rammed = 0;                    // the hardest hit the player's car got from ANOTHER car in this frame
+  const driving = (q) => q === active && state === 'driving';
+  // 1 / mass: 0 = it does not give way (the story moves it, or a race holds it on the grid)
+  const invMass = (q) => ((q.kin && q !== active) || q.frozen ? 0 : 1 / Math.max(150, q.type.mass || 1500));
+  // how hard it is to turn the car (a box of its length and width)
+  const invTurn = (q) => 12 / (Math.max(150, q.type.mass || 1500) * ((q.info.length || 4.5) ** 2 + (2 * q.radius) ** 2));
+  // the touch between the circles of car v and a set of circles: fills TOUCH. pen = the deepest overlap, (nx, nz) =
+  // the way out (from the other car to v), (hx, hz) = where they touch: the middle of all the touching places,
+  // weighted by how deep they are (two cars side by side touch along the whole side: no false spin from one corner)
+  const TOUCH = { pen: 0, nx: 0, nz: 0, hx: 0, hz: 0 };
+  function deepest(v, ox, oz, ofx, ofz, oCircles, oR) {
+    const fx = Math.sin(v.heading), fz = Math.cos(v.heading), min = v.radius + oR;
+    let pen = 0, w = 0, sx = 0, sz = 0, nx = 0, nz = 0;
+    for (const a of v.circles) {
+      const ax = v.x + fx * a, az = v.z + fz * a;
+      for (const b of oCircles) {
+        const bx = ox + ofx * b, bz = oz + ofz * b, ex = ax - bx, ez = az - bz, d2 = ex * ex + ez * ez;
+        if (d2 >= min * min) continue;
+        const d = Math.sqrt(d2), p = min - d;
+        let ux, uz;
+        if (d > 1e-4) { ux = ex / d; uz = ez / d; } else { const l = Math.hypot(v.x - ox, v.z - oz); ux = l > 1e-4 ? (v.x - ox) / l : 1; uz = l > 1e-4 ? (v.z - oz) / l : 0; }
+        if (p > pen) pen = p;
+        w += p; nx += ux * p; nz += uz * p;
+        sx += (bx + ux * oR) * p; sz += (bz + uz * oR) * p;
+      }
+    }
+    TOUCH.pen = pen;
+    if (pen <= 0) return 0;
+    const nl = Math.hypot(nx, nz);
+    if (nl > 1e-6) { TOUCH.nx = nx / nl; TOUCH.nz = nz / nl; } else { TOUCH.nx = 1; TOUCH.nz = 0; }
+    TOUCH.hx = sx / w; TOUCH.hz = sz / w;
+    return pen;
+  }
+  // a hit makes a car turn: the push at the touching point, away from the middle of the car (j: the push, kg*m/s).
+  // (only part of it: the tires on the road hold the car against turning)
+  function spinBy(q, hx, hz, jx, jz) {
+    if (q.yawSpin === undefined) return;
+    const rx = hx - q.x, rz = hz - q.z;
+    q.yawSpin = clamp(q.yawSpin + clamp((rz * jx - rx * jz) * invTurn(q) * 0.4, -2, 2), -4.5, 4.5);
+  }
+  // damage from a hit: closing speed s (m/s), the car's share of the hit 0..1 (a light car takes more)
+  function hurt(q, s, share) {
+    if (!q.isCar || s < 3.2) return;
+    const e = (s * share) / Math.sqrt(q.type.armor || 1);
+    q.damage = clamp(q.damage + (e * e) / 1150, 0, 1);
+    if (q !== active) showDamage(q);
+  }
+  // the player's car rammed by another car: it shakes, makes the sound, shows the sparks where it was hit
+  function onRammed(q, s, hx, hz) {
+    if (!driving(q)) return;
+    if (s > rammed) { rammed = s; q.hitX = hx; q.hitZ = hz; }
+  }
+  // sparks and bits where two cars hit hard; a crash between two OTHER cars is also heard (softer further away)
+  let otherCrashCool = 0;
+  function crashFx(hx, hy, hz, s, mine) {
+    if (s < 4 || !effects) return;
+    const d = curPlayer ? Math.hypot(hx - curPlayer.position.x, hz - curPlayer.position.z) : 0;
+    if (d > 90) return;
+    const n = Math.min(10, 3 + Math.floor(s * 0.4));
+    for (let i = 0; i < n; i++) effects.emit('spark', hx, hy + 0.45, hz, (Math.random() - 0.5) * 5, 1 + Math.random() * 2.5, (Math.random() - 0.5) * 5);
+    if (s > 7) for (let i = 0; i < 4; i++) effects.emit('debris', hx, hy + 0.5, hz, (Math.random() - 0.5) * 4, 1.5 + Math.random() * 2, (Math.random() - 0.5) * 4);
+    // (the player's own crashes have their sound in feedback())
+    if (!mine && d < 55 && otherCrashCool <= 0) { otherCrashCool = 0.35; sound.crash('heavy', Math.min(1, s / 16) * (1 - d / 55)); }
+  }
+  // who is to blame (the police counts it): the player's car drove INTO the other one
+  function playerFault(p, o, nx, nz) {
+    // (n points from o to p: p's speed toward o, and o's speed toward p)
+    const pIn = -(p.vx * nx + p.vz * nz), oIn = o ? o.vx * nx + o.vz * nz : 0;
+    return pIn > 2.5 && pIn > oIn;
+  }
+
+  // the real vehicles against each other
+  function hitCars(v) {
+    let worst = 0;
+    const wv = invMass(v);
+    for (const q of live) {
+      if (q === v || q.away || q.ghost || !q.circles || q.role === 'boat' || q.role === 'drone') continue;
+      const ex = v.x - q.x, ez = v.z - q.z;
+      if (ex > 9 || ex < -9 || ez > 9 || ez < -9 || Math.abs(v.y - q.y) > 1.8) continue;   // (far apart, or one is up on the raised highway)
+      if (deepest(v, q.x, q.z, Math.sin(q.heading), Math.cos(q.heading), q.circles, q.radius) <= 0) continue;
+      const { pen, nx, nz, hx, hz } = TOUCH;
+      const wq = invMass(q), ws = wv + wq;
+      if (ws <= 0) continue;                                 // (nothing can move: two story cars, leave them)
+      // apart: each by its share (the heavy one moves less)
+      v.x += nx * pen * (wv / ws); v.z += nz * pen * (wv / ws);
+      q.x -= nx * pen * (wq / ws); q.z -= nz * pen * (wq / ws);
+      const vn = (v.vx - q.vx) * nx + (v.vz - q.vz) * nz;   // < 0: they come together
+      if (vn >= 0) continue;
+      const s = -vn;
+      // blame first (before the speeds change): did the player drive into it?
+      const vFault = driving(v) && s > 3 && playerFault(v, q, nx, nz);
+      const qFault = driving(q) && s > 3 && playerFault(q, v, -nx, -nz);
+      // the push: both cars change speed along the line between them, by their weight
+      const j = ((1 + CAR_BOUNCE) * s) / ws;
+      v.vx += nx * j * wv; v.vz += nz * j * wv;
+      q.vx -= nx * j * wq; q.vz -= nz * j * wq;
+      // (a computer driver keeps its speed in "forward": it loses what the hit took)
+      if (v.ai && v !== active) v.forward = v.vx * Math.sin(v.heading) + v.vz * Math.cos(v.heading);
+      if (q.ai && q !== active) q.forward = q.vx * Math.sin(q.heading) + q.vz * Math.cos(q.heading);
+      // turning: pushed at a corner, a car spins (only the light share for a heavy car)
+      if (wv > 0) spinBy(v, hx, hz, nx * j, nz * j);
+      if (wq > 0) spinBy(q, hx, hz, -nx * j, -nz * j);
+      // damage: by how much each car's own speed changed (a light car takes the bigger share; hitting a car
+      // that gives way is softer than a wall)
+      hurt(v, s, wv / ws);
+      hurt(q, s, wq / ws);
+      if (s > 3) crashFx(hx, Math.max(v.y, q.y), hz, s, driving(v) || driving(q));
+      // (how hard each one feels it: the shaking and the sound)
+      const feltV = s * Math.min(1, (1.5 * wv) / ws), feltQ = s * Math.min(1, (1.5 * wq) / ws);
+      onRammed(q, feltQ, hx, hz);
+      // the police counts a hit the player made (hitting a police car is worse)
+      const other = vFault ? q : qFault ? v : null;
+      if (other) events.push({ type: other.ai || other.npc ? 'hitCar' : 'hitParked', strength: s, police: other.type.role === 'police' });
+      if (feltV > worst) worst = feltV;
+      // (the parked car that was hit is moved by the physics from now on: it rolls and stops by itself)
+    }
+    return worst;
+  }
+
+  // the traffic (src/ai/traffic.js): its cars run on their lanes, so they can only give way ALONG the lane (the hit
+  // speeds them up or slows them down); pushed from the side they slide a little off the lane and steer back. The
+  // driver stops for a moment and honks.
+  function hitTraffic(v) {
+    const TR = city.traffic;
+    if (!TR || v.y > 2.5) return 0;                          // (up on the raised highway: the traffic is below)
+    let worst = 0;
+    const wv = invMass(v);
+    for (const t of TR.cars) {
+      if (!t.alive) continue;
+      const ex = v.x - t.wx, ez = v.z - t.wz;
+      if (ex > 9 || ex < -9 || ez > 9 || ez < -9) continue;
+      const ts = Math.sin(t.heading), tc = Math.cos(t.heading);
+      if (deepest(v, t.wx, t.wz, ts, tc, TRAFFIC_K, 1.0) <= 0) continue;
+      const { pen, nx, nz, hx, hz } = TOUCH;
+      if (wv <= 0) continue;
+      v.x += nx * pen; v.z += nz * pen;                      // (the lane holds the traffic car: the real car moves)
+      // closing speed (the traffic car drives along its lane at t.v)
+      const vn = (v.vx - ts * t.v) * nx + (v.vz - tc * t.v) * nz;
+      if (vn >= 0) continue;
+      const s = -vn;
+      const fault = driving(v) && s > 3 && -(v.vx * nx + v.vz * nz) > 2.5;
+      const along = nx * ts + nz * tc;                       // how much of the push goes along the traffic car's lane
+      const wt = (along * along) / 1500;                     // (a traffic car weighs about 1500 kg)
+      const j = ((1 + CAR_BOUNCE) * s) / (wv + wt);
+      v.vx += nx * j * wv; v.vz += nz * j * wv;
+      if (v.ai && v !== active) v.forward = v.vx * Math.sin(v.heading) + v.vz * Math.cos(v.heading);
+      spinBy(v, hx, hz, nx * j, nz * j);
+      hurt(v, s, wv / (wv + wt));
+      // the traffic car: faster or slower along its lane (never backwards), slid to the side, stops and honks
+      t.v = clamp(t.v - (j * along) / 1500, 0, 30);
+      const sideV = -(j * (-nx * tc + nz * ts)) / 1500;    // (the push to the traffic car's right side, m/s)
+      t.side = clamp(t.side + clamp(sideV * 0.1, -0.7, 0.7), -2, 2);
+      t.bumped = Math.max(t.bumped || 0, s);
+      if (s > 3) crashFx(hx, v.y, hz, s, driving(v));
+      if (fault) events.push({ type: 'hitCar', strength: s, police: false });
+      const felt = s * Math.min(1, (1.5 * wv) / (wv + wt));
+      if (felt > worst) worst = felt;
+    }
+    return worst;
   }
   // A BOAT in the canals: walls, pontoons and other boats push it back gently (it bumps, it does not crash).
   // Returns how hard it hit (m/s into the wall).
@@ -793,8 +957,10 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   function place(v, night, time) {
     v.group.visible = !v.away;
     if (v.away) return;
-    v.group.position.set(v.x, v.y + (v.isCar ? v.heave : 0) + (v.lift || 0), v.z);     // (lift: in the air over a jump)
-    v.group.rotation.y = v.heading;
+    // (drawn at the smooth pose between the last two physics steps - see update: no stutter on 90/120 Hz screens)
+    const X = v.rx ?? v.x, Y = v.ry ?? v.y, Z = v.rz ?? v.z, H = v.rh ?? v.heading;
+    v.group.position.set(X, Y + (v.isCar ? v.heave : 0) + (v.lift || 0), Z);     // (lift: in the air over a jump)
+    v.group.rotation.y = H;
     // engine start: a short shake
     const shakeStart = v.startT > 0 ? Math.sin(v.startT * 70) * 0.006 * Math.min(1, v.startT * 3) : 0;
     if (v.info.bike) {
@@ -821,13 +987,13 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     if (v.driver) v.driver.visible = !riggedDriver && v === active && camMode !== 'cockpit' && (state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3));
     if (!v.isCar) {
       // boat and drone: two small position lights at night
-      if ((driven || v.npc) && night > 0.05 && v.lights !== 'off') { effects.lamp(v.x + Math.sin(v.heading) * v.info.frontZ, v.y + v.info.roof * 0.6, v.z + Math.cos(v.heading) * v.info.frontZ, 1.4, 1.4, 1.2, 0.5); effects.lamp(v.x - Math.sin(v.heading) * v.info.frontZ, v.y + v.info.roof * 0.6, v.z - Math.cos(v.heading) * v.info.frontZ, 1.6, 0.1, 0.08, 0.4); }
+      if ((driven || v.npc) && night > 0.05 && v.lights !== 'off') { effects.lamp(X + Math.sin(H) * v.info.frontZ, Y + v.info.roof * 0.6, Z + Math.cos(H) * v.info.frontZ, 1.4, 1.4, 1.2, 0.5); effects.lamp(X - Math.sin(H) * v.info.frontZ, Y + v.info.roof * 0.6, Z - Math.cos(H) * v.info.frontZ, 1.6, 0.1, 0.08, 0.4); }
       // a Guard boat: red and blue lights that flash in turn on the cabin roof
       if (v.siren && v.role === 'boat') {
-        const lx = Math.cos(v.heading), lz = -Math.sin(v.heading), y = v.y + v.info.roof + 0.1, phase = Math.floor(time * 7) % 4;
-        if (phase < 2) effects.lamp(v.x + lx * 0.5, y, v.z + lz * 0.5, 3.4, 0.15, 0.1, 0.85); else effects.lamp(v.x - lx * 0.5, y, v.z - lz * 0.5, 0.15, 0.3, 3.4, 0.85);
+        const lx = Math.cos(H), lz = -Math.sin(H), y = Y + v.info.roof + 0.1, phase = Math.floor(time * 7) % 4;
+        if (phase < 2) effects.lamp(X + lx * 0.5, y, Z + lz * 0.5, 3.4, 0.15, 0.1, 0.85); else effects.lamp(X - lx * 0.5, y, Z - lz * 0.5, 0.15, 0.3, 3.4, 0.85);
         const pp = curPlayer ? curPlayer.position : v;
-        if (!flasher.on || Math.hypot(flasher.x - pp.x, flasher.z - pp.z) > Math.hypot(v.x - pp.x, v.z - pp.z)) { flasher.on = true; flasher.x = v.x; flasher.y = y + 0.6; flasher.z = v.z; flasher.red = phase < 2; }
+        if (!flasher.on || Math.hypot(flasher.x - pp.x, flasher.z - pp.z) > Math.hypot(X - pp.x, Z - pp.z)) { flasher.on = true; flasher.x = X; flasher.y = y + 0.6; flasher.z = Z; flasher.red = phase < 2; }
       }
       return;
     }
@@ -837,13 +1003,13 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     const blinkOn = v.blink !== 0 && (time * 2.6) % 1 < 0.5;
     if (on && v.lights === 'bar') {
       // the Phantom: one thin, cold bar of light across the nose and a red one across the tail (day and night)
-      const fx = Math.sin(v.heading), fz = Math.cos(v.heading), lx = fz, lz = -fx, hw = v.info.halfWidth * 0.62, y = v.y + v.heave + v.info.noseY;
+      const fx = Math.sin(H), fz = Math.cos(H), lx = fz, lz = -fx, hw = v.info.halfWidth * 0.62, y = Y + v.heave + v.info.noseY;
       for (let i = -6; i <= 6; i++) {
-        effects.lamp(v.x + fx * (v.info.frontZ + 0.05) + lx * hw * (i / 6), y, v.z + fz * (v.info.frontZ + 0.05) + lz * hw * (i / 6), 0.8, 1.1, 1.5, 0.13);
-        if (i % 2 === 0) effects.lamp(v.x + fx * (v.info.backZ - 0.05) + lx * hw * (i / 6), y * 1.0 + 0.12, v.z + fz * (v.info.backZ - 0.05) + lz * hw * (i / 6), v.braking ? 2.4 : 1.0, 0.05, 0.04, 0.14);
+        effects.lamp(X + fx * (v.info.frontZ + 0.05) + lx * hw * (i / 6), y, Z + fz * (v.info.frontZ + 0.05) + lz * hw * (i / 6), 0.8, 1.1, 1.5, 0.13);
+        if (i % 2 === 0) effects.lamp(X + fx * (v.info.backZ - 0.05) + lx * hw * (i / 6), y * 1.0 + 0.12, Z + fz * (v.info.backZ - 0.05) + lz * hw * (i / 6), v.braking ? 2.4 : 1.0, 0.05, 0.04, 0.14);
       }
     } else if (on) {
-      effects.carLamps(v.x, v.y + v.heave, v.z, v.heading, v.info.lampW || v.info.halfWidth, v.info.frontZ, v.info.backZ, v.info.noseY, {
+      effects.carLamps(X, Y + v.heave, Z, H, v.info.lampW || v.info.halfWidth, v.info.frontZ, v.info.backZ, v.info.noseY, {
         head: lampOn > 0.05 ? (v.hiBeam ? 2 : 1) : 0, tail: lampOn, brake: v.braking && !v.reverse, reverse: v.reverse && Math.abs(v.forward) > 0.2, blink: v.blink, blinkOn,
       });
     }
@@ -855,12 +1021,12 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     }
     // ---- police: red and blue lights that flash in turn ----
     if (v.siren) {
-      const fx = Math.sin(v.heading), fz = Math.cos(v.heading), lx = fz, lz = -fx;
+      const fx = Math.sin(H), fz = Math.cos(H), lx = fz, lz = -fx;
       const phase = Math.floor(time * 7) % 4;
-      const y = v.y + v.info.roof + 0.08, s = v.info.halfWidth * 0.38;
+      const y = Y + v.info.roof + 0.08, s = v.info.halfWidth * 0.38;
       const k = 3.4;
-      if (phase < 2) effects.lamp(v.x + lx * s, y, v.z + lz * s, k, 0.15, 0.1, 0.75); else effects.lamp(v.x - lx * s, y, v.z - lz * s, 0.15, 0.3, k, 0.75);
-      flasher.on = true; flasher.x = v.x; flasher.y = y + 0.6; flasher.z = v.z; flasher.red = phase < 2;
+      if (phase < 2) effects.lamp(X + lx * s, y, Z + lz * s, k, 0.15, 0.1, 0.75); else effects.lamp(X - lx * s, y, Z - lz * s, 0.15, 0.3, k, 0.75);
+      flasher.on = true; flasher.x = X; flasher.y = y + 0.6; flasher.z = Z; flasher.red = phase < 2;
     }
   }
 
@@ -989,6 +1155,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     }
 
     // ---- the physics, in fixed steps of 1/60 s ----
+    rammed = 0; otherCrashCool -= dt;
     acc = Math.min(acc + dt, STEP * 5);
     let fxLast = null;
     // a frame can hold 0, 1 or more physics steps: remember the strongest hit and bump of all of them
@@ -997,6 +1164,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       acc -= STEP;
       for (const v of live) {
         if (v.away || v.frozen) continue;            // (frozen: a race holds it - the countdown, the replay)
+        // (the pose before this step: the drawing goes smoothly from it to the pose after the step)
+        v.p0x = v.x; v.p0y = v.y; v.p0z = v.z; v.p0h = v.heading;
         cur = v;
         if (v.startT > 0) v.startT -= STEP;
         if (v === active && state === 'driving') {
@@ -1018,7 +1187,21 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     }
 
     cur = null;
+    // ---- SMOOTH DRAWING: the physics moves in steps of 1/60 s, the screen may draw 45, 90 or 120 pictures a
+    //      second. Each vehicle is drawn between its pose before and after the last step, by how much time is
+    //      left over (acc): it glides instead of jumping 0, 1 or 2 steps from one picture to the next. A vehicle
+    //      that was put somewhere (a jump of more than 6 m) is drawn there at once.
+    {
+      const k = acc / STEP;
+      for (const q of live) {
+        if (q.p0x === undefined || q.frozen || q.away || Math.abs(q.x - q.p0x) + Math.abs(q.z - q.p0z) > 6) { q.rx = q.x; q.ry = q.y; q.rz = q.z; q.rh = q.heading; q.p0x = q.x; q.p0y = q.y; q.p0z = q.z; q.p0h = q.heading; continue; }
+        q.rx = q.p0x + (q.x - q.p0x) * k; q.ry = q.p0y + (q.y - q.p0y) * k; q.rz = q.p0z + (q.z - q.p0z) * k;
+        q.rh = q.p0h + Math.atan2(Math.sin(q.heading - q.p0h), Math.cos(q.heading - q.p0h)) * k;
+      }
+    }
     const v = active;
+    // (rammed by another car: it shakes and sounds like the player's own crash)
+    if (rammed > pkImpact) pkImpact = rammed;
     if (v && v.fx) { v.fx.impact = pkImpact; if (v.isCar) { v.fx.bump = pkBump; v.fx.shifted = pkShift; if (fxLast) v.fx.scrape = pkScrape; } }
     cargo.update(dt);           // a crate or a trailer on a vehicle (Chapter 5): the trailer follows, hits break the load
     if (v && state === 'driving') {

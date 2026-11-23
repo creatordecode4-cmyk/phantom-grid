@@ -189,7 +189,10 @@ varying vec3 vPgNormal;
 #endif
 #ifdef PG_PED
 	attribute vec3 aLimb;     // per vertex: joint height, swing amount, 1
+	attribute float aPart;    // per vertex: 0 body, 1 left arm, 2 right arm, 3 left leg, 4 right leg (left = +x)
 	attribute float aPhase;   // per person: where in the step cycle they are
+	attribute vec4 aGait;     // per person, how they walk: arm swing, step, sway, lean (none: the plain walk)
+	attribute vec2 aGaitB;    // per person: arms held out from the body (radians), bounce
 #endif
 #ifdef PG_WINMOD
 	attribute vec4 aInst;     // per window: width, height (meters), cell across, cell up
@@ -277,20 +280,47 @@ const PG_VERTEX_WIND = /* glsl */ `
 	{
 		// (walking: aPhase moves on. Somebody standing keeps aPhase at 0 and does not move the legs)
 		float pgWalk = step( 0.0001, abs( sin( aPhase ) ) + abs( cos( aPhase ) - 1.0 ) );
+		// HOW THIS PERSON WALKS (pedestrians.js gives everybody a style; a crowd without it walks the plain way):
+		// x arm swing, y step, z sway (the body over the standing foot, the shoulders turning), w lean (+ forward)
+		vec4 pgG = aGait.x > 0.001 ? aGait : vec4( 1.0, 1.0, 0.3, 0.0 );
+		vec2 pgGB = aGait.x > 0.001 ? aGaitB : vec2( 0.0, 1.0 );
+		float pgArm = step( 0.5, aPart ) * step( aPart, 2.5 );                       // 1 for an arm
+		float pgLeg = step( 2.5, aPart );                                            // 1 for a leg
+		float pgSide = ( aPart > 0.5 && aPart < 1.5 ) || ( aPart > 2.5 && aPart < 3.5 ) ? 1.0 : -1.0;   // left (+x) or right
+		float pgY0 = transformed.y;                                                 // (the height in the standing figure)
 		// the knee: while a leg comes forward its shin swings back, like a real step
 		// (aLimb.z = the height of the knee for the shin and the shoe, 0 everywhere else)
 		if ( aLimb.z > 0.0 ) {
-			float pgK = ( max( 0.0, -cos( aPhase ) * sign( aLimb.y ) ) * 0.85 + 0.06 ) * pgWalk;
+			float pgK = ( max( 0.0, -cos( aPhase ) * sign( aLimb.y ) ) * 0.85 + 0.06 ) * pgWalk * mix( 1.0, pgG.y, 0.6 );
 			float pgKc = cos( pgK ), pgKs = sin( pgK );
 			vec3 pgR = transformed - vec3( 0.0, aLimb.z, 0.0 );
 			transformed = vec3( pgR.x, pgR.y * pgKc - pgR.z * pgKs, pgR.y * pgKs + pgR.z * pgKc ) + vec3( 0.0, aLimb.z, 0.0 );
 		}
-		float pgA = sin( aPhase ) * aLimb.y;
+		// the swing around the hip or the shoulder: the arms by the arm number, the legs by the step
+		float pgA = sin( aPhase ) * aLimb.y * mix( pgG.y, pgG.x, pgArm );
 		float pgC = cos( pgA );
 		float pgS = sin( pgA );
 		vec3 pgQ = transformed - vec3( 0.0, aLimb.x, 0.0 );
 		transformed = vec3( pgQ.x, pgQ.y * pgC - pgQ.z * pgS, pgQ.y * pgS + pgQ.z * pgC ) + vec3( 0.0, aLimb.x, 0.0 );
-		transformed.y += abs( cos( aPhase ) ) * 0.022 * step( 0.0001, abs( sin( aPhase ) ) + abs( cos( aPhase ) - 1.0 ) );
+		// arms held out from the body (a tough walk): turned out at the shoulder
+		if ( pgArm > 0.5 && pgGB.x != 0.0 ) {
+			float pgO = pgSide * pgGB.x, pgOc = cos( pgO ), pgOs = sin( pgO );
+			vec3 pgP = transformed - vec3( pgSide * 0.2, aLimb.x, 0.0 );
+			transformed = vec3( pgP.x * pgOc - pgP.y * pgOs, pgP.x * pgOs + pgP.y * pgOc, pgP.z ) + vec3( pgSide * 0.2, aLimb.x, 0.0 );
+		}
+		// the upper body turns against the hips (the shoulder of the forward arm comes forward)
+		// (the head stays looking ahead: only the body below the neck and the arms turn)
+		float pgUp = smoothstep( 0.95, 1.35, pgY0 ) * ( 1.0 - pgLeg ) * ( 1.0 - ( 1.0 - pgArm ) * smoothstep( 1.47, 1.56, pgY0 ) );
+		float pgTw = -sin( aPhase ) * ( 0.03 + 0.09 * pgG.z ) * pgUp * pgWalk;
+		float pgTc = cos( pgTw ), pgTs = sin( pgTw );
+		transformed = vec3( transformed.x * pgTc + transformed.z * pgTs, transformed.y, -transformed.x * pgTs + transformed.z * pgTc );
+		// over the standing foot: the hips go to its side, the shoulders less, the feet stay where they are
+		float pgHip = pgLeg > 0.5 ? clamp( pgY0 / 0.9, 0.0, 1.0 ) : 1.0 - 0.6 * smoothstep( 1.0, 1.6, pgY0 );
+		transformed.x += cos( aPhase ) * pgG.z * 0.03 * pgHip * pgWalk;
+		// up a little at every step (more for a bouncy walk), and the lean of the whole body
+		transformed.y += abs( cos( aPhase ) ) * 0.022 * pgGB.y * pgWalk;
+		float pgL = pgG.w * 0.07, pgLc = cos( pgL ), pgLs = sin( pgL );
+		transformed = vec3( transformed.x, transformed.y * pgLc - transformed.z * pgLs, transformed.y * pgLs + transformed.z * pgLc );
 	}
 #endif
 #ifdef PG_FOLIAGE

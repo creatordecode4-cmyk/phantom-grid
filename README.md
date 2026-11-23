@@ -135,13 +135,14 @@ src/
   characters/
     autoRig.js             finds the joints of a character model, builds the skeleton and the skin,
                            tests every joint (PASS / WARN table)
-    proceduralAnim.js      moves the skeleton: walk, run, idle, driving, foot placement, joint limits,
+    proceduralAnim.js      moves the skeleton: walk (ten walking styles), run, idle, driving, foot placement, joint limits,
                            and the poses of the story (sitting, lying, arms crossed, aiming ...)
     rigWorker.js           works out a skeleton in the background, so the game does not stop meanwhile
     faceClean.js           reads a face (nose, eyes, mouth, eyebrows) and cleans painted dark rings and smudges
     faceRig.js             adds small face bones: jaw, eyelids, eyebrows, corners of the mouth
     faceSculpt.js          gives a model that was made laughing a calm face before it is rigged (Theo)
     faceAnim.js            moods (smile, sad, angry ...), blinking, the jaw while speaking
+    speech.js              the words of a line -> the shapes of the mouth for each sound, timed to the subtitle
     characterLook.js       the characters' own soft light, a matt head, softer bumps on the face
   story/
     engine.js              THE STORY ENGINE: reads a chapter file and makes it happen (steps, objectives,
@@ -171,7 +172,11 @@ src/
     spectators.js          the crowds along the course (one draw call), phone lights, cheering
   ai/
     zero.js                ZERO: follows you in free roam after Chapter 4; the strike in the final race
-    traffic.js             the other cars: lanes, traffic lights, turns, braking, honking, pulling over
+    traffic.js             the other cars: lanes, traffic lights, turns, braking, honking, pulling over,
+                           never into another car
+    roadSense.js           what a computer driver sees: keep to the right half of the street, slow down
+                           behind the car in front, drive round a car that stands still when the way is
+                           free (the Guard cars, the pursuers of the story)
     wanted.js              THE WANTED SYSTEM: 0-5 stars, Meridian Guard cars and drones that see and
                            search, hiding, COVER, scanner gates, roadblocks, disguise, BUSTED
     police.js              (old name, kept: it hands out wanted.js)
@@ -1666,10 +1671,128 @@ a real phone; if it is too slow, LOW quality halves the crowd.
 - The buildings of the city, the cars and the other districts were not rebuilt in this pass; the docks, the crowds,
   the camera and the watch were.
 
+## Motion pass: smooth film scenes, real car crashes, walking styles, speaking mouths (version 9.2)
+
+Reported from play: "the story scenes glitch when the camera moves while people talk or walk", "cars drive
+through cars", "make the characters speak well, the mouth properly", "fix the walking style - like in these clips
+(GTA V walk styles, a soldier, GTA VI and RDR2 walks) - and give everybody one".
+
+### Film scenes without stutter (`src/vehicles/vehicle.js`, `src/story/actors.js`, `src/main.js`)
+
+Four things made a film scene jerk while the camera moved:
+- People more than 55 m from the PLAYER were moved only 2.5 times a second (to save time) - but in a film the
+  camera is often far from the player, right next to them. Now it counts the distance to the camera too: people
+  near the camera move every frame (measured: a talking head moved in 2 of 60 frames before, 58 of 60 now).
+- The cars moved in steps of 1/60 s while the screen can draw 50, 90 or 120 pictures a second, so a car (and the
+  camera that follows it) jumped 0, 1 or 2 steps per picture. Now every vehicle is drawn between its last two
+  physics steps (measured at 120 pictures a second: the uneven movement of a driving car went from 0.17 m to
+  0.003 m, and 20 "frozen" pictures in a row to none). The film camera, the cargo trailer and the story's places
+  "on a car" use the same smooth position.
+- The sharpness and the graphics level adjust themselves to the frame rate - in the middle of a film that was a
+  visible jolt. Now they never change during a film scene (and wait 8 s after a change).
+- In a film the detail of the city (props, people) is now kept around the camera, not around the player.
+
+### Cars no longer drive through cars
+
+Before, only the player's car stopped at the traffic. A police car, a story car, a parked car you left behind:
+the player's car drove right through them (measured: 1.7 m deep inside), a Guard car could sit inside the player's
+car, and the traffic drove through all of them and through each other at crossings. Now:
+- REAL CAR AGAINST REAL CAR (`hitCars` in `src/vehicles/vehicle.js`): both cars are pushed apart and both feel
+  the hit by their weight - momentum is shared, crumpled metal gives little of the speed back (a light car moves
+  more, the armored van hardly at all), a hit at a corner turns the car, hard hits damage both, sparks and bits
+  fly, and you hear a crash between two other cars nearby. A parked car that is hit rolls and stops by itself.
+  Rammed by the police: the screen shakes and the car is damaged - but the police counts as YOUR crime only when
+  you drove into them (before, a police car bumping into traffic gave the player stars).
+- THE TRAFFIC (`hitTraffic`, `src/ai/traffic.js`): its cars run on their lanes, so a hit pushes them along the
+  lane (hit from behind, it is shoved forward) and slides them a little to the side; the driver stops, honks and
+  steers back. The traffic now sees every real vehicle (police, story, race, parked) and brakes for it or follows
+  it; and as a last check a traffic car never moves its nose into another car (traffic, real car, the player on
+  foot) - no more cars through cars at crossings.
+- Scripted cars: a car the story moves exactly (Zero arriving, Dante's car) is not pushed, but slows down behind
+  a car in its way (after 3 s it drives on - the story must go on) and the traffic in front makes way for it.
+  Zero's strike in the final race and the prologue's crash still happen exactly as written.
+- Computer drivers adapted (`src/ai/roadSense.js`): the Guard cars and the pursuers of the story used to drive
+  down the MIDDLE of the street (the GPS line) - right through the traffic on both sides. Now they keep to their
+  lane and slow down behind a car in front; with the siren on, the traffic pulls over further (2.4 m, toward the
+  curb, from 80 m away) so they pass without touching. Closing in on a stopped player a Guard car brakes in time
+  and stops with the bumpers nearly touching (BUSTED still works), it rams only while you flee. Story cars on a
+  path brake for the player in front (4 s at most, the story must go on); a racer of the story moves over to let
+  a faster player pass and goes round a slower one. (Measured, chase at night with traffic: the first Guard car
+  is within 40 m after 8-12 s - before 10-14 s - and stops 5-6 m from the stopped player; before, it drove
+  through the player's car.)
+- A car standing still in their way - a parked car, a car left on the road, the player's stopped car while the
+  Guard only searches: a real driver goes round it, and so do they (`goRound` in `roadSense.js`). They stop a few
+  meters behind it (room to swing out), wait 3 s if it is a traffic car in a queue, then drive round it on a
+  smooth curve on the other side of the street and back into their lane - cars standing in a row are passed in one
+  go - but only when that way is free: no pillar, wall or tree on it, no car on it or coming along it. Else they
+  try the other side, or wait and look again. On the street under the raised rail line they keep 20 cm further
+  from the pillars in the middle (they used to scrape them) and still fit past a car pulled over for the siren.
+  Measured (`goround_test.mjs`), a Guard car coming at 43 km/h toward a car parked in its lane: in the old version
+  it drove through it; with solid cars but without this it stood behind it for good; now it is past after 5 s,
+  1.3 m from the parked car, and back in its lane. Two cars in a row: past both (1.3 and 1.4 m from them). Behind a
+  standing traffic car it waits 3 s and goes round (1.1 m from it); on the pillar street, where the way round is
+  blocked, it waits and touches nothing.
+
+Measured with a crash test (`crash_test.mjs`, the same test on the old and the new version):
+
+| | before | after |
+|---|---|---|
+| player's car into a parked car at 30 km/h | drives 1.74 m deep into it, through it | stops at it, the parked car is shoved 1.1 m, both damaged a little |
+| a Guard car chasing the stopped player | sits 1.70 m inside the player's car | stops 7.4 m away (busted range), touches nothing |
+| a car rams the stopped player at 60 km/h | drives 1.74 m into it | the player's car is pushed 13.9 m and damaged |
+| 2 minutes of traffic around the player | 2 pairs of traffic cars and 4 traffic/real pairs overlapped | none |
+
+### Walking styles (`WALK_STYLES` in `src/characters/proceduralAnim.js`)
+
+Every walk is still made by code from the step cycle (no animation files), but now with a STYLE: about 20 numbers
+for the step length and width, the feet turned out, the hips (turn, drop, sway), the bounce, the lean, chest out
+or a round back, the chin, the shoulders (turning against the hips, rocking, pulled up), how far the arms swing
+and how far from the body, the elbows, the hands (open, fists) - studied from the clips: normal, femme, gangster
+("swagger"), posh, tough guy, a soldier in gear, and the natural walks of the newest games. Ten styles: normal,
+confident, femme, brisk, swagger, posh, elegant, tough, soldier, old. They also change how a person STANDS.
+- Who walks how: Nate confident (you can change it: SETTINGS - WALK STYLE, a button that goes through all of
+  them, like the interaction menu of the big games), Lena brisk, Rask old (stooped, short heavy steps), Mace tough
+  (arms out, fists), Dante swagger, Juno soldier, Dr. Solberg elegant, Captain Harrow posh, Theo confident. Other
+  people of the story get a style from their name. The story can set one (`gait: 'posh'`).
+- The crowds (the walkers and the dock workers): everybody gets a style in the crowd shader too - how far the arms
+  swing, the step, the hips moving over the standing foot, the shoulders turning against the hips, the lean,
+  arms held out, the bounce; old people walk slower and lean forward. Still one draw call.
+- A fix found on the way: on a slow phone (under 20 pictures a second) the body moved on while the steps lagged
+  behind, so the strides grew far too long. The animation now keeps up with frames up to 1/10 s.
+- Measured: a planted foot does not slide (0.000 m per frame in every style).
+
+### Speaking (`src/characters/speech.js`, `src/characters/faceAnim.js`)
+
+Before, a speaking mouth opened and closed in random syllables. Now the mouth says THE WORDS of the line: the text
+is turned into the mouth shapes of its sounds (14 shapes: "a" open, "ee" wide, "oo" small and round, m/b/p lips
+pressed together, f/v, s, th, t/d/n/l, ch/sh, r, k/g), each with its own length, the shapes flowing into each
+other (the lips move ahead of the sound), commas and full stops as pauses with the mouth closed, the whole line
+fitted to the time its subtitle stays. With the words:
+- the eyebrows lift a little on stressed words (the first word of a sentence, long words, words before "!"), more
+  at the end of a question, and the eyes blink at the end of a sentence;
+- the head nods a little on the stressed words and tilts at a question - also sitting and driving; while
+  speaking a person looks ahead at the one they talk to instead of letting the eyes wander;
+- the hand that moves while speaking now beats with the stressed words instead of waving at random;
+- a THOUGHT (Nate's inner voice) no longer moves his mouth.
+
+### Honest limits of this pass
+
+- Tested by a robot in a software renderer, frame by frame - not watched on a real phone, so the feel of the
+  crashes and the walks still needs your eyes.
+- Traffic cars still drive on lanes: hit hard they are shoved along the lane and a little to the side, but they
+  do not spin away like the real (physics) cars. The parked cars of the city are solid and do not move.
+- The mouth follows English spelling with simple rules (no dictionary): most words look right, a few odd
+  spellings get a slightly wrong shape. The models have one jaw and two mouth corners, no separate lips or
+  tongue, so "f" and "th" are only approximated.
+- The crowd's shadows still show the walkers standing (their shadow is not animated).
+- The Guard cars drive by the streets. When you stop off the road (a yard, a square behind a corner), the last
+  meters to you are straight across, and a Guard car can get caught at a corner there, back up and try again.
+
 ## Known limits
 
-- Traffic cars drive on rails: when hit they stop and honk, but they are not pushed away. Parked
-  cars are solid and do not move. Vehicles you left behind and police cars do get pushed.
+- Traffic cars drive on lanes: when hit they are shoved along the lane and a little to the side, stop and
+  honk, but they do not spin away. The parked cars of the city are solid and do not move. Vehicles you
+  left behind, police, story and race cars are real: they get pushed and turned.
 - Car bodies do not get dents: damage is shown with darker paint, cracked glass and smoke.
 - Not done from the wish list: the Doppler effect for passing traffic, mirror-like headlight
   reflections on wet roads and separate fog lamps (the wet road only gets the normal light patch).
@@ -1690,7 +1813,8 @@ a real phone; if it is too slow, LOW quality halves the crowd.
 - Tested with a software renderer only; real phone frame rates, the feel of the touch buttons, tilt
   steering and the sound still have to be checked on a real phone.
 - The player's movement is made by code, not by an animator: it is clean but simpler than hand-made
-  animation (no turning on the spot animation, no jumping, the same walk for everyone).
+  animation (no turning on the spot animation, no jumping). Everybody walks with a style of their own
+  (see the motion pass above), but the styles are numbers on one walk, not hand-made animations.
 - Every street door opens, but each building has one room behind its door (no stairs, no upper
   floors). Inside you can walk and look, but not sit, open cupboards or switch lamps yourself. The
   view through a window is a picture, not the real street. Only the three houses made by hand have

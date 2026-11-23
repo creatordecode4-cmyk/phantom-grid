@@ -132,6 +132,8 @@ export function createCameraRig(camera, city) {
   // mode: 'chase' (behind), 'close' (near and low), 'hood' (over the hood), 'cockpit' (the driver's eyes)
   const _eye = new THREE.Vector3();
   function updateChase(dt, car, shake = 0, mode = 'chase') {
+    // (the car's smooth pose between two physics steps - vehicle.js - so the camera glides with the body we see)
+    const CX = car.rx ?? car.x, CY = car.ry ?? car.y, CZ = car.rz ?? car.z, CH = car.rh ?? car.heading;
     idle += dt;
     const speed = Math.hypot(car.vx, car.vz);
     // (a motorbike is small: the camera comes closer, so the bike and its rider fill the picture)
@@ -140,10 +142,10 @@ export function createCameraRig(camera, city) {
     shake += Math.min(0.1, speed * 0.0016) + (car.fx && car.fx.bump ? car.fx.bump * 0.12 : 0);
     if ((mode === 'hood' || mode === 'cockpit') && car.isCar) {
       // ---- views from inside: the camera sits on the car and looks where it drives ----
-      if (chaseFirst) { lookAround = 0; chaseFirst = false; pivot.set(car.x, car.y + 1.25, car.z); }
-      else lookAround = clamp(angleDelta(car.heading, yaw), -1.9, 1.9);
+      if (chaseFirst) { lookAround = 0; chaseFirst = false; pivot.set(CX, CY + 1.25, CZ); }
+      else lookAround = clamp(angleDelta(CH, yaw), -1.9, 1.9);
       if (idle > 1.1) lookAround *= Math.exp(-4 * dt);
-      yaw = car.heading + lookAround;
+      yaw = CH + lookAround;
       pitch = idle > 1.1 ? damp(pitch, 0.05, 3, dt) : clamp(pitch, -0.35, 0.6);
       if (mode === 'cockpit' && car.eye) _eye.set(car.eye[0], car.eye[1], car.eye[2]);
       else _eye.set(0, car.info.roof * 0.86 + 0.12, car.info.frontZ * 0.2);
@@ -155,23 +157,23 @@ export function createCameraRig(camera, city) {
       look.set(_eye.x + Math.sin(yaw) * cp * 10, _eye.y - sp * 10 - car.pitch * 6, _eye.z + Math.cos(yaw) * cp * 10);
       camera.lookAt(look);
       camera.rotateZ(-car.roll * 0.6);
-      pivot.set(car.x, car.y + 1.25, car.z);
+      pivot.set(CX, CY + 1.25, CZ);
       return;
     }
     const close = mode === 'close' || mode === 'hood' || mode === 'cockpit';
     // "yaw" was changed by rotate(): keep it as an offset to the car's direction
-    if (chaseFirst) { lookAround = 0; chaseFirst = false; chaseDist = 6.5 * big; pivot.set(car.x, car.y + 1.25, car.z); }
-    else lookAround = angleDelta(car.heading, yaw);
+    if (chaseFirst) { lookAround = 0; chaseFirst = false; chaseDist = 6.5 * big; pivot.set(CX, CY + 1.25, CZ); }
+    else lookAround = angleDelta(CH, yaw);
     if (idle > 1.1) lookAround *= Math.exp(-3.2 * dt);
     // when reversing for a while the camera stays behind the car (no flipping)
-    yaw = car.heading + lookAround;
+    yaw = CH + lookAround;
     pitch = idle > 1.1 ? damp(pitch, close ? 0.12 : 0.2, 2.5, dt) : clamp(pitch, -0.1, 0.9);
 
     // the camera hangs a little behind the car's movements (lag): it feels heavier and faster
     const follow = close ? 18 : 11;
-    pivot.x = damp(pivot.x, car.x, follow, dt);
-    pivot.y = damp(pivot.y, car.y + (close ? 1.0 : 1.25) * Math.min(big, 1.4), 8, dt);
-    pivot.z = damp(pivot.z, car.z, follow, dt);
+    pivot.x = damp(pivot.x, CX, follow, dt);
+    pivot.y = damp(pivot.y, CY + (close ? 1.0 : 1.25) * Math.min(big, 1.4), 8, dt);
+    pivot.z = damp(pivot.z, CZ, follow, dt);
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
     dir.set(Math.sin(yaw) * cp, -sp, Math.cos(yaw) * cp);
     const wantDist = close ? 4.1 * big + Math.min(1.5, speed * 0.03) : 6.3 * big + Math.min(4.8, speed * 0.085);
