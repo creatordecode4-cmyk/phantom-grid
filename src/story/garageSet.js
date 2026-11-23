@@ -184,29 +184,71 @@ function drawNight(g, w, h) {
 // pane in front of the camera ("through the window").
 const RAIN_VS = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }`;
 const RAIN_FS = `
-uniform float uTime; uniform vec2 uScale; uniform float uOpacity; uniform vec3 uTint;
+uniform float uTime; uniform vec2 uScale; uniform float uOpacity; uniform vec3 uTint; uniform float uSoft;
 varying vec2 vUv;
 float h1( float n ) { return fract( sin( n ) * 43758.5453 ); }
+float h2( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+// One drop of water on glass is a tiny lens, not a grey or white dot: it is mostly clear; it shows the room upside
+// down (dark at its top, the warm light low in it), it has a thin dark edge and one very small bright spot.
+// d: the point from the middle of the drop, r: its size (both in uv units). acc: color (premultiplied) and amount.
+void drop( vec2 d, float r, inout vec4 acc ) {
+  vec2 q = d / r; q.y *= 1.08;
+  float l = length( q );
+  if ( l > 1.15 ) return;
+  float body = 1.0 - smoothstep( 0.84 - uSoft * 0.25, 1.0, l );
+  float rim = smoothstep( 0.62, 0.97, l ) * body;
+  float low = clamp( 0.5 - q.y * 0.6, 0.0, 1.0 );
+  float spec = 1.0 - smoothstep( 0.0, 0.12 + uSoft * 0.08, length( q - vec2( -0.32, 0.42 ) ) );
+  float aB = 0.16 * body, aR = 0.36 * rim, aS = 0.7 * spec * body;
+  vec4 c = vec4( uTint * 1.15 * low * aB, aB );
+  c = c * ( 1.0 - aR ) + vec4( 0.0, 0.0, 0.0, aR );
+  c = c * ( 1.0 - aS ) + vec4( uTint * 1.8 * aS, aS );
+  if ( c.a > acc.a ) acc = c;
+}
 void main() {
   vec2 uv = vUv * uScale;
-  float a = 0.0, hi = 0.0;
+  vec4 acc = vec4( 0.0 );
+  // drops that sit still: two sizes in a loose grid, not in every place, each its own size
   for ( int k = 0; k < 2; k++ ) {
-    vec2 g = uv * ( k == 0 ? 1.0 : 1.9 ) + float( k ) * 3.1;
-    float col = floor( g.x * 6.0 );
-    float sp = 0.15 + h1( col + float( k ) * 9.0 ) * 0.35;
-    float y = fract( g.y * 0.7 + uTime * sp + h1( col * 1.7 ) );
-    float x = fract( g.x * 6.0 ) - 0.5 + ( h1( col * 3.1 ) - 0.5 ) * 0.4;
-    // the drop (a little round head) and the thin trail above it
-    float head = 1.0 - smoothstep( 0.04, 0.11, length( vec2( x * 1.6, ( y - 0.12 ) * 2.6 ) ) );
-    float trail = ( 1.0 - smoothstep( 0.012, 0.03, abs( x ) ) ) * smoothstep( 0.12, 0.9, y ) * 0.35;
-    a = max( a, max( head, trail ) );
-    hi = max( hi, head * smoothstep( 0.02, -0.02, x + 0.03 ) );
-    // still drops
-    vec2 c = fract( g * vec2( 9.0, 5.0 ) ) - 0.5;
-    float still = h1( dot( floor( g * vec2( 9.0, 5.0 ) ), vec2( 7.1, 3.3 ) ) );
-    if ( still > 0.82 ) a = max( a, 1.0 - smoothstep( 0.08, 0.18, length( c ) ) );
+    float n = k == 0 ? 6.0 : 11.0;
+    vec2 g = uv * n + float( k ) * 4.3;
+    vec2 cell = floor( g );
+    float h = h2( cell + float( k ) * 19.0 );
+    if ( h > ( k == 0 ? 0.62 : 0.5 ) ) {
+      vec2 off = ( vec2( h2( cell + 3.1 ), h2( cell + 7.7 ) ) - 0.5 ) * 0.5;
+      float r = ( k == 0 ? 0.2 : 0.17 ) * ( 0.35 + 0.65 * h2( cell + 11.3 ) );
+      drop( ( fract( g ) - 0.5 - off ) / n, r / n, acc );
+    }
   }
-  gl_FragColor = vec4( uTint * ( 0.35 + hi * 1.4 ), a * uOpacity );
+  // drops that run down: not every line has one at every turn; each leaves a thin wet trail that fades (a little
+  // darker, with a fine line of light along one side), with a few small beads left on it, and wanders a little
+  for ( int k = 0; k < 2; k++ ) {
+    float n = k == 0 ? 4.0 : 6.5;
+    vec2 g = uv + float( k ) * 2.9;
+    float col = floor( g.x * n );
+    float sp = 0.05 + h1( col * 1.3 + float( k ) * 9.0 ) * 0.12;
+    float t = g.y * 0.55 + uTime * sp + h1( col * 1.7 );
+    float cyc = floor( t ), y = fract( t );
+    if ( h1( col * 5.3 + cyc * 1.31 + float( k ) * 2.0 ) > 0.45 ) {
+      float cx = ( col + 0.5 + ( h1( col * 3.1 + cyc ) - 0.5 ) * 0.5 ) / n;
+      float x = g.x - cx - sin( ( g.y + cyc ) * 13.0 + col ) * 0.004;
+      float up = ( y - 0.08 ) / 0.55;                     // (above the head is up the glass)
+      float r = 0.03 + 0.02 * h1( col * 7.7 + cyc );
+      drop( vec2( x, up ), r, acc );
+      float L = 0.12 + 0.22 * h1( col * 2.3 + cyc );
+      if ( up > 0.0 && up < L ) {
+        float w = r * 0.32 * ( 1.0 - up / L * 0.6 );
+        float tr = ( 1.0 - smoothstep( w * 0.5, w, abs( x ) ) ) * ( 1.0 - up / L );
+        float line = ( 1.0 - smoothstep( 0.0, w * 0.3, abs( x + w * 0.45 ) ) ) * tr;
+        vec4 c = vec4( 0.0, 0.0, 0.0, 0.1 * tr );
+        c = c * ( 1.0 - 0.17 * line ) + vec4( uTint * 1.2 * 0.17 * line, 0.17 * line );
+        if ( c.a > acc.a ) acc = c;
+        float bead = floor( up * 30.0 );
+        if ( h1( bead + col * 3.7 + cyc * 5.1 ) > 0.8 ) drop( vec2( x, ( fract( up * 30.0 ) - 0.5 ) / 30.0 ), r * 0.25, acc );
+      }
+    }
+  }
+  gl_FragColor = vec4( acc.rgb / max( acc.a, 0.001 ), acc.a * uOpacity );
 }`;
 // DUST in the lamp light: tiny specks drifting slowly in a box under each lamp
 const DUST_VS = `
@@ -298,7 +340,7 @@ export function createGarageSet(G) {
       initials: new THREE.MeshStandardMaterial({ map: tex(cv(256, 128, drawInitials)), transparent: true, roughness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
       peg: new THREE.MeshStandardMaterial({ map: tex(cv(512, 256, drawPegboard)), roughness: 0.85 }),
       night: new THREE.MeshBasicMaterial({ map: tex(cv(256, 128, drawNight)) }),
-      rain: new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uScale: { value: new THREE.Vector2(2, 1) }, uOpacity: { value: 0.75 }, uTint: { value: new THREE.Color(0.6, 0.66, 0.75) } }, vertexShader: RAIN_VS, fragmentShader: RAIN_FS, transparent: true, depthWrite: false }),
+      rain: new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uScale: { value: new THREE.Vector2(2, 1) }, uOpacity: { value: 0.75 }, uTint: { value: new THREE.Color(0.6, 0.66, 0.75) }, uSoft: { value: 0.2 } }, vertexShader: RAIN_VS, fragmentShader: RAIN_FS, transparent: true, depthWrite: false }),
     };
     // (copies of the kit's materials: the houses keep theirs. The copies keep the dark corners of the kit, and
     //  reflect the warm garage, not the studio room of the houses)
@@ -360,7 +402,7 @@ export function createGarageSet(G) {
       const glass = new THREE.Mesh(new THREE.PlaneGeometry(W1 - W0, WY1 - WY0), own.rain);
       glass.position.set(B0 + 0.03, (WY0 + WY1) / 2, (W0 + W1) / 2); glass.rotation.y = Math.PI / 2; glass.renderOrder = 6;
       root.add(glass); meshes.push(glass);
-      own.rain.uniforms.uScale.value.set(4, 0.9);
+      own.rain.uniforms.uScale.value.set(10, 2.2);                  // (about 2.5 to the meter both ways: drops of a centimeter)
     }
 
     // ---------------- the bench along the right wall, Theo's initials in its top ----------------
@@ -719,7 +761,8 @@ export function createGarageSet(G) {
     // ---------------- the pane in front of the camera ("through the window") ----------------
     const paneMat = own.rain.clone();
     paneMat.uniforms = THREE.UniformsUtils.clone(own.rain.uniforms);
-    paneMat.uniforms.uScale.value.set(3.2, 1.8); paneMat.uniforms.uOpacity.value = 0.85; paneMat.uniforms.uTint.value.setRGB(0.5, 0.55, 0.62);
+    // (close to the lens: bigger, softer drops; their bright spots are the warm lamps of the room)
+    paneMat.uniforms.uScale.value.set(3.2, 1.8); paneMat.uniforms.uOpacity.value = 0.9; paneMat.uniforms.uTint.value.setRGB(0.95, 0.84, 0.7); paneMat.uniforms.uSoft.value = 1;
     const pane = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.24), paneMat);
     pane.renderOrder = 30; pane.frustumCulled = false; pane.visible = false;
     pane.material.depthTest = false;

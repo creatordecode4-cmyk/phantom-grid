@@ -85,18 +85,27 @@ export function createStoryUI() {
   const readTime = (text) => Math.max(1.9, Math.min(7, 1.1 + text.length * 0.062));
   // who: name shown above (may be ''), kind: '' | 'wren' | 'thought' | 'radio'
   function say(who, text, opts = {}) {
-    const s = { who, text, seconds: opts.seconds || readTime(text), kind: opts.kind || '', onShow: opts.onShow || null, onDone: opts.onDone || null };
+    const s = { who, text, seconds: opts.seconds || readTime(text), kind: opts.kind || '', onShow: opts.onShow || null, onDone: opts.onDone || null, hold: !!opts.hold };
     if (opts.now || (!subNow && !queue.length)) { queue.length = opts.now ? 0 : queue.length; showSub(s); } else queue.push(s);
     return s.seconds;
   }
   function clearSubs() { queue.length = 0; subNow = null; subLeft = 0; el.subs.hidden = true; el.wren.classList.remove('on'); }
+  // the line on the screen is over: the next one, or nothing
+  function nextSub() {
+    const done = subNow && subNow.onDone;
+    subNow = null; subLeft = 0;
+    if (queue.length) showSub(queue.shift()); else { el.subs.hidden = true; el.wren.classList.remove('on'); }
+    if (done) done();
+  }
+  // a question (hold: true) stays on the screen while its buttons are there; it goes when it is answered
+  function dropHeld() { if (subNow && subNow.hold) nextSub(); }
 
   // ------------------------------------------------------------ choices
   let choiceDone = null, choiceLeft = 0, choiceTotal = 0, choiceDefault = 0;
   // options: list of texts (at most 2 are shown), cb(index). seconds: after this time the default is taken (0 = wait forever)
   function choice(prompt, options, cb, seconds = 0, def = 0) {
     // (no options: take the choice away)
-    if (!options) { el.choices.hidden = true; el.choices.textContent = ''; choiceDone = null; choiceLeft = 0; body.classList.remove('choosing'); return; }
+    if (!options) { el.choices.hidden = true; el.choices.textContent = ''; choiceDone = null; choiceLeft = 0; body.classList.remove('choosing'); dropHeld(); return; }
     el.choices.textContent = '';
     if (prompt) { const p = document.createElement('div'); p.className = 'prompt'; p.textContent = prompt; el.choices.appendChild(p); }
     options.slice(0, 3).forEach((text, i) => { const b = button(text, ''); press(b, () => pick(i)); el.choices.appendChild(b); });
@@ -105,7 +114,7 @@ export function createStoryUI() {
     body.classList.add('choosing');            // (the subtitle moves up, over the buttons: a question stays readable)
     choiceDone = cb; choiceLeft = choiceTotal = seconds; choiceDefault = def;
   }
-  function pick(i) { const cb = choiceDone; choiceDone = null; el.choices.hidden = true; body.classList.remove('choosing'); if (cb) cb(i); }
+  function pick(i) { const cb = choiceDone; choiceDone = null; el.choices.hidden = true; body.classList.remove('choosing'); dropHeld(); if (cb) cb(i); }
 
   // ------------------------------------------------------------ hold to skip
   let skipCb = null, skipHeld = false, skipT = 0;
@@ -371,10 +380,9 @@ export function createStoryUI() {
     if (subNow) {
       subLeft -= dt;
       if (subLeft <= 0) {
-        const done = subNow.onDone;
-        subNow = null;
-        if (queue.length) showSub(queue.shift()); else { el.subs.hidden = true; el.wren.classList.remove('on'); }
-        if (done) done();
+        // (a question waits for its answer on the screen; the speaker has stopped talking)
+        if (subNow.hold && choiceDone) { const done = subNow.onDone; subNow.onDone = null; if (done) done(); }
+        else nextSub();
       }
     }
     if (choiceDone && choiceTotal > 0) {

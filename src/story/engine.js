@@ -337,7 +337,7 @@ export function createStory(G) {
     // (a thought is not said out loud: no mouth moves)
     const aloud = kind !== 'thought';
     return ui.say(who ? t('name.' + who) : '', text, {
-      seconds: l.seconds, kind, now,
+      seconds: l.seconds, kind, now, hold: !!l.hold,
       // the speaker's mouth says the words of the line (speech.js), a hand moves with them; WREN has her own soft sound
       onShow: (seconds) => {
         quietTalk(); lineMoods(l); if (kind === 'wren') sound.wren();
@@ -959,7 +959,8 @@ export function createStory(G) {
   STEP.choice = (s) => {
     let done = false;
     choosing = true;
-    if (s.line) speak(s.line, true);
+    // (the question stays on the screen until it is answered)
+    if (s.line) speak({ ...s.line, hold: true }, true);
     // (an option with "if" is only there when its condition is true: "Stay silent" after three of Mace's stories)
     const shown = s.options.filter((o) => !o.if || test(o.if));
     ui.choice(s.prompt ? t(s.prompt) : '', shown.map((o) => t(o.text)), (i) => {

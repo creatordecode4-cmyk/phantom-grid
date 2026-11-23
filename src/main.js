@@ -618,7 +618,10 @@ async function boot() {
     }
     shared.uPgPlayer.value.copy(player.position);
     // ---- THE SUNK: its water and mist, the steady rain there, the teal dark of the tunnel ----
-    if (SK) {
+    // (not while the garage set of Chapter 6 is shown: the canals are not in that picture)
+    const citySleeps = !!(world.garageSet && world.garageSet.active);
+    if (citySleeps) lighting.zone = null;
+    else if (SK) {
       const cp = camera.position;
       lighting.zone = inside ? null : SK.fogAt(cp.x, cp.y, cp.z);
       weather.setZoneRain(!inside && SK.inZone(px, pz, 40));
@@ -647,7 +650,9 @@ async function boot() {
     }
     // (in a film scene the near detail - props, the docks' crews and machines - is around the CAMERA, which may be
     //  far from where the player stands: nothing pops in or is missing in the shot)
-    city.update(dt, time, film ? camera.position.x : px, film ? camera.position.z : pz, quality.propDistance);
+    // (Chapter 6: while the garage set is the whole picture, nothing of the city is drawn, and it sleeps too: its
+    //  props, its train and its cranes wake up again the frame the set is gone)
+    if (!citySleeps) city.update(dt, time, film ? camera.position.x : px, film ? camera.position.z : pz, quality.propDistance);
     updateSunGlow(dt);
   }
   // Get into the nearest car, or (when driving) stop and get out.

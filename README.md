@@ -1933,7 +1933,8 @@ Leave - the roller door is down and solid. (There is no upgrade shop in the game
 A chapter with `calm: true` (`body.calm` in `index.html`): no minimap, no stars, no mission box, no GPS arrow, no
 markers - only the objective as one small soft line ("Mace is by the car."). The action button becomes a big soft
 round button (LOOK / TOUCH / LISTEN / HELP MACE / BACK TO WORK), the choices are tall rounded buttons, HOLD TO SKIP is
-bigger. Subtitles have a fourth size: **SETTINGS → SUBTITLES → XL**. No tilt and no fine controls are needed.
+bigger. Subtitles have a fourth size: **SETTINGS → SUBTITLES → XL**. A question (WREN's) stays on the screen, above the
+buttons, until it is answered. No tilt and no fine controls are needed.
 
 ### Sound (made in code)
 
@@ -1947,7 +1948,10 @@ for forgive, neutral, leave); three seconds of complete silence on the last imag
 ### Performance (measured in the test robot's software renderer at MEDIUM)
 
 While the chapter runs, the city is not drawn at all (the camera sees only "layer 4", like inside a house), traffic and
-people are taken away, and the camera stays inside the bay. In the garage the robot measured **PERF_CALLS** draw calls
+people are taken away, and the camera stays inside the bay. The city also sleeps: its props, the train, the cranes and
+the canal water are not updated while the garage is the whole picture (they wake up the frame it is gone). The city is
+not taken out of memory - building it again would take far longer on a phone than keeping it - but nothing of it costs
+time on the screen. In the garage the robot measured **PERF_CALLS** draw calls
 and **PERF_TRIS** triangles with both people in view (the limit asked for was 150).
 
 ### What was built for it
