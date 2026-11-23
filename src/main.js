@@ -57,6 +57,7 @@ import { createRaces } from './race/raceManager.js';
 import { createSpectators } from './race/spectators.js';
 import { createZero } from './ai/zero.js';
 import { raceLook } from './story/propsRace.js';
+import { createGarageSet } from './story/garageSet.js';
 
 const hud = createHUD();
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -165,6 +166,7 @@ async function boot() {
   // one real lamp for the flashing police lights (only at night, like the street lamps)
   const flashLight = new THREE.PointLight(0xff2010, 0, 26, 2);
   flashLight.visible = false;
+  flashLight.layers.enable(4);          // (the story's lamp also lights a room of its own: Mace's garage in Chapter 6)
   scene.add(flashLight);
   const sirens = [], tags = [];
   const CAM_MODES = ['chase', 'close', 'hood', 'cockpit'];
@@ -182,6 +184,7 @@ async function boot() {
   let story = null;
   const director = createDirector(camera, (place) => story.pt(place));
   let gameMode = 'boot';        // title | story | free
+  let menuWas = false;          // (a menu was on the screen last frame: body.menu-open)
   let paused = false, frozen = false, idleFrames = 0, fovSent = 0;
   // things of Mace's garage that belong to the city (there in every mode): the cloth over Theo's car, the roller door
   const world = {};
@@ -196,6 +199,12 @@ async function boot() {
     world.shutter.rotation.y = GARAGE.rot;
     scene.add(world.shutter);
   }
+  // CHAPTER 6: Mace's garage at night as a room of its own (src/story/garageSet.js) - built the first time the story
+  // shows it; while it is shown the city is not drawn at all
+  if (GARAGE.ready) world.garageSet = createGarageSet({ scene, renderer, camera, GARAGE, mats: materials.mats, lighting, colliders: city.colliders, sound });
+  // (what the set's camera must see besides the room: the player, the story's people and things - a fresh list four
+  //  times a second, see garageSet.update)
+  const garageCast = () => [player.root, ...actors.list.map((a) => a.root), ...[...story.things.values()].map((o) => o.holder)];
   // SLOW MOTION (Chapter 4: the half second at the last turn): scale = how fast time goes, for a few real seconds
   const slow = { scale: 1, left: 0, set(scale, seconds) { this.scale = scale; this.left = seconds; } };
   // RACES (src/race): the race of the moment, and the people who watch it
@@ -359,6 +368,8 @@ async function boot() {
     shared.uPgTime.value = time;
     const input = controls.update();
     const S = story.active ? story : null;
+    // (a menu on the screen - pause, settings, an end card: the panels of the mini-games step back under it)
+    { const mo = ui.menuOpen; if (mo !== menuWas) { menuWas = mo; document.body.classList.toggle('menu-open', mo); } }
     // ---- the story (or the title screen) can take the controls away for a moment ----
     const lock = gameMode === 'title' ? LOCK_ALL : S ? S.locks : null;
     if (lock) {
@@ -440,6 +451,9 @@ async function boot() {
     // ---- the story: its people, its steps, its film camera ----
     actors.update(dt, time, driving);
     story.update(dt, time);
+    // Chapter 6: the garage set (its lamps, the rain on its window, the kettle, the radio); the player, the people and
+    // the story's things must be in its picture too
+    if (world.garageSet && world.garageSet.active) world.garageSet.update(dt, garageCast);
     streetLife.update(dt, time, gameMode === 'free' && !inside);
     // ---- the doors of the houses (ENTER / EXIT) ----
     interiors.update(dt, {
@@ -509,8 +523,10 @@ async function boot() {
     else if (SL) { flashLight.intensity = lighting.nightMode ? SL.power : 0; flashLight.distance = SL.range; flashLight.position.set(SL.pos[0], SL.pos[1], SL.pos[2]); flashLight.color.setHex(SL.color); }
     else flashLight.intensity = 0;
     // ---- repair point, messages, phone vibration ----
-    if (gameMode === 'free' && driving && car && car.isCar && car.damage > 0.03 && Math.hypot(car.x - garage.repair.x, car.z - garage.repair.z) < 3.2 && Math.hypot(car.vx, car.vz) < 4) {
-      vehicles.repair(car); hud.toast('REPAIRED'); sound.chime();
+    // (after Chapter 6, when Mace's garage is still open to Nate: driving slowly into its bay fixes the car too)
+    const inBay = GARAGE.ready && garageSafe() && car && car.x > GARAGE.inside.minX && car.x < GARAGE.inside.maxX && car.z > GARAGE.inside.minZ && car.z < GARAGE.inside.maxZ;
+    if (gameMode === 'free' && driving && car && car.isCar && car.damage > 0.03 && (inBay || Math.hypot(car.x - garage.repair.x, car.z - garage.repair.z) < 3.2) && Math.hypot(car.vx, car.vz) < 4) {
+      vehicles.repair(car); hud.toast(inBay ? t('c6.repaired') : 'REPAIRED'); sound.chime();
     }
     const msg = vehicles.takeMessage() || (gameMode === 'free' ? police.takeMessage() : (police.takeMessage(), null));
     if (msg) hud.toast(msg, 2600);
@@ -580,8 +596,10 @@ async function boot() {
       dawnK = clamp(1 - Math.abs(h - 6.2) / 1.6, 0, 1);
       for (const g of city.docks.gantries) if (g.state === 'move' || g.state === 'lower' || g.state === 'raise') craneK = Math.max(craneK, clamp(1 - Math.hypot(g.x - cp.x, g.row - cp.z) / 70, 0, 1));
     }
+    const GS = world.garageSet && world.garageSet.active ? world.garageSet : null;
     music.update(dt, {
       sunk: sunkK, market: marketK, tunnel: tunnelK, docks: docksK, dawn: dawnK, crane: craneK,
+      garage: GS ? 1 : 0, kettle: GS ? GS.kettleHeat : 0, song: S ? amb.song || 0 : 0,
       rain: weather.amount, city: clamp(city.traffic.count / 30, 0, 1) * 0.8, beach: clamp((-250 - pz) / 130, 0, 1),
       inCar: driving || (!!S && S.indoors) || inside,
       drone: Math.max(police.droneNear, S ? amb.drone : 0), radio: S ? amb.radio : 0, street: S ? amb.street : 0,
@@ -829,7 +847,7 @@ async function boot() {
     hud.toast(on ? 'HIGH BEAM' : 'LOW BEAM', 900);
   };
   // ---- CARS menu (for testing): put any vehicle in front of the player ----
-  hud.setVehicleMenu(['street_bike', 'small_city_car', 'tech_patrol_car', 'police_coupe', 'chrome_supercar', 'armored_van', 'patrol_boat', 'drone', 'sedan', 'suv', 'coupe']
+  hud.setVehicleMenu(['street_bike', 'small_city_car', 'tech_patrol_car', 'police_coupe', 'chrome_supercar', 'theo_coupe', 'armored_van', 'patrol_boat', 'drone', 'sedan', 'suv', 'coupe']
     .filter((k) => CAR_TYPES[k] && (CAR_TYPES[k].role !== 'boat' || carLib.boat)).map((k) => [k, CAR_TYPES[k].label]));
   hud.actions.spawn = (kind) => {
     if (vehicles.state !== 'none') { hud.toast('GET OUT OF THE VEHICLE FIRST', 1500); return; }
@@ -931,12 +949,42 @@ async function boot() {
     gameMode = 'story';
     setTestWorld(false);
     player.setHidden(false);
+    garageAfterStory(false);            // (the story puts the garage as each chapter needs it)
     const ok = await go();
     if (ok === true) return;
     // (nothing to start: the next chapter does not exist yet, or its file could not be read)
     if (ok === 'locked') hud.toast(t('ui.locked'), 2800);
     showTitle();
   }
+  // AFTER CHAPTER 6 (the flags of the save): when Nate forgave Mace or stayed silent, Mace's garage stays a safe place -
+  // Theo's car waits in it, whole, and can be driven (it drives like the chrome supercar), and driving into the bay
+  // fixes a car. When Nate walked out, the garage is shut (its roller door down) until Chapter 9.
+  let theoParked = null;
+  function garageSafe() { const f = save.data.flags || {}; return f.mace_forgiven !== undefined && f.garage_open !== false; }
+  function garageAfterStory(on) {
+    const f = save.data.flags || {};
+    const want = on && !!f.theo_car && f.garage_open !== false && GARAGE.ready;
+    if (want && !(theoParked && vehicles.live.includes(theoParked))) {
+      if (GARAGE.tarpBox && !GARAGE.tarpBoxGone) { city.colliders.removeBox(GARAGE.tarpBox); GARAGE.tarpBoxGone = true; }
+      const p = GARAGE.at(-6.9, 0, -3.9);
+      theoParked = vehicles.spawn('theo_coupe', p[0], p[2], GARAGE.rot, null, { keep: true, tag: true });
+    } else if (!want && theoParked) {
+      if (vehicles.active === theoParked) vehicles.leaveNow(player);
+      if (vehicles.live.includes(theoParked)) vehicles.removeVehicle(theoParked);
+      theoParked = null;
+    }
+    if (!want && GARAGE.tarpBoxGone) { city.colliders.addBox(GARAGE.tarpBox); GARAGE.tarpBoxGone = false; }
+    if (world.tarp) world.tarp.visible = !want;
+    // shut: the roller door down - and solid, nobody walks or drives in
+    const shut = on && f.garage_open === false && GARAGE.ready;
+    if (world.shutter) world.shutter.userData.setOpen(shut ? 0 : 1);
+    if (shut && !doorBox) {
+      const d = GARAGE.doorSize, a = GARAGE.at(d.r0, 0, 6.68), b = GARAGE.at(d.r1, 0, 6.98);
+      doorBox = { minX: Math.min(a[0], b[0]), maxX: Math.max(a[0], b[0]), minZ: Math.min(a[2], b[2]), maxZ: Math.max(a[2], b[2]), h: d.top };
+      city.colliders.addBox(doorBox);
+    } else if (!shut && doorBox) { city.colliders.removeBox(doorBox); doorBox = null; }
+  }
+  let doorBox = null;
   // fromBoot: the game was opened with ?story=0 (tests): the world stays exactly as the address options made it
   function startFree(fromBoot) {
     interiors.reset();
@@ -954,6 +1002,7 @@ async function boot() {
     }
     // the placeholder mission starts by itself (add "?mission=0" to the address to play without it)
     if (urlOption('mission') !== '0' && !missions.running) missions.start('meet-at-neon-mile');
+    garageAfterStory(true);
   }
   // ---- pause and settings ----
   function openPause() {

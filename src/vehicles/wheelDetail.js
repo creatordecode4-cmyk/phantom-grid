@@ -26,6 +26,7 @@ export const RIM_STYLES = {
   twin5: { spokes: 5, twin: true, rim: [0.72, 0.73, 0.75], caliper: [0.75, 0.08, 0.05] },     // five double spokes, red caliper
   mesh10: { spokes: 10, twin: false, rim: [0.22, 0.22, 0.24], caliper: [0.85, 0.62, 0.05] },  // ten thin dark spokes, yellow caliper
   blade6: { spokes: 6, twin: false, blade: true, rim: [0.58, 0.6, 0.62], caliper: [0.1, 0.1, 0.11] }, // six wide blades, black caliper
+  theo5: { spokes: 5, twin: false, rim: [0.66, 0.67, 0.69], caliper: [0.12, 0.12, 0.13] },     // Theo's car: five plain silver spokes (Chapter 6)
   // motorbike wheels: the spokes stand in the MIDDLE of the wheel (center), a red stripe on both rim edges,
   // ring-shaped brake discs ("rotors") on the hub: two at the front, one at the back plus the chain sprocket.
   //   discs: where each disc sits (part of the half width, + = the outside), rd: disc size (part of the tyre radius)

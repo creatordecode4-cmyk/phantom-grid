@@ -43,7 +43,7 @@ export function createStoryUI() {
   const saveSettings = () => { try { localStorage.setItem('pg-settings', JSON.stringify(settings)); } catch (e) { /* private mode */ } };
   function applyLook() {
     document.documentElement.style.setProperty('--ctl', { s: 0.86, m: 1, l: 1.18 }[settings.ctl] || 1);
-    document.documentElement.style.setProperty('--sub', { s: '14px', m: '16px', l: '20px' }[settings.subs] || '16px');
+    document.documentElement.style.setProperty('--sub', { s: '14px', m: '16px', l: '20px', xl: '25px' }[settings.subs] || '16px');
   }
   applyLook();
 
@@ -95,14 +95,17 @@ export function createStoryUI() {
   let choiceDone = null, choiceLeft = 0, choiceTotal = 0, choiceDefault = 0;
   // options: list of texts (at most 2 are shown), cb(index). seconds: after this time the default is taken (0 = wait forever)
   function choice(prompt, options, cb, seconds = 0, def = 0) {
+    // (no options: take the choice away)
+    if (!options) { el.choices.hidden = true; el.choices.textContent = ''; choiceDone = null; choiceLeft = 0; body.classList.remove('choosing'); return; }
     el.choices.textContent = '';
     if (prompt) { const p = document.createElement('div'); p.className = 'prompt'; p.textContent = prompt; el.choices.appendChild(p); }
     options.slice(0, 3).forEach((text, i) => { const b = button(text, ''); press(b, () => pick(i)); el.choices.appendChild(b); });
     if (seconds > 0) { const bar = document.createElement('div'); bar.className = 'bar'; bar.appendChild(document.createElement('i')); el.choices.appendChild(bar); }
     el.choices.hidden = false;
+    body.classList.add('choosing');            // (the subtitle moves up, over the buttons: a question stays readable)
     choiceDone = cb; choiceLeft = choiceTotal = seconds; choiceDefault = def;
   }
-  function pick(i) { const cb = choiceDone; choiceDone = null; el.choices.hidden = true; if (cb) cb(i); }
+  function pick(i) { const cb = choiceDone; choiceDone = null; el.choices.hidden = true; body.classList.remove('choosing'); if (cb) cb(i); }
 
   // ------------------------------------------------------------ hold to skip
   let skipCb = null, skipHeld = false, skipT = 0;
@@ -305,7 +308,7 @@ export function createStoryUI() {
     row(t('ui.control_size'), [['s', t('ui.small')], ['m', t('ui.medium')], ['l', t('ui.large')]], settings.ctl, 'ctl');
     row(t('ui.tilt'), [[false, t('ui.off')], [true, t('ui.on')]], settings.tilt, 'tilt');
     row(t('ui.difficulty'), [['e', t('ui.easy')], ['n', t('ui.normal')], ['h', t('ui.hard')]], settings.difficulty, 'difficulty');
-    row(t('ui.sub_size'), [['s', t('ui.small')], ['m', t('ui.medium')], ['l', t('ui.large')]], settings.subs, 'subs');
+    row(t('ui.sub_size'), [['s', t('ui.small')], ['m', t('ui.medium')], ['l', t('ui.large')], ['xl', t('ui.xlarge')]], settings.subs, 'subs');
     // WALK STYLE: one button, "< SWAGGER >": every press goes to the next way of walking
     {
       const r = document.createElement('div'); r.className = 'set-row'; r.innerHTML = '<span></span><span class="opts"></span>';
@@ -390,7 +393,7 @@ export function createStoryUI() {
   // everything of the story off the screen (leaving the story, restarting a checkpoint)
   function reset() {
     cine(false); clearSubs(); skip(null); limiter(null); prompt(null); tip(null); tape(false); mirror(false); limitBadge(0, false); cargo(null);
-    card(null); el.choices.hidden = true; choiceDone = null; el.reader.hidden = true; body.classList.remove('quiet');
+    card(null); el.choices.hidden = true; choiceDone = null; el.reader.hidden = true; body.classList.remove('quiet'); body.classList.remove('choosing');
     paint(null); video('off');
   }
 
@@ -401,6 +404,8 @@ export function createStoryUI() {
     cine, fade, card, say, clearSubs, choice, skip, limiter, prompt, tip, tape, limitBadge, cargo, mirror, drawMirror, reader,
     title, pause, settingsScreen, select, endCard, failCard, hideMenus, paint, paintProgress, video, bustCard,
     quiet(on) { body.classList.toggle('quiet', !!on); },
+    // a calm chapter (Chapter 6): no minimap, no stars, no timer; big soft buttons (index.html, body.calm)
+    calm(on) { body.classList.toggle('calm', !!on); },
     storyMode(on) { body.classList.toggle('story', !!on); },
     get subsBusy() { return !!subNow || queue.length > 0; },
     get choosing() { return !!choiceDone; },

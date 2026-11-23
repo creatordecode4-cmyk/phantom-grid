@@ -408,6 +408,11 @@ export function createActors({ scene, city, materials, player, vehicles, camera 
       } else if (a.look && typeof a.look === 'object' && 'yaw' in a.look) look = a.look;
       a.anim.look = look;
       a.anim.talk = a.talking;
+      // where the hands work (the story's "hands": a point in the world) - in the body's own space
+      if (a.workAt) {
+        const dx = a.workAt[0] - a.x, dy = a.workAt[1] - a.y, dz = a.workAt[2] - a.z, c = Math.cos(a.heading), sn = Math.sin(a.heading), sc = a.scale || 1;
+        a.anim.workAt = (a.workLocal = a.workLocal || new THREE.Vector3()).set((dx * c - dz * sn) / sc, dy / sc, (dx * sn + dz * c) / sc);
+      } else a.anim.workAt = null;
       a.anim.update(step, { speed, x: a.x, z: a.z, y: a.y, heading: a.heading, groundAt: a.keepY ? null : city.groundHeight, swim: a.swim });
       if (a.carried) {
         const at = a.anim.carryAt, C = a.carried;

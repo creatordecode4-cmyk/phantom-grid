@@ -375,6 +375,24 @@
     /* story mode: the test buttons are not shown (they are in free roam) */
     body.story #btn-time, body.story #btn-rain, body.story #btn-quality, body.story #btn-stats, body.story #btn-veh, body.story #btn-assist, body.story #btn-rig, body.story #btn-sound, body.story #hint { display: none; }
     body.quiet #hud-mission, body.quiet #gps-arrow, body.quiet #marker { display: none !important; }
+    /* CALM (Chapter 6): no minimap, no stars, no timer, no arrows - one small soft hint, big soft buttons */
+    body.calm #minimap, body.calm #hud-wanted, body.calm #gps-arrow, body.calm #marker, body.calm #ticker, body.calm #edge-light, body.calm #hud-location,
+    body.calm #hud-sub, body.calm #hud-stats, body.calm #btn-run, body.calm #btn-map, body.calm #btn-full, body.calm #mission-title, body.calm #mission-dist, body.calm #tags { display: none !important; }
+    body.calm #hud-mission { background: none; border: none; padding: 2px 4px; margin-top: 4px; }
+    body.calm #mission-text { font-size: 12px; letter-spacing: 0.1em; line-height: 1.5; color: rgba(255, 241, 224, 0.6); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85); }
+    body.calm #btn-act { width: 98px; height: 98px; border-radius: 50%; background: rgba(255, 240, 222, 0.14); color: #fff5e6; border: 1px solid rgba(255, 236, 210, 0.42);
+      font-size: 12px; letter-spacing: 0.16em; font-weight: 400; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); box-shadow: 0 0 26px rgba(255, 196, 130, 0.16); }
+    body.calm #btn-act:active { background: rgba(255, 240, 222, 0.3); }
+    body.calm #choices { gap: 14px; width: min(520px, 90vw); }
+    body.calm #choices button { min-height: 66px; border-radius: 33px; text-align: center; font-size: 16px; letter-spacing: 0.06em; padding: 12px 22px;
+      background: rgba(28, 22, 16, 0.55); border: 1px solid rgba(255, 236, 210, 0.36); color: #fff3e2; }
+    body.calm #choices button:active { background: rgba(255, 236, 210, 0.22); }
+    body.calm #skip { height: 52px; border-radius: 26px; padding: 0 24px; font-size: 11px; background: rgba(28, 22, 16, 0.45); border-color: rgba(255, 236, 210, 0.3); }
+    body.calm #joy-base { opacity: 0.55; }
+    body.menu-open #repair, body.menu-open #hack { visibility: hidden; }
+    /* while the choice buttons are up, the subtitle (a question) sits above them, not under them */
+    body.choosing #subs, body.choosing.cine #subs { bottom: calc(60px + 4 * 70px + env(safe-area-inset-bottom)); }
+    @media (max-height: 520px) { body.choosing #subs, body.choosing.cine #subs { bottom: auto; top: calc(var(--bar, 0px) + 10px); } }
     /* subtitles: readable in rain (dark plate, soft shadow) */
     #subs { position: absolute; left: 50%; bottom: calc(13vh + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(680px, 90vw); text-align: center; pointer-events: none; }
     body:not(.cine) #subs { bottom: calc(190px + env(safe-area-inset-bottom)); }

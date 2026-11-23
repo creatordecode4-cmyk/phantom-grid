@@ -27,6 +27,7 @@ import { mountDetailedWheel, addBrake } from './wheelDetail.js';
 import { BIKE_INFO, BIKE_SPEC, BIKE_HEAD, BIKE_RAKE, BIKE_BAR, BIKE_GRIP, BIKE_PEG, BIKE_EYE, BIKE_R, BIKE_PARK_LEAN, bikeBodyIn } from './bike.js';
 import { clamp, damp } from '../utils/math.js';
 import { createCargo } from './cargo.js';
+import { makeTheoCar, THEO_INFO, THEO_SPOTS } from './theoCar.js';
 
 const KMH = 3.6;
 const STEP = 1 / 60;                   // the physics always runs in steps of this length
@@ -223,6 +224,32 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       v.setDetail = (want) => { if (want === on) return; on = want; v.detailOn = want; simple.visible = !want; for (const o of nodes) o.visible = want; };
     }).catch((e) => console.warn('[vehicles] could not show the detailed model of', v.kind, e)); };
   }
+  // THEO'S CAR (theoCar.js): the coupe of Chapter 6, whole and clean. It has its own seats, dashboard and steering
+  // wheel; its four wheels steer and spin like every car's; a driver sits in it while somebody drives.
+  function partsTheo(v) {
+    const car = makeTheoCar({ state: 'whole', wheelMaterial: mats.carPaint });
+    car.set.dirt(0.05);
+    car.root.traverse((m) => { if (m.isMesh) { m.castShadow = m.material === car.materials.paint; m.receiveShadow = true; } });
+    v.tilt.add(car.root);
+    v.theo = car;
+    for (const w of car.wheels) {
+      // (the wheels belong to the vehicle, not to the body that leans in the corners)
+      car.root.remove(w.node); v.group.add(w.node);
+      w.node.rotation.set(0, 0, 0);
+      v.wheels.push({ steerNode: w.node, mesh: w.spin, front: w.front, spin: w.sx > 0 ? 1 : -1 });
+    }
+    v.steerWheel = null;               // (its own steering wheel is part of the cabin)
+    v.eye = THEO_SPOTS.eye;
+    const k = v.kind;
+    // (no seats or dashboard to add - only where the steering wheel and the eyes are, for the driver's hands and the
+    //  cockpit camera)
+    if (!interiors[k]) { const g = new THREE.BufferGeometry(); g.userData.wheel = [0.37, 0.76, 0.06]; g.userData.eye = THEO_SPOTS.eye; interiors[k] = g; }
+    if (!drivers[k]) drivers[k] = makeDriver(v.info);
+    v.driver = new THREE.Mesh(drivers[k], mats.prop);
+    v.driver.visible = false;
+    v.tilt.add(v.driver);
+    v.paintMeshes = [];
+  }
   // THE STREET BIKE (bike.js): the body, a front that turns about the raked steering head, two detailed wheels.
   // Both wheels sit inside "tilt", so the whole bike leans into a corner.
   function partsBike(v) {
@@ -326,6 +353,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   }
   // the street bike is made in code (bike.js)
   registerCar('street_bike', BIKE_INFO, BIKE_SPEC);
+  // THEO'S CAR (theoCar.js), whole again after Chapter 6: made in code, it drives like the chrome supercar
+  registerCar('theo_coupe', { ...THEO_INFO, theo: true, plateY: 0.4 }, { ...VEHICLE_SPECS.chrome_supercar, label: "THEO'S CAR", length: THEO_INFO.length });
   { const bi = carInfo('street_bike'); bi.noseY = 0.95; bi.tailY = 0.98; bi.lampW = 0.025; }
   const SHORE = L.bounds.minZ - 1.6;   // the boat cannot come closer to the beach than this
   // the sea, and the canals of The Sunk (Chapter 3): there the boat may pass the shore line, and the
@@ -391,6 +420,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     if (role === 'boat') { const m = new THREE.Mesh(carLib.boat, opts.tint ? boatPaint(opts.tint) : mats.carPaint); m.castShadow = true; tilt.add(m); }
     else if (role === 'drone') { const m = new THREE.Mesh(droneGeo, carLib && carLib.drone ? mats.carPaint : mats.prop); m.castShadow = true; m.position.y = 0.16; tilt.add(m); }
     else if (info.bike) partsBike(v);
+    else if (info.theo) partsTheo(v);
     else if (info.model && carLib && carLib.geo[kind]) partsFromModel(v);
     else if (opts.simple) partsSimple(v);
     else partsFromCode(v);

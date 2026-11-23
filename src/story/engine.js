@@ -51,6 +51,18 @@
 //     cargo, carryTo ({ prop (a crate on the ground), at, radius }: pick it up, carry it there - slower - and put it down;
 //     it can be put down anywhere and picked up again), pickup ({ prop, radius }: drive the boat or the car to it),
 //     docks ({ crew: false }: the dock workers go home). A prop with userData.boatRamp (debrisRamp) is a jump for boats.
+//   CHAPTER 6: garage ({ set: true | false, car: 'wreck' | 'whole' | { dirt, bend, hood, bumper, cleaner, wires, lights,
+//     deck }, cloth: 0..1 | 'aside', lamps: { car, bench, stand }, radio, kettle, pane, seconds } - Mace's garage of
+//     src/story/garageSet.js instead of the city: the city is not drawn, no traffic, nobody in the street, the camera
+//     stays in the bay), explore ({ spots: [{ id, at, label, note, radius, do }], next: { at, label, radius }, hint }:
+//     walk about, LOOK / TOUCH / LISTEN at things - each one gives a line from Nate - until the next action is
+//     pressed; events 'look:<id>'), repair ({ station: 1..6, story: [lines], beat: [steps], after: [steps], cam, dirt,
+//     stop, again } - one calm station of src/story/repair.js while Mace tells a story; the story counts as heard
+//     (flag heard_<n>, and heard = how many) when it was not skipped). A choice option may carry "if" (it is only
+//     shown when the condition is true). Conditions: { flag, atLeast: n } (a number flag of at least n).
+//     A chapter with calm: true has no minimap, no stars, no timer, only a small soft hint; WREN says nothing while
+//     wren_muted is set (until Chapter 8). People and the player take hands: place (their hands go there: work,
+//     spanner, putDown, roof, lean, give).
 //   HANDS ON THINGS: prop with { on: actor, carry: true } = a box held in front with both hands (a palm on each side,
 //     the arms solved to it, like player carry); a prop in a hand (bone 'hand_R') with grip (degrees, or the maker's
 //     userData.grip, e.g. the case's handle) closes the fingers of that hand around it.
@@ -78,6 +90,7 @@ import { GARAGE, PARKING } from '../city/heroBuildings.js';
 import { FINE } from '../ai/wanted.js';
 import { lin } from '../city/models.js';
 import { createHack } from './hack.js';
+import { createRepair } from './repair.js';
 import { stepBoat } from '../vehicles/physics.js';
 
 const KMH = 3.6;
@@ -110,6 +123,8 @@ export function createStory(G) {
   const ambient = { radio: 0, street: 0, drone: 0 };
   const world = G.world || {};
   const hack = createHack();                                 // the hacking mini-game of Chapter 3
+  const repair = createRepair();                             // the repair stations of Chapter 6
+  let garageOn = false, calmOn = false;                      // Chapter 6: Mace's garage instead of the city; the calm screen
   const objective = { text: '', info: '' };
   let marker = null;
   // what main.js reads every frame
@@ -205,8 +220,9 @@ export function createStory(G) {
     const p = player.position;
     if (c.zone && !(inRange(p.x, c.zone.x) && inRange(p.z, c.zone.z))) return false;
     if (c.near) { const q = pt(c.near); if (Math.hypot(p.x - q[0], p.z - q[2]) > (c.radius || 6)) return false; }
-    // (is: a word compares the word - chip_holder is 'lena'; else true / false)
-    if (c.flag && (typeof c.is === 'string' ? flags[c.flag] !== c.is : !!flags[c.flag] !== (c.is === undefined ? true : !!c.is))) return false;
+    // (is: a word compares the word - chip_holder is 'lena'; atLeast: a number - stories heard; else true / false)
+    if (c.flag && c.atLeast !== undefined) { if (!((Number(flags[c.flag]) || 0) >= c.atLeast)) return false; }
+    else if (c.flag && (typeof c.is === 'string' ? flags[c.flag] !== c.is : !!flags[c.flag] !== (c.is === undefined ? true : !!c.is))) return false;
     if (c.time !== undefined && time < c.time) return false;
     if (c.event && !events.has(c.event)) return false;
     if (c.inCar !== undefined) {
@@ -311,8 +327,11 @@ export function createStory(G) {
   // ------------------------------------------------------------------ speaking
   function quietTalk() { for (const a of actors.list) a.talking = 0; player.talk = 0; }
   // l: { who: 'nate' | 'theo' | 'wren' ..., text: key, seconds, kind, mood, moods }. Returns how long the line stays.
+  // (WREN keeps quiet when Nate asked her to stop listening in Chapter 6 - until Chapter 8)
+  const wrenQuiet = () => !!flags.wren_muted && (!chapter || chapter.number < 8);
   function speak(l, now = false) {
     const who = l.who || '', kind = l.kind || (who === 'wren' ? 'wren' : '');
+    if ((who === 'wren' || kind === 'wren') && wrenQuiet() && !l.always) return 0;
     const a = who && who !== 'nate' ? actors.get(l.actor || who) : null;
     const text = t(l.text);
     // (a thought is not said out loud: no mouth moves)
@@ -591,6 +610,7 @@ export function createStory(G) {
     if (s.mood) actors.setMood(a, s.mood, s.moodSeconds === undefined ? 0.45 : s.moodSeconds);
     if ('jacket' in s) actors.setJacket(a, s.jacket);                // somebody else's jacket on (Chapter 4) or off (null)
     if (s.gait) actors.setWalk(a, s.gait);                           // another way of walking (WALK_STYLES)
+    if ('hands' in s) a.workAt = s.hands ? pt(s.hands) : null;       // where the hands work (poses work, spanner, putDown, roof, lean, give)
   };
   // the faces of several people at once: { do: 'mood', set: { theo: 'sad', nate: 'tired' }, seconds }
   STEP.mood = (s) => { for (const id in s.set || {}) setMood(id, s.set[id], s.seconds === undefined ? 0.45 : s.seconds); };
@@ -603,6 +623,7 @@ export function createStory(G) {
     // (many copies in one draw: list = [{ at: place, face }])
     if (s.list) s = { ...s, list: s.list.map((e) => { const q = pt(e.at); return [q[0], q[1], q[2], e.face || 0]; }) };
     const inner = props.make(s.kind, s), holder = new THREE.Group();
+    if (s.song) inner.userData.song = true;              // (a radio that plays an old song: Chapter 6)
     holder.add(inner);
     if (s.scale) holder.scale.setScalar(s.scale);
     if (s.rot) holder.rotation.set(s.rot[0], s.rot[1], s.rot[2], 'YXZ');
@@ -731,9 +752,19 @@ export function createStory(G) {
     if (s.pose) player.setPose(s.pose);
     if ('carry' in s) carry(s.carry);
     if ('hidden' in s) player.setHidden(!!s.hidden);
-    if ('look' in s) player.look = s.look;
+    // (look: a place - turned into "how far left / up" from where he stands now - or { yaw, pitch }, or null)
+    if ('look' in s) player.look = lookFromPlayer(s.look);
     if (s.mood) player.mood = s.mood;
+    if ('hands' in s) player.workAt = s.hands ? pt(s.hands) : null;
   };
+  function lookFromPlayer(l) {
+    if (!l || (typeof l === 'object' && 'yaw' in l)) return l || null;
+    const q = pt(l), p = player.position;
+    const dx = q[0] - p.x, dz = q[2] - p.z;
+    let yaw = Math.atan2(dx, dz) - player.heading;
+    yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+    return { yaw: clamp(yaw, -1.3, 1.3), pitch: -Math.atan2(q[1] - (p.y + 1.62), Math.max(0.4, Math.hypot(dx, dz))) };
+  }
   // what the player may do: enter: 'none' | [vehicle names], drive, move
   STEP.allow = (s) => {
     if ('enter' in s) { enterable.clear(); if (Array.isArray(s.enter)) for (const id of s.enter) enterable.add(id); }
@@ -750,6 +781,8 @@ export function createStory(G) {
     if (s.volume !== undefined) music.setTapeVolume(s.volume);
     if (s.calm !== undefined) music.setCalm(s.calm);                 // the soft pad of the last scene of Chapter 2
     if (s.zero !== undefined) music.setZero(s.zero);                 // the deep slow heartbeat when Zero is near (Chapter 4)
+    if ('radioSong' in s) music.setRadioSong(!!s.radioSong);         // the old radio: its song, or only its hiss (Chapter 6)
+    if (s.motif) music.motif(s.motif);                               // the short motif after the choice (Chapter 6)
     if (s.silence) { music.silence(s.silence); sound.duck(s.silence); }
     if ('hud' in s) tapeShown = !!s.hud;
   };
@@ -758,6 +791,9 @@ export function createStory(G) {
     door: (s) => sound.doorClick(s.kind || 'close'), wren: () => sound.wren(), tick: () => sound.tick(), clunk: () => sound.burst(700, 1.2, 0.14, 0.002, 0.07),
     beep: () => sound.blip('sine', 880, 880, 0.07, 0.3), thump: () => sound.thump(1), cloth: () => sound.burst(1200, 0.5, 0.05, 0.03, 0.22),
     ring: (s) => sound.ring(s.times || 2), scan: () => sound.scanAlarm(), announce: (s) => music.announce(s.seconds || 3.6),
+    // Chapter 6: the garage
+    clink: () => sound.toolClink(), ratchet: (s) => sound.ratchet(s.times || 4), creak: () => sound.metalCreak(), keys: () => sound.keys(),
+    paper: () => sound.paper(), spark: () => sound.spark(), rattle: () => sound.shutter(false), slide: () => sound.clothSlide(),
   };
   STEP.sound = (s) => {
     if (SOUNDS[s.name]) SOUNDS[s.name](s);
@@ -924,8 +960,10 @@ export function createStory(G) {
     let done = false;
     choosing = true;
     if (s.line) speak(s.line, true);
-    ui.choice(s.prompt ? t(s.prompt) : '', s.options.map((o) => t(o.text)), (i) => {
-      const o = s.options[i];
+    // (an option with "if" is only there when its condition is true: "Stay silent" after three of Mace's stories)
+    const shown = s.options.filter((o) => !o.if || test(o.if));
+    ui.choice(s.prompt ? t(s.prompt) : '', shown.map((o) => t(o.text)), (i) => {
+      const o = shown[i];
       if (o.set) Object.assign(flags, o.set);       // choices leave traces: they are saved with the next checkpoint
       run(o.do);
       done = true;
@@ -1169,6 +1207,162 @@ export function createStory(G) {
     }, () => { ui.limiter(null); music.setHeartbeat(0); allowDrive = true; });
   };
 
+  // ---------------------------------------------------------------- Chapter 6: Mace's garage
+  // THE GARAGE SET (src/story/garageSet.js) instead of the city:
+  //   { set: true | false, car: 'wreck' | 'whole' | { dirt, bend, hood, bumper, cleaner, wires, lights, deck, lit },
+  //     cloth: 0..1 | 'aside', lamps: { car, bench, stand }, stairs (the door to the stairs, 0..1), radio, kettle, pane,
+  //     seconds (numbers glide), wait }
+  const GSET = () => world.garageSet || null;
+  function garageShow(on) {
+    const GS = GSET();
+    if (!GS || on === garageOn) return;
+    garageOn = on;
+    GS.show(on);
+    if (on) {
+      // (only this room: no cars and nobody in the street, the rain on the roof, the camera stays in the bay)
+      city.traffic.setCap(0); city.people.setCap(0, true); indoors = true;
+      rig.setRoom(GS.room);
+    } else {
+      city.traffic.setCap(Infinity); city.people.setCap(Infinity);
+      rig.setRoom(null);
+    }
+  }
+  STEP.garage = (s) => {
+    const GS = GSET();
+    if (!GS) return null;
+    if (s.set === true) garageShow(true);
+    if (s.set === false) { garageShow(false); return null; }
+    const C = GS.car, sec = s.seconds || 0, tasks = [];
+    const glide = (get, put, to) => { const k = ease(get, put, to, sec); if (k) tasks.push(k); };
+    if (C && s.car) {
+      if (typeof s.car === 'string') C.set.all(s.car);
+      else for (const k of Object.keys(s.car)) {
+        const v = s.car[k];
+        if (typeof v === 'number' && sec && typeof C.state[k] === 'number') glide(() => C.state[k], (x) => C.set[k](x), v);
+        else C.set[k](v);
+      }
+    }
+    if ('cloth' in s) { if (typeof s.cloth === 'number' && sec && typeof GS.clothAt === 'number') glide(() => GS.clothAt, (x) => GS.cloth(x), s.cloth); else GS.cloth(s.cloth); }
+    if (s.lamps) for (const id of Object.keys(s.lamps)) { if (sec) glide(() => GS.lampsOn[id], (x) => GS.lamps({ [id]: x }), s.lamps[id]); else GS.lamps({ [id]: s.lamps[id] }); }
+    if ('stairs' in s) { if (sec) glide(() => GS.stairsAt, (x) => GS.stairsDoor(x), s.stairs); else GS.stairsDoor(s.stairs); }
+    if ('radio' in s) GS.radio(s.radio === 'toggle' ? !GS.radioOn : !!s.radio);
+    if ('kettle' in s) GS.kettle(!!s.kettle);
+    if ('pane' in s) GS.pane(!!s.pane);
+    if (!tasks.length) return null;
+    const all = { update(dt) { let done = true; for (const k of tasks) if (!k.over) { k.over = k.update(dt); done = done && k.over; } return done; } };
+    if (s.wait) return all;
+    bg.push(all);
+    return null;
+  };
+  // WALK ABOUT, LOOK AND TOUCH: { spots: [{ id, at, label, note, radius, do, if }], next: { at, label, radius, do }, text }
+  //   Near a spot a soft button (LOOK / TOUCH / LISTEN): Nate says what he thinks (one short line), the spot's steps run
+  //   (the radio goes on, the kettle clicks) and 'look:<id>' happens. A spot can be used again. The step ends when the
+  //   "next" button is pressed (the next thing to do: HELP MACE at the car).
+  STEP.explore = (s) => {
+    let pressed = false, cool = 0, best = null;
+    const spots = (s.spots || []).filter((q) => !q.if || test(q.if));
+    const all = s.next ? [...spots, { ...s.next, isNext: true }] : spots;
+    const at = all.map((q) => pt(q.at));
+    const press = () => {
+      if (cool > 0 || !best) return;
+      cool = 0.7;
+      if (best.isNext) { pressed = true; ui.prompt(null); return; }
+      if (best.note) speak({ who: 'nate', text: best.note, kind: best.kind || 'thought', seconds: best.seconds }, true);
+      fire('look:' + best.id);
+      flags.c6_looked = Math.max(Number(flags.c6_looked) || 0, 0) + (events.has('first:' + best.id) ? 0 : 1);
+      events.add('first:' + best.id);
+      run(best.do);
+    };
+    return goal(s, null, (dt) => {
+      cool -= dt;
+      if (vehicles.state !== 'none') { ui.prompt(null); return pressed; }
+      const q = player.position;
+      let bd = 1e9; best = null;
+      all.forEach((sp, i) => { const d = Math.hypot(at[i][0] - q.x, at[i][2] - q.z); if (d < (sp.radius || 1.5) && d < bd) { bd = d; best = sp; } });
+      ui.prompt(best ? t(best.label || 'c6.act.look') : null, press);
+      return pressed;
+    }, () => { if (pressed && s.next) run(s.next.do); });
+  };
+  // ONE REPAIR STATION (src/story/repair.js), while Mace tells a story over a slow close-up of the part:
+  //   { station: 1..6, story: [lines, like the "lines" step], hint, hint2, cam: { from, to, look, fov, seconds },
+  //     beat: [steps] (the silent moment after the story: Mace stops, wipes his hands), beatSeconds, beatCam, cleanCam
+  //     (the film camera during the silent moment / while the dust goes), after: [steps]
+  //     (back to work), dirt (the car gets cleaner: the dust after this part), stop / from (station 6: the deck stops
+  //     short, and later goes in), again: false (no AGAIN button), heard: false (this story does not count) }
+  //   Hold to skip: the part is in its place at once, the story is not counted as heard.
+  STEP.repair = (s) => {
+    const GS = GSET(), C = GS && GS.car;
+    if (!C) return null;
+    const my = gen;
+    let phase = 'work', worked = false, told = false, skipped = false, left = 0, clean = null, picked = -1, story = null;
+    choosing = true;
+    cine = true; ui.cine(true); hud.showBigMap(false);
+    const station = () => {
+      phase = 'work'; worked = false; told = false;
+      if (s.cam) director.play({ seconds: s.cam.seconds || 40, ...s.cam });
+      story = STEP.lines({ lines: s.story || [] });
+      ui.skip(() => { skipped = true; });
+      repair.start({
+        station: s.station, car: C, garage: GS, stop: s.stop, from: s.from,
+        hint: s.hint ? t(s.hint) : '', hint2: s.hint2 ? t(s.hint2) : '',
+        sound: { clink: () => sound.toolClink(), ratchet: (n) => sound.ratchet(n || 4), creak: () => sound.metalCreak(), clunk: () => sound.thump(0.5), click: () => sound.tick(), slide: () => sound.clothSlide(), spark: () => sound.spark() },
+      }).then(() => { if (my === gen) worked = true; });
+    };
+    station();
+    return {
+      update(dt) {
+        if (skipped && (phase === 'work' || phase === 'beat')) {
+          // (the rest at once: the part in place, the silence, back to work, the dust)
+          skipped = false;
+          repair.complete(); ui.clearSubs(); quietTalk();
+          if (phase === 'work') run(s.beat);
+          run(s.after);
+          if (s.dirt !== undefined) C.set.dirt(s.dirt);
+          ui.skip(null);
+          phase = 'ask'; picked = -1; ask();
+          return false;
+        }
+        if (phase === 'work') {
+          if (!told) told = story.update(dt);
+          if (!(worked && told)) return false;
+          // the story was told to its end: it counts
+          if (s.heard !== false) { flags['heard_' + s.station] = true; let n = 0; for (let i = 1; i <= 6; i++) if (flags['heard_' + i]) n++; flags.heard = n; }
+          ui.skip(null);
+          phase = 'beat'; left = s.beatSeconds === undefined ? 3.4 : s.beatSeconds;
+          run(s.beat);
+          if (s.beatCam && left > 0) director.play({ seconds: 30, ...s.beatCam });    // (Mace's hands, wiping)
+          return false;
+        }
+        if (phase === 'beat') {
+          left -= dt;
+          if (left > 0) return false;
+          run(s.after);
+          phase = 'clean';
+          clean = s.dirt !== undefined ? ease(() => C.state.dirt, (x) => C.set.dirt(x), s.dirt, 2.6) : null;
+          if (s.cleanCam) director.play({ seconds: 30, ...s.cleanCam });              // (the car, a little more itself)
+          return false;
+        }
+        if (phase === 'clean') {
+          if (clean && !clean.update(dt)) return false;
+          phase = 'ask'; picked = -1; ask();
+          return false;
+        }
+        if (phase === 'ask') {
+          if (picked < 0) return false;
+          if (picked === 1) { station(); return false; }     // AGAIN: the part comes off, the story again
+          return true;
+        }
+        return true;
+      },
+      end() { choosing = false; repair.cancel(); ui.skip(null); ui.choice(null); if (!s.keep) leaveCine(); },
+    };
+    // AGAIN or GO ON (no clock: the player decides)
+    function ask() {
+      if (s.again === false) { picked = 0; return; }
+      ui.choice('', [t('c6.go_on'), t('c6.again')], (i) => { if (my === gen) picked = i; }, 0, 0);
+    }
+  };
+
   // ---------------------------------------------------------------- Chapter 3
   // THE HACK (src/story/hack.js): a grid of nodes, one swipe through the path before the time runs out.
   //   { title, sub, hint (keys), seconds (max 20), length, optional (a SKIP button), ok: [steps], fail: [steps], flag }
@@ -1332,7 +1526,7 @@ export function createStory(G) {
   function fail(key) {
     if (failed) return;
     failed = true; gen++;
-    ui.clearSubs(); quietTalk(); ui.limiter(null); ui.prompt(null); ui.tip(null); hack.cancel();
+    ui.clearSubs(); quietTalk(); ui.limiter(null); ui.prompt(null); ui.tip(null); hack.cancel(); repair.cancel();
     music.setHeartbeat(0);
     ui.failCard(t(key), (a) => { ui.hideMenus(); failed = false; if (a === 'retry') restart(); else G.onExit('title'); });
   }
@@ -1367,7 +1561,7 @@ export function createStory(G) {
     director.stop(); vehicles.forceDriver = null;
     ui.reset(); ui.hideMenus();
     quietTalk();
-    carry(null); player.unstage(); player.setPose('idle'); player.look = null;
+    carry(null); player.unstage(); player.setPose('idle'); player.look = null; player.workAt = null;
     if (vehicles.state !== 'none') vehicles.leaveNow(player);
     for (const id of [...cars.keys()]) removeCar(id);
     actors.clear();
@@ -1386,7 +1580,9 @@ export function createStory(G) {
     if (world.tarp) { world.tarp.userData.setLift(0); world.tarp.visible = true; }
     if (world.shutter) world.shutter.userData.setOpen(1);
     sound.setSpray(false);
-    hack.cancel();
+    hack.cancel(); repair.cancel();
+    if (garageOn) garageShow(false);
+    if (calmOn) { calmOn = false; ui.calm(false); }
     if (city.sunk) city.sunk.setLena('intact');
     city.traffic.setCap(Infinity); city.people.setCap(Infinity);
     allowDrive = allowMove = true; light = null; mirrorOn = false; tapeShown = false; indoors = false; fovWant = 0; limitedFor = 0;
@@ -1422,6 +1618,8 @@ export function createStory(G) {
     for (const k of Object.keys(ch.paths || {})) paths[k] = makePath(ch.paths[k]);
     flags = { ...save.data.flags };
     police.setScripted({ stars: 0 });
+    // a calm chapter (Chapter 6): no minimap, no stars, no timer - only a small soft hint
+    calmOn = !!ch.calm; ui.calm(calmOn);
     vehicles.enterFilter = (v) => !!v.storyId && enterable.has(v.storyId);
     loading = false;
     fadeTouched = false;
@@ -1535,6 +1733,20 @@ export function createStory(G) {
         else if (k === 'newsScreen') ambient.street = Math.max(ambient.street, clamp(1 - d / 48, 0, 1));
       }
     }
+    // ---- Chapter 6: the radio on the garage shelf (its old song is heard further than a voice) ----
+    ambient.song = 0;
+    {
+      const GS = GSET();
+      if (garageOn && GS && GS.radioOn) {
+        const r = GS.radioAt, d = Math.hypot(r[0] - camera.position.x, r[1] - camera.position.y, r[2] - camera.position.z);
+        ambient.song = clamp(1 - d / 26, 0.12, 1);
+      }
+      for (const o of things.values()) if (o.inner.userData.kind === 'radio' && o.inner.userData.song && o.holder.visible) {
+        o.holder.getWorldPosition(_v);
+        ambient.song = Math.max(ambient.song, clamp(1 - Math.hypot(_v.x - camera.position.x, _v.z - camera.position.z) / 40, 0, 1));
+      }
+      if (ambient.song > 0) ambient.radio = 0;          // (a song, not a voice)
+    }
     // ---- things that move by themselves ----
     for (const o of things.values()) {
       props.animate(o.inner, time);
@@ -1599,6 +1811,9 @@ export function createStory(G) {
     get ambient() { return ambient; },                            // how near an old radio / a news screen is (0..1)
     get realPolice() { return active && realPolice; },
     get indoors() { return indoors; },     // true: rain is heard on a roof
+    get garage() { return active && garageOn; },   // Chapter 6: Mace's garage is shown instead of the city
+    get calm() { return active && calmOn; },       // Chapter 6: the calm screen
+    repair,
     get racing() { return active && raceOn; },     // a race of Chapter 4 runs (its own HUD is on the screen)
     get flags() { return flags; },
     // ---- for tests ----

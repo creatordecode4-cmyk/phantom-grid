@@ -692,6 +692,7 @@ function g01(kit, s) {
   {
     const tr = -6.9, tf = -3.9, len = 4.5, wid = 2.0;
     collide(tr - 1.15, tf - len / 2 - 0.1, tr + 1.15, tf + len / 2 + 0.1, 1.3);
+    GARAGE.tarpBox = ctx.colliders.boxes[ctx.colliders.boxes.length - 1];   // (taken away when Theo's car can drive out: main.js)
     GARAGE.tarp = P(tr, y0, tf);
     GARAGE.tarpSize = { len, wid, height: 1.3 };
   }

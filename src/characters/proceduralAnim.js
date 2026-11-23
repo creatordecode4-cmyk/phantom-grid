@@ -107,6 +107,7 @@ export function createAnimator(THREE, rig, opts = {}) {
   const H = rig.height, k = H / 1.8;
   const X_AXIS = new THREE.Vector3(1, 0, 0), Y_AXIS = new THREE.Vector3(0, 1, 0), Z_AXIS = new THREE.Vector3(0, 0, 1);
   const SIDES = [{ tag: 'L', s: 1 }, { tag: 'R', s: -1 }];
+  const HANDS_POSES = new Set(['work', 'spanner', 'putDown', 'roof', 'lean', 'give']);
   const FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
 
   // ---- numbers of this body ----
@@ -576,6 +577,7 @@ export function createAnimator(THREE, rig, opts = {}) {
   // pose: what the arms (or the whole body) do. talk: 0..1 = speaking (a hand moves with the words).
   // lookAt: { yaw, pitch } in radians relative to the body, or null = look around freely.
   let pose = 'idle', talk = 0, talkNow = 0, lookAt = null, floorBelow = 0.45;
+  let workAt = null;          // where the hands work (character space), for the poses of handsPose below - or null
   const face = createFaceAnimator(THREE, rig);
   let asleep = false, awake = 'neutral';
   // put a hand at a place (character space); the elbow points along (px, py, pz). The arm is then solved like
@@ -618,6 +620,17 @@ export function createAnimator(THREE, rig, opts = {}) {
       for (let q = 0; q < 2; q++) { const { s } = SIDES[q]; handAt(q, s * (hipW + 0.075 * k), hipsPos.y + 0.075 * k, hipsPos.z - 0.035 * k, s, -0.05, -0.7); setDelta('hand_' + SIDES[q].tag, 0, 0, -s * 25 * DEG); fingers(q, 40); }
     }
     else if (pose === 'hold') { for (let q = 0; q < 2; q++) { armAngles(q, 24, 3, -36, 70 + talkNow * beat * 4, 6); fingers(q, 62); } }
+    else if (HANDS_POSES.has(pose)) handsPose(t);
+    else if (pose === 'wipe') {
+      // wiping the hands on a rag: both hands in front of the belly, rubbing slowly, the head down
+      const r = Math.sin(t * 4.1) * 0.032 * k, r2 = Math.cos(t * 4.1) * 0.012 * k;
+      const y = hipsPos.y + 0.11 * k, z = hipsPos.z + 0.27 * k;
+      handAt(0, 0.04 * k + r, y + r2, z, 0.9, -0.6, -0.3);
+      handAt(1, -0.045 * k - r, y - r2, z + 0.012 * k, -0.9, -0.6, -0.3);
+      fingers(0, 28); fingers(1, 34);
+      setDelta('neck', 15 * DEG, 0, 0); setDelta('head', 11 * DEG, 0, 0);
+      breathe(t);
+    }
     else if (pose === 'carry') carryPose();
     else if (pose === 'flag') { armAngles(0, 6, 9, 8, 12); armAngles(1, 166, 12, 0, 8); fingers(1, 60); }
     else if (pose === 'phone') {
@@ -635,6 +648,65 @@ export function createAnimator(THREE, rig, opts = {}) {
       // speaking: one hand comes up a little and moves with the words
       armAngles(1, 12 + 20 * talkNow + beat * 5 * talkNow, 10, -8 * talkNow, 12 + 60 * talkNow + beat * 9 * talkNow, 12 * talkNow);
     }
+  }
+  // ---------------------------------------------------------------- hands at work (Chapter 6)
+  // The hands go to a place (workAt, set by the story: a part of the car, the bench, the roof); without one they work
+  // in front of the belly. work: both hands on something; spanner: the right hand turns a spanner in short pulls, the
+  // left one steadies the part; putDown: one hand lays something flat; roof: a flat hand resting on the car's roof;
+  // lean: both hands on the edge of the bench, leaning on them; give: a hand held out (a key in it).
+  const wq = V(), wsh = V();
+  // (a hand never reaches further than the arm: a point too far is pulled toward the shoulder)
+  function reachable(out, q) {
+    const s = SIDES[q].s;
+    wsh.set(s * 0.18 * k, hipsPos.y + 0.5 * k, hipsPos.z);
+    const d = out.distanceTo(wsh), max = (upperLen + foreLen) * 0.97;
+    if (d > max) out.sub(wsh).multiplyScalar(max / d).add(wsh);
+    return out;
+  }
+  function handTo(q, x, y, z, px, py, pz) { reachable(wq.set(x, y, z), q); handAt(q, wq.x, wq.y, wq.z, px, py, pz); }
+  // a slow breath: the shoulders rise and fall a little
+  function breathe(t) { const b = Math.sin(t * 1.35) * 1.4 * DEG; setDelta('clavicle_L', -b, 0, 0); setDelta('clavicle_R', -b, 0, 0); }
+  function handsPose(t) {
+    const W = workAt ? workAt : wq.set(0, hipsPos.y + 0.05 * k, hipsPos.z + 0.42 * k);
+    const wx = W.x, wy = W.y, wz = W.z;
+    // (low work: the back bends to it)
+    const bend = clamp((hipsPos.y + 0.15 * k - wy) / (0.55 * k), 0, 1);
+    if (pose !== 'roof' && pose !== 'give') { setDelta('spine1', bend * 18 * DEG, 0, 0); setDelta('chest', bend * 9 * DEG, 0, 0); }
+    if (pose === 'work') {
+      const a = Math.sin(t * 2.1) * 0.012 * k, b = Math.cos(t * 1.7) * 0.01 * k;
+      handTo(0, wx + 0.12 * k + a, wy + b, wz - 0.02 * k, 0.8, -0.6, -0.3);
+      handTo(1, wx - 0.1 * k - b, wy + a * 0.6, wz, -0.8, -0.6, -0.3);
+      fingers(0, 50); fingers(1, 58);
+      setDelta('neck', 10 * DEG, 0, 0); setDelta('head', 12 * DEG, 0, 0);
+    } else if (pose === 'spanner') {
+      // pull - let go - pull: a short arc of the wrist and the forearm
+      const ph = (t * 0.85) % 1, arc = ph < 0.6 ? smooth(ph / 0.6) : 1 - smooth((ph - 0.6) / 0.4), ang = -0.55 + arc * 1.1;
+      handTo(1, wx - 0.02 * k + Math.sin(ang) * 0.06 * k, wy + Math.cos(ang) * 0.045 * k, wz, -0.8, -0.5, -0.4);
+      handTo(0, wx + 0.17 * k, wy - 0.02 * k, wz - 0.03 * k, 0.8, -0.6, -0.3);
+      fingers(1, 84, 62); fingers(0, 40);
+      setDelta('neck', 10 * DEG, 0, 0); setDelta('head', 12 * DEG, 0, 0);
+    } else if (pose === 'putDown') {
+      handTo(1, wx, wy + 0.025 * k, wz, -0.7, -0.7, -0.2);
+      armAngles(0, 6, 8, 6, 14);
+      fingers(1, 6, 10, 6);
+      setDelta('neck', 12 * DEG, 0, 0); setDelta('head', 14 * DEG, 0, 0);
+    } else if (pose === 'roof') {
+      handTo(0, wx, wy + 0.02 * k, wz, 0.9, -0.5, -0.2);
+      armAngles(1, 4, 8, 6, 12);
+      fingers(0, 10, 12, 8);
+      setDelta('head', 6 * DEG, 0, 0);
+    } else if (pose === 'lean') {
+      handTo(0, wx + 0.24 * k, wy + 0.02 * k, wz, 0.9, -0.5, -0.4);
+      handTo(1, wx - 0.24 * k, wy + 0.02 * k, wz, -0.9, -0.5, -0.4);
+      fingers(0, 24); fingers(1, 26);
+      setDelta('spine1', 13 * DEG, 0, 0); setDelta('neck', 10 * DEG, 0, 0); setDelta('head', 12 * DEG, 0, 0);
+    } else if (pose === 'give') {
+      const gx = workAt ? wx : -0.1 * k, gy = workAt ? wy : hipsPos.y + 0.27 * k, gz = workAt ? wz : hipsPos.z + 0.4 * k;
+      handTo(1, gx, gy, gz, -0.55, -0.8, -0.15);
+      armAngles(0, 4, 8, 6, 12);
+      fingers(1, 34, 22);
+    }
+    breathe(t);
   }
   // sitting: 'sit' = in a car seat (leaning back), 'sitEdge' = on the edge of a bed (leaning forward, head down)
   function sittingPose(dt) {
@@ -944,6 +1016,8 @@ export function createAnimator(THREE, rig, opts = {}) {
     set look(v) { lookAt = v; },
     // 'sitEdge': how far the floor is below the character's root (meters)
     set floorBelow(v) { floorBelow = v; },
+    // where the hands work (character space: a Vector3, or null) - poses work, spanner, putDown, roof, lean, give
+    set workAt(v) { workAt = v || null; },
     // a box held with both hands (pose 'carry'): its size { w, h, d } (null = a parcel). carryAt: where the middle of
     // the box is right now, in the character's own space (null when no box is held this frame)
     set carry(c) { carrySize = c || null; },

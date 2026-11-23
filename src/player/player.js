@@ -296,6 +296,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     else if (mover) {
       // the procedural animation: it needs the speed along the walking direction and the ground under the feet
       const forward = vel.x * Math.sin(heading) + vel.y * Math.cos(heading);
+      handsTarget();
       mover.update(dt, { speed: forward, x: pos.x, z: pos.z, y: pos.y, heading, groundAt, swim: swimming });
       placeHeld();
     } else {
@@ -448,7 +449,17 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     if (mover) { mover.setPose(held && heldSize ? 'carry' : 'idle', 0); mover.look = null; mover.talk = 0; mover.reset(); }
   }
   // a staged character still breathes, speaks and looks around
-  function tick(dt) { if (mover) { mover.update(dt, { speed: 0, x: pos.x, z: pos.z, y: pos.y, heading, groundAt: null }); placeHeld(); } }
+  function tick(dt) { if (mover) { handsTarget(); mover.update(dt, { speed: 0, x: pos.x, z: pos.z, y: pos.y, heading, groundAt: null }); placeHeld(); } }
+  // where the hands work: a point in the world the story gives (poses work, spanner, putDown, roof, lean, give),
+  // turned into the body's own space every frame
+  let workAt = null;
+  const workLocal = new THREE.Vector3();
+  function handsTarget() {
+    if (!mover) return;
+    if (!workAt) { mover.workAt = null; return; }
+    const dx = workAt[0] - pos.x, dy = workAt[1] - pos.y, dz = workAt[2] - pos.z, c = Math.cos(heading), sn = Math.sin(heading);
+    mover.workAt = workLocal.set(dx * c - dz * sn, dy, dx * sn + dz * c);
+  }
   // what the arms do while walking ('idle', 'carry' ...), and small things the story sets
   function setPose(pose, seconds = 0.3) { if (mover) mover.setPose(pose, seconds); }
   // something carried in front of the body (a parcel): it moves with the character. null = put it away
@@ -496,6 +507,8 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     // the words of a line Nate says, and how long it stays: his mouth says them (speech.js)
     say(text, seconds) { if (mover) mover.say(text, seconds); },
     set look(v) { if (mover) mover.look = v; },
+    set workAt(v) { workAt = v || null; },
+    get workAt() { return workAt; },
     // the expression of the face ('smile', 'sad' ... see src/characters/faceAnim.js)
     set mood(v) { if (mover) mover.setFace(v || 'neutral'); },
     get mood() { return mover ? mover.face : null; },

@@ -15,6 +15,7 @@ import { wantedProps } from './propsWanted.js';
 import { sunkProps } from './propsSunk.js';
 import { raceProps } from './propsRace.js';
 import { docksProps } from './propsDocks.js';
+import { garageProps } from './propsGarage.js';
 
 // a picture with text, drawn in code. lines: [{ text, size, color, y (0..1), font, weight }]
 function textTexture(w, h, bg, lines, border = null) {
@@ -194,6 +195,8 @@ export function createProps() {
   Object.assign(MAKERS, raceProps({ std, box, tex, textTexture, glowTexture }).makers);
   // the things of Chapter 5 (Rask's watch, the HALO cores, the crate, the floating junk, the gate, the package ...): propsDocks.js
   Object.assign(MAKERS, docksProps({ std, box, tex, textTexture, glowTexture }).makers);
+  // the things of Chapter 6 (the bank record on paper, a spanner, Theo's car key, a rag): propsGarage.js
+  Object.assign(MAKERS, garageProps({ std, box, tex, textTexture, glowTexture }).makers);
   // a soft round glow (white in the middle, clear at the edge)
   function glowTexture() {
     const cv = document.createElement('canvas'); cv.width = cv.height = 64;

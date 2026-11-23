@@ -4,6 +4,9 @@ An open-world 3D web game set in **Port Meridian**, a fictional American coastal
 A realistic city of the future: sculpted glass towers, hanging gardens, sky bridges,
 electric cars and a maglev line. No cartoon look, no neon-toy look.
 
+The story now runs from the Prologue to **Chapter 6, "Old Debts"** (version 10.0, the quietest chapter: one garage, one
+night, Theo's car rebuilt part by part - see "Chapter 6: OLD DEBTS" below).
+
 This is **Phase 4, "Prologue + Chapter 1 playable"**: the story starts. A title screen, a save game,
 film scenes, choices that are remembered, and the first two parts of the story - the Prologue
 "LAST LAP" and Chapter 1 "RAIN DELIVERY" - on top of the city, the cars and the characters of
@@ -1868,6 +1871,96 @@ traffic car that the test itself had set a parked car down on was taken away aft
   sharper when the phone keeps up).
 - Tested by a robot in a software renderer, close up and in the game view - not watched on a real phone.
 
+## Chapter 6: OLD DEBTS (version 10.0)
+
+The next night, and the quietest chapter of the game: **no chase, no gunfight, no timer, no stars, no minimap**. One
+room - Mace's garage at night, rain on the roof - and slow film shots: close-ups of hands, wide shots as if through a
+rainy window, slow push-ins on faces. Short plain lines; nobody shouts. Nate and Mace rebuild **Theo's car** together,
+and while Nate works, Mace tells a short story about Theo. Before the last part, Nate puts the bank record on the bench.
+
+### The missions, and how to start each one
+
+Start any of them from the title screen (**MISSIONS**) or with the address option.
+
+| # | Mission | What happens | Address option |
+|---|---|---|---|
+| 6.0 | **RAIN ON THE ROOF** | Nate comes down the stairs from his flat into the garage. A warm night (he did not wake Mace in Chapter 5): Mace looks up from the bench, "You're soaked. Kettle's on." - "Thanks." - "The car. I think it is time. I want to fix it. With you." A colder night (he did): Mace stays at the car with his back to the stairs, "Kettle's on.", a long silence, "The car. If you want." - he does not meet Nate's eyes. Then the room is Nate's: walk about, **LOOK / TOUCH / LISTEN** at nine things (the radio - it plays an old waltz, the kettle and two mugs, Theo's photos inside the cabinet door, **T.C.** cut into the bench, the height marks **T and N** on the door frame, the pegboard, Mace's armchair, the rainy window, Theo's first oil stain); each gives one short line from Nate. **HELP MACE** at the car starts the work. | `?story=chapter06.0` |
+| 6.1 | **THEO'S CAR** | Five calm stations, five stories (below). Between them the room is Nate's again; **BACK TO WORK** at the car goes on. | `?story=chapter06.1` |
+| 6.2 | **THE LAST PART** | The tape deck, where Theo's mixtape goes. Mace's sixth story: Theo wanted to leave the city - and take Nate with him. The deck stops short. Nate puts the **bank record** (Lena printed it) on the bench, beside Theo's initials. No music, steady rain, the radio only hisses. "Two hundred thousand. The day after." - "Yes." KVI came the morning after the crash: it did not have to be an accident; Nate was driving; they could make it murder, prison for years. Mace took their money and the case went away; most of it paid Nate's hospital bill, which Nate never saw. "I would do it again." (a pause) "I would also hate myself again." Nate looks at the cloth on the floor for a long time. **Choice:** *I forgive you.* / *Leave.* / *Stay silent.* (the third only for a player who heard at least three of Mace's stories). One soft pad starts at this scene. | `?story=chapter06.2` |
+| 6.3 | **WHAT IS LEFT** | **Forgive:** Mace looks at him for the first time tonight, takes a key from his pocket - "It is yours now." - and they fit the last part together; the tape goes into the dashboard. **Stay silent:** Mace lays the key on the bench and steps back; Nate fits the part alone, takes the key, Mace turns the radio off. Both end on the same image: the car whole under the work lamp, Mace's hand on its roof, the light off; Nate in the driver's seat plays the mixtape - track 7 is silent, and this time he does not skip it. **Leave:** Nate walks out; the car stays unfinished under its lamp; outside in the rain he drives away, Mace in the lit door behind him, the light getting smaller, the radio still playing inside, faintly. After the choice a short quiet motif plays once; WREN speaks once, quietly: *"Do you want me to stop listening?"* Three seconds of silence on the last image. | `?story=chapter06.3` |
+
+### The six stations (`src/story/repair.js`)
+
+A soft panel on the right of the screen (one thumb), the film camera on a slow close-up of the part, Mace's story as
+subtitles. **No failing, no score, no clock**: letting go never undoes anything, a part dropped in the wrong place floats
+back. After the story, a silent beat: Mace stops, wipes his hands on a rag, goes back to work - and the car gets a little
+cleaner (its dust goes from 1 to 0.3 over the five stations, to 0.08 when it is whole). Each station can be done
+**AGAIN** (the part comes off, the story is told again) or **GO ON**. HOLD TO SKIP puts the part in place at once (that
+story then does not count as heard).
+
+| # | Part | Gesture | Mace's story |
+|---|---|---|---|
+| 1 | the cloth | slide up, slowly | Theo drove his first car in this garage at twelve, stalled it three times by the drain, then laughed so hard he could not breathe |
+| 2 | the bent frame | pull the chain down and hold | the garage cat with one bent ear, which Theo secretly taught to sit by the radio - with sardines |
+| 3 | the front bumper | drag it into place | Theo hated tools, but when an engine caught he closed his eyes, like somebody was playing him music |
+| 4 | the engine | turn the air cleaner to the mark, press it down | two honks outside when he came back late, so Mace knew it was him - "I still listen for it. Every night." |
+| 5 | the lights | swipe one plug to the other | a woman broke down out front in the rain; Theo fixed her car for free - "practice" |
+| 6 | the dashboard | slide the deck in (it stops short the first time) | Theo was going to leave the city and take Nate with him |
+
+Theo's car is made in code (`src/vehicles/theoCar.js`): a low two-door coupe, scratched blue paint, Theo's **7** in a
+white roundel on each door. If **`assets/vehicles/theo_car.glb`** exists it is shown instead (meters, +z the nose, +x
+the car's left, the ground at y = 0); parts named `bumper_old`, `bumper_new`, `hood` (origin on the hinge),
+`air_cleaner`, `deck`, `lights` follow the repair, and the dust darkens its paint.
+
+### Chapter 6 choices and flags
+
+| Flag | Set when |
+|---|---|
+| `mace_forgiven` | `true` (I forgive you), `false` (Leave) or `'neutral'` (Stay silent) - also as a word in `c6_end` (`'forgive'`, `'leave'`, `'neutral'`) |
+| `wren_muted` | Nate answered WREN's question with Yes: she says nothing until Chapter 8 (engine.js skips her lines) |
+| `heard`, `heard_1` .. `heard_6` | how many of Mace's stories were heard to the end (a skipped story does not count); *Stay silent* needs 3 |
+| `garage_open`, `theo_car`, `theo_key`, `upgrades_at` | forgive or neutral: the garage stays a safe place, Theo's car is a vehicle of the game, upgrades at `'garage'` |
+| `garage_open: false`, `mace_back: 9`, `upgrades_at: 'lena'` | Leave: the garage is shut, Mace does not appear until Chapter 9, upgrades only at Lena's new base |
+| `c6_looked` | how many things Nate looked at, touched or listened to |
+
+Uses from Chapter 5: `confront_mace` (true: the colder night). After the chapter, in **free roam**: forgive or neutral -
+Theo's car stands in the garage, whole (kind `theo_coupe`: the chrome supercar's physics with Theo's body; its tarp
+and the tarp's collision are gone so it can be driven out), and driving slowly into the bay fixes a damaged car;
+Leave - the roller door is down and solid. (There is no upgrade shop in the game yet: `upgrades_at` is ready for it.)
+
+### The calm screen and mobile UX
+
+A chapter with `calm: true` (`body.calm` in `index.html`): no minimap, no stars, no mission box, no GPS arrow, no
+markers - only the objective as one small soft line ("Mace is by the car."). The action button becomes a big soft
+round button (LOOK / TOUCH / LISTEN / HELP MACE / BACK TO WORK), the choices are tall rounded buttons, HOLD TO SKIP is
+bigger. Subtitles have a fourth size: **SETTINGS → SUBTITLES → XL**. No tilt and no fine controls are needed.
+
+### Sound (made in code)
+
+Steady rain drumming on the metal roof, water in the gutter, single drops on steel, thunder far away every 40 - 80 s,
+the kettle (its switch clicks on, the water comes to the boil, it clicks off by itself), the radio (an old waltz made
+from a few chords and a little tune through a small old speaker, with the hiss of a weak station; it can be switched on
+and off), tools (a clink, a ratchet), steel creaking under the chain, cloth sliding, a spark when the wires meet, keys,
+paper. One soft pad begins at the confrontation; after the choice a short motif plays once (rising, open or falling,
+for forgive, neutral, leave); three seconds of complete silence on the last image.
+
+### Performance (measured in the test robot's software renderer at MEDIUM)
+
+While the chapter runs, the city is not drawn at all (the camera sees only "layer 4", like inside a house), traffic and
+people are taken away, and the camera stays inside the bay. In the garage the robot measured **PERF_CALLS** draw calls
+and **PERF_TRIS** triangles with both people in view (the limit asked for was 150).
+
+### What was built for it
+
+`src/story/garageSet.js` (the garage as a set: lamps, haze, a rainy window, the roller door, the door to the stairs,
+the cabinet with the photos, the height marks, the radio, the kettle, the chain puller, the cloth, its own colliders),
+`src/vehicles/theoCar.js` (Theo's car, parts that can be repaired, the paint with dust, scratches and the roundel),
+`src/story/repair.js` (the six stations), the steps `garage`, `explore` and `repair` in the story engine (and choice
+options with a condition, number conditions, WREN keeping quiet, hands that go to a place), the poses `work`,
+`spanner`, `wipe`, `putDown`, `roof`, `lean`, `give` in `src/characters/proceduralAnim.js`, `src/story/propsGarage.js`
+(the bank record on paper, a spanner, Theo's key, a rag), the vehicle kind `theo_coupe`, the calm screen, the garage
+sounds in `src/audio/music.js` and `src/audio/sound.js`, and `src/story/chapters/chapter06.js` (only data).
+
 ## Known limits
 
 - Traffic cars drive on lanes: when hit they are shoved along the lane and a little to the side, stop and
@@ -1930,4 +2023,10 @@ traffic car that the test itself had set a parked car down on was taken away aft
   figures (the same body as the city's walkers, with vests and hard hats); they do not react to the player. The
   office and the back warehouse are only seen in the film scenes (you cannot walk up the stairs). The ships do not
   move away from the quay. Rask holds his hands over the crate (there is no pose for a flat hand on it).
+- CHAPTER 6 / OLD DEBTS: played to the end only by a test robot in a software renderer (it does the stations by itself
+  and presses the buttons); the feel of the gestures, the pace of the stories and every sound still need a real phone.
+  The garage is a set of its own (the city is not drawn while it is shown, but stays loaded, so leaving is instant).
+  Nate does not walk in the film scenes (the cut puts him at his next place), the car's doors do not open (he is
+  simply in the seat), and the roller door does not roll up on screen (the picture goes dark). There is no upgrade shop
+  in the game yet: the flags for it are saved.
 - Shop names, signs and adverts are invented. No real brands are used.

@@ -322,6 +322,31 @@ export function createSound() {
       for (let i = 0; i < steps; i++) setTimeout(() => { burst(1100 + Math.random() * 500, 3, 0.05, 0.001, 0.035); if (i % 3 === 0) burst(240, 1, 0.07, 0.002, 0.05, 'lowpass'); }, i * 70);
       if (down) setTimeout(() => { burst(170, 0.7, 0.5, 0.003, 0.35, 'lowpass'); burst(2200, 2, 0.12, 0.002, 0.25); }, steps * 70 + 40);
     },
+    // ---- Chapter 6: the garage ----
+    // a tool touching steel: a small bright ring
+    toolClink() { blip('triangle', 2600 + Math.random() * 900, 2500, 0.03, 0.18); burst(5200, 3, 0.018, 0.001, 0.05, 'highpass'); },
+    // a ratchet: quick small clicks (n of them)
+    ratchet(n = 4) { for (let i = 0; i < n; i++) setTimeout(() => { burst(3200 + Math.random() * 600, 6, 0.05, 0.001, 0.018); burst(900, 3, 0.02, 0.001, 0.03); }, i * 55); },
+    // steel under strain: a low groan that bends, and a tick
+    metalCreak() {
+      if (!live()) return;
+      const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(), t = ctx.currentTime, f0 = 70 + Math.random() * 40;
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f0 * (1.4 + Math.random() * 0.4), t + 0.7);
+      f.type = 'bandpass'; f.frequency.value = 520; f.Q.value = 6;
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.05, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0008, t + 0.8);
+      o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + 0.85);
+      setTimeout(() => burst(1900, 5, 0.035, 0.001, 0.03), 520);
+    },
+    // heavy canvas sliding over a car
+    clothSlide() { burst(900, 0.6, 0.05, 0.12, 0.5); burst(2600, 0.8, 0.02, 0.1, 0.4); },
+    // two wires meet: a crackle
+    spark() { for (let i = 0; i < 7; i++) setTimeout(() => burst(4000 + Math.random() * 3000, 2, 0.05 * (1 - i / 8), 0.001, 0.02, 'highpass'), i * 28 + Math.random() * 20); },
+    // the kettle's switch: a firm plastic click (on) / a softer one (off, when it boils)
+    kettleClick(on = true) { burst(on ? 2100 : 1600, 3, on ? 0.09 : 0.06, 0.001, 0.03); burst(300, 1, 0.05, 0.002, 0.04, 'lowpass'); },
+    // a key taken from a pocket: a small jingle
+    keys() { for (let i = 0; i < 4; i++) setTimeout(() => blip('triangle', 3800 + Math.random() * 1400, 3600, 0.012, 0.09), i * 70 + Math.random() * 30); },
+    // a sheet of paper put down on wood
+    paper() { burst(3400, 0.7, 0.035, 0.01, 0.12, 'highpass'); burst(600, 0.8, 0.02, 0.005, 0.08); },
     // everything that runs all the time goes quiet (when the player leaves the vehicle)
     quiet() {
       this.setEngine(false); this.setScreech(0); this.setWind(0); this.setRoad(0); this.setScrape(false); this.setSqueal(false); this.setHorn(false); this.setSiren(false); this.setInside(false); this.setSpray(false);

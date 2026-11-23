@@ -17,6 +17,12 @@
 //   * THE SUNK (Chapter 3): rain on tin roofs and old boats, water dripping,
 //     water slapping against hulls, the murmur of the Tidewalker market far
 //     away (it goes quiet when Nate comes close), and a low hum of old pumps.
+//   * MACE'S GARAGE (Chapter 6): steady rain drumming on the metal roof right
+//     overhead, water running in the gutter, single drops on steel, thunder far
+//     away now and then, the kettle coming to the boil; an old radio on the
+//     shelf playing an old waltz (made here from a few chords and a little
+//     tune - not a recording), with the hiss of a weak station; and after the
+//     choice of the chapter a short, quiet motif that is played once.
 //   * SILENCE: everything here can be cut to nothing for a moment.
 //
 // No sound files. Everything uses the audio system of sound.js and only
@@ -43,12 +49,14 @@ export function createMusic(sound) {
   let A = null;                 // { ctx, out, noiseBuf } from sound.js
   let tapeBus = null, tapeLp = null, hiss = null, padBus = null, pad = null, ambBus = null, amb = null;
   let wantBus = null, droneHum = null, voice = null, calmBus = null;
-  const want = { track: 0, tension: 0, heart: 0, inCar: false, tapeVol: 1, stars: 0, hidden: false, chase: false, calm: 0, zero: 0 };
+  const want = { track: 0, tension: 0, heart: 0, inCar: false, tapeVol: 1, stars: 0, hidden: false, chase: false, calm: 0, zero: 0, radioSong: true };
   let zeroNext = 0;
   let wantedNext = 0, voiceNext = 0, voiceLeft = 0, announceUntil = 0;
   const tape = { track: 0, bar: 0, step: 0, next: 0, startBar: 0, onEnd: null, ended: false };
   let heartNext = 0, pulseNext = 0, sirenNext = 20, silentUntil = 0, time = 0;
-  const env = { rain: 0, city: 0.5, beach: 0, inCar: false, drone: 0, street: 0, radio: 0, sunk: 0, market: 0, tunnel: 0, docks: 0, dawn: 0, crane: 0 };
+  const env = { rain: 0, city: 0.5, beach: 0, inCar: false, drone: 0, street: 0, radio: 0, sunk: 0, market: 0, tunnel: 0, docks: 0, dawn: 0, crane: 0, garage: 0, song: 0, kettle: 0 };
+  // MACE'S GARAGE (Chapter 6): the roof in the rain, thunder, the kettle; the radio's old song; the motif
+  let garageAmb = null, thunderNext = 14, dropNext = 0, radio = null, motifBus = null;
   let sunkAmb = null, dripNext = 0, slapNext = 0, tinkNext = 0, crowdNext = 0;
   // RUSTWATER DOCKS (Chapter 5): rain on corrugated metal, cranes groaning, ships' horns far out, forklift beeps,
   // gulls at dawn, rusty chains, the low idle of engines
@@ -125,6 +133,23 @@ export function createMusic(sound) {
         const og = c.createGain(); og.gain.value = g; o.connect(og); og.connect(ilp); o.start();
       }
       docksAmb = { metal, metal2, idleG };
+    }
+    // ---- MACE'S GARAGE: rain drumming on the roof sheet overhead, its low hum, water in the gutter, the kettle ----
+    {
+      const roofG = c.createGain(); roofG.gain.value = 0; roofG.connect(ambBus);
+      const drum = loopNoise('bandpass', 1650, 0.7, roofG, 0.55);
+      const body = loopNoise('lowpass', 240, 0.7, roofG, 0.55);
+      const gutter = loopNoise('bandpass', 640, 4.5, roofG, 0.1);
+      const boil = loopNoise('lowpass', 200, 0.8, ambBus, 0);
+      garageAmb = { roofG, drum, body, gutter, boil };
+      // the radio: a small old speaker (no deep notes, no high ones) and the hiss of a weak station
+      const bus = c.createGain(); bus.gain.value = 0; bus.connect(A.out);
+      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 330; hp.Q.value = 0.7;
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2500; lp.Q.value = 1.1;
+      hp.connect(lp); lp.connect(bus);
+      const rhiss = loopNoise('bandpass', 4300, 0.7, bus, 0);
+      radio = { bus, input: hp, hiss: rhiss, next: 0, step: 0 };
+      motifBus = c.createGain(); motifBus.gain.value = 1; motifBus.connect(A.out);
     }
     // ---- calm pad: a warm chord that breathes slowly ----
     {
@@ -375,6 +400,26 @@ export function createMusic(sound) {
         }
       }
     }
+    // ---- MACE'S GARAGE (Chapter 6) ----
+    if (garageAmb) {
+      const k = env.garage * quiet;
+      glide(garageAmb.roofG.gain, (0.25 + env.rain) * k * 0.07, 0.8);
+      glide(garageAmb.boil.g.gain, env.kettle * env.kettle * 0.05 * k, 0.6);
+      glide(garageAmb.boil.f.frequency, 180 + env.kettle * 700, 0.6);
+      if (k > 0.05) {
+        // a single drop on steel by the door, now and then
+        if (now > dropNext) { dropNext = now + 0.25 + Math.random() * 1.1; tone('triangle', 1300 + Math.random() * 1500, now, 0.06, 0.004 * k, ambBus, 0.002); }
+        // thunder far away
+        if (now > thunderNext) { thunderNext = now + 38 + Math.random() * 46; thunder(now, 0.11 * k); }
+      }
+    }
+    // ---- the old radio's song (Chapter 6): only while a radio plays it close enough ----
+    if (radio) {
+      const k = env.song * quiet;
+      glide(radio.bus.gain, k * 0.075, 0.4);
+      glide(radio.hiss.g.gain, k > 0.001 ? 0.16 : 0, 0.4);
+      if (k > 0.001 && want.radioSong) runRadio(now); else radio.next = 0;
+    }
     // ---- the calm pad of the last scene ----
     glide(calmBus.gain, want.calm * 0.05 * quiet, 2.5);
     // a siren far away, now and then (never while a real one is close: that is sound.js)
@@ -386,6 +431,39 @@ export function createMusic(sound) {
       for (let i = 0; i < 5; i++) { o.frequency.setValueAtTime(620, now + i); o.frequency.linearRampToValueAtTime(880, now + i + 0.5); o.frequency.linearRampToValueAtTime(620, now + i + 1); }
       g.gain.setValueAtTime(0.0001, now); g.gain.linearRampToValueAtTime(0.012, now + 1.2); g.gain.linearRampToValueAtTime(0.0001, now + 5);
       o.connect(f); f.connect(g); g.connect(ambBus); o.start(now); o.stop(now + 5.1);
+    }
+  }
+  // THUNDER far away: a long low roll that swells and dies, a second roll inside it
+  function thunder(t, gain) {
+    const c = A.ctx;
+    for (const [d, g0, len] of [[0, 1, 7.5], [1.3 + Math.random() * 1.2, 0.6, 5]]) {
+      const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(), t0 = t + d;
+      src.buffer = A.noiseBuf; src.loop = true;
+      f.type = 'lowpass'; f.frequency.setValueAtTime(150, t0); f.frequency.linearRampToValueAtTime(65, t0 + len); f.Q.value = 0.6;
+      g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain * g0 * 0.5, t0 + 0.5); g.gain.linearRampToValueAtTime(gain * g0, t0 + 1.7); g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+      src.connect(f); f.connect(g); g.connect(ambBus); src.start(t0, Math.random() * 1.5); src.stop(t0 + len + 0.1);
+    }
+  }
+  // THE RADIO'S OLD SONG: a slow waltz in A minor (one - two - three: a bass note, then two soft chords), two bars on
+  // each chord, a simple tune on top that is the same every time it comes round. Written a little ahead of time.
+  const SONG = { bpm: 88, root: 57, prog: [[0, 3], [8, 4], [3, 4], [10, 4], [0, 3], [5, 3], [7, 4], [7, 4]] };
+  const MINOR = [0, 2, 3, 5, 7, 8, 10, 12, 14, 15, 17];
+  function runRadio(now) {
+    const beat = 60 / SONG.bpm;
+    if (radio.next < now) radio.next = now + 0.05;
+    while (radio.next < now + 0.4) {
+      const t = radio.next, b = radio.step % 3, bar = Math.floor(radio.step / 3), cb = Math.floor(bar / 2) % SONG.prog.length;
+      const [deg, third] = SONG.prog[cb], root = SONG.root + deg;
+      if (b === 0) tone('sine', hz(root - 12), t, beat * 0.95, 0.55, radio.input, 0.01);
+      else for (const iv of [0, third, 7]) tone('triangle', hz(root + iv), t, beat * 0.45, 0.11, radio.input, 0.008);
+      // the tune: a long note on the first beat, sometimes a short one on the third (the same each time round)
+      const k = bar % 16;
+      if (b === 0 || (b === 2 && rnd(k, 2, 5) > 0.5)) {
+        const i = Math.floor(rnd(k, b, 9) * 5) + (third === 4 ? 2 : 0);
+        tone('triangle', hz(SONG.root + 12 + MINOR[i]), t, b === 0 ? beat * 1.85 : beat * 0.85, 0.2, radio.input, 0.025, 0.007);
+      }
+      radio.step++;
+      radio.next += beat;
     }
   }
   // the syllables of a voice, written into the audio clock a little ahead of time
@@ -460,9 +538,22 @@ export function createMusic(sound) {
     },
     // the soft pad of the last scene (0 = off .. 1)
     setCalm(v) { want.calm = v; },
+    // the old radio: its song (true) or only the hiss between two stations (false)
+    setRadioSong(on) { want.radioSong = !!on; },
+    // a short quiet motif, played once (Chapter 6, after the choice): 'forgive' rises, 'neutral' stays open, 'leave' falls
+    motif(kind = 'forgive') {
+      if (!ready()) return;
+      const t0 = A.ctx.currentTime + 0.15;
+      const notes = kind === 'leave' ? [69, 67, 64, 62, 60, 57] : kind === 'neutral' ? [64, 67, 69, 67, 64, 62] : [60, 64, 67, 69, 67, 72];
+      notes.forEach((m, i) => {
+        const t = t0 + i * 0.66 + (i === notes.length - 1 ? 0.35 : 0);
+        tone('sine', hz(m), t, i === notes.length - 1 ? 4.2 : 2.2, 0.045, motifBus, 0.02);
+        tone('triangle', hz(m + 12), t, 1.1, 0.01, motifBus, 0.01);
+      });
+    },
     // ---- everything silent for a moment (seconds) ----
     silence(seconds) { if (ready()) { silentUntil = A.ctx.currentTime + seconds; for (const b of [tapeBus, padBus]) b.gain.setTargetAtTime(0, A.ctx.currentTime, 0.015); } },
     // stop all story sound (leaving the story)
-    reset() { want.track = 0; want.tension = 0; want.heart = 0; want.stars = 0; want.calm = 0; want.zero = 0; tape.onEnd = null; },
+    reset() { want.track = 0; want.tension = 0; want.heart = 0; want.stars = 0; want.calm = 0; want.zero = 0; want.radioSong = true; tape.onEnd = null; },
   };
 }
