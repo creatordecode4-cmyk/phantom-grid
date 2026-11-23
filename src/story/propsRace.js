@@ -160,8 +160,8 @@ export function raceProps(H) {
           P([[0.33, 0.58], [0.42, 0.66]]); c.stroke(); P([[0.67, 0.58], [0.58, 0.66]]); c.stroke();
         };
         c.translate(3, 3); draw(false); c.setTransform(1, 0, 0, 1, 0, 0); draw(true);
-        const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
-        return t;
+        const tt = new THREE.CanvasTexture(cv); tt.colorSpace = THREE.SRGBColorSpace; tt.anisotropy = 8;
+        return tt;
       });
       const s = o.size || 0.62;
       const m = new THREE.Mesh(new THREE.PlaneGeometry(s, s), new THREE.MeshStandardMaterial({ map, transparent: true, roughness: 0.32, metalness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
@@ -221,8 +221,9 @@ export function raceProps(H) {
         c.font = `600 ${Math.round(Hh * 0.34)}px Arial, Helvetica, sans-serif`;
         c.fillText(t(o.text || ''), W / 2, o.sub ? Hh * 0.42 : Hh * 0.52);
         if (o.sub) { c.shadowBlur = 8; c.font = `400 ${Math.round(Hh * 0.16)}px Arial, Helvetica, sans-serif`; c.fillText(t(o.sub), W / 2, Hh * 0.75); }
-        const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-        return t;
+        // (named tt: the name t is the text function used just above)
+        const tt = new THREE.CanvasTexture(cv); tt.colorSpace = THREE.SRGBColorSpace; tt.anisotropy = 4;
+        return tt;
       });
       const mat = new THREE.MeshBasicMaterial({ map, transparent: true, opacity: 0.78, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true });
       const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
@@ -262,7 +263,7 @@ export function raceProps(H) {
         const n = Math.max(1, Math.round(L / every));
         for (let k = 0; k <= n; k++) {
           if (i > 0 && k === 0) continue;
-          const t = k / n, x = a.x + dx * t, z = a.y + dz * t;
+          const f = k / n, x = a.x + dx * f, z = a.y + dz * f;
           parts.push({ g: B(0.1, 0.75, 0.1, x, 0.375, z), c: 0x6f7478 });
         }
       }
@@ -283,8 +284,8 @@ export function raceProps(H) {
         const c = cv.getContext('2d');
         c.fillStyle = '#d8a520'; c.fillRect(0, 0, 256, 32);
         c.fillStyle = '#16171a'; for (let x = -32; x < 256; x += 32) { c.beginPath(); c.moveTo(x, 32); c.lineTo(x + 16, 0); c.lineTo(x + 32, 0); c.lineTo(x + 16, 32); c.fill(); }
-        const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.repeat.set(w / 2, 1);
-        return t;
+        const tt = new THREE.CanvasTexture(cv); tt.colorSpace = THREE.SRGBColorSpace; tt.wrapS = THREE.RepeatWrapping; tt.repeat.set(w / 2, 1);
+        return tt;
       });
       g.add(merged([
         // the steel plate and its frame underneath

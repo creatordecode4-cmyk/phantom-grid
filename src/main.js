@@ -302,6 +302,19 @@ async function boot() {
   // (a little to the side, so the lit garage door is not hidden behind the menu)
   const TITLE = GARAGE.ready ? { x: GARAGE.door[0] + 18.6, z: GARAGE.door[2] - 6.5, lookX: GARAGE.door[0] } : { x: 1.6, z: 77, lookX: -17 };
   const camDir = new THREE.Vector3();
+  // ---- free roam: while Zero follows, the rear-view mirror comes up and shows it (a cold bar of light, far behind) ----
+  const zeroMirror = { on: false, n: 0, items: [] };
+  function zeroInMirror() {
+    const zf = !story.active ? zero.follower : null, c = vehicles.state === 'driving' ? vehicles.active : null;
+    if (zf && c && c.isCar) {
+      const fx = Math.sin(c.heading), fz = Math.cos(c.heading), dx = zf.x - c.x, dz = zf.z - c.z;
+      const back = -(dx * fx + dz * fz), left = dx * fz - dz * fx;
+      zeroMirror.items.length = 0;
+      if (back > 2 && back < 150 && zf.lights !== 'off') zeroMirror.items.push({ side: clamp(-left / Math.max(5, back * 0.4), -1, 1), dist: back, kind: 'zero' });
+      if (!zeroMirror.on) { zeroMirror.on = true; ui.mirror(true); }
+      if (++zeroMirror.n % 2 === 0) ui.drawMirror(zeroMirror.items, time);
+    } else if (zeroMirror.on) { zeroMirror.on = false; ui.mirror(false); }
+  }
   // ---- Theo's jacket: Nate wears it, and the sign on the screen ----
   function updateJacket() {
     const f = story.active ? story.flags : save.data.flags;
@@ -386,6 +399,7 @@ async function boot() {
     vehicles.update(dt, input, player, night, time);
     races.update(dt, time, input);
     zero.update(dt, { free: gameMode === 'free' && !story.active, car: vehicles.state === 'driving' ? vehicles.active : null });
+    zeroInMirror();
     updateJacket();
     effects.endFrame(dt);
     // the player character sits in the driver's seat, hands on the wheel (only with the automatic skeleton)

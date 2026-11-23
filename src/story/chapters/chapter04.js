@@ -136,7 +136,8 @@ export default {
           do: 'cutscene',
           shots: [
             // the garage at night, rain on the roof. Nate under the lamp by the door, the race ticket in his hand.
-            { seconds: 6.5, fade: 'in', fadeSeconds: 2.2, cam: { from: { garage: [-0.9, 2.3, -3.4] }, to: { garage: [-1.1, 2.2, -2.8] }, look: { of: 'player', p: [0, 1.25, 0] }, fov: 36 },
+            // (the camera stands deep in the bay, behind the lift: its two yellow posts stay out of the picture)
+            { seconds: 6.5, fade: 'in', fadeSeconds: 2.2, cam: { from: { garage: [-5.5, 2.0, -1.0] }, to: { garage: [-5.3, 1.95, -0.5] }, look: { of: 'player', p: [0, 1.25, 0] }, fov: 36 },
               do: [{ do: 'player', stage: { at: G.nate, face: 90, pose: 'phone' }, mood: 'tired' },
                 { do: 'prop', id: 'ticket', kind: 'ticket', at: { of: 'player', p: [-0.05, 1.24, 0.31] }, face: 270, scale: 1.6 },
                 { do: 'music', calm: 0.5 }] },
@@ -146,8 +147,10 @@ export default {
             { seconds: 4.2, cam: { from: { of: 'player', p: [0.95, 1.8, -0.8] }, to: { of: 'player', p: [0.9, 1.8, -0.7] }, look: { of: 'mace', p: [0, 1.55, 0] }, fov: 32 },
               do: [{ do: 'actorSet', id: 'mace', look: 'player', mood: 'sad' }],
               lines: [{ at: 2.6, do: [{ do: 'actorSet', id: 'mace', look: null, mood: 'stern' }] }] },
-            // Lena is already here, at the bench, her laptop open. She does not look up.
-            { if: { flag: 'chip_holder', is: 'lena' }, seconds: 5.6, cam: { from: { garage: [0.02, 1.06, -3.05] }, look: { of: 'lena', p: [0, 0.68, 0.02] }, fov: 36 },
+            // Lena is already here, at the bench, her laptop open. She does not look up. (The camera sits low on the
+            // bench by her laptop and looks up at her: behind her the bay and Theo's car under the cloth, the lift's
+            // yellow posts stay out of the picture.)
+            { if: { flag: 'chip_holder', is: 'lena' }, seconds: 5.6, cam: { from: { garage: [0.3, 1.02, -1.75] }, look: { of: 'lena', p: [0, 0.72, 0.1] }, fov: 34 },
               lines: [{ at: 1.0, who: 'lena', text: 'c4.lena.race', seconds: 3.4, mood: 'stern' }] },
             { if: { flag: 'chip_holder', is: 'nate' }, seconds: 4.6, cam: { from: { garage: [-1.6, 1.6, 1.4] }, look: { of: 'player', p: [0, 1.5, 0] }, fov: 30 },
               lines: [{ at: 0.5, who: 'wren', text: 'c4.wren.race', seconds: 3.6 }] },
@@ -158,10 +161,10 @@ export default {
             { seconds: 4.6, cam: { from: { garage: [-4.6, 1.5, 1.7] }, to: { garage: [-4.8, 1.45, 1.3] }, look: { garage: [-6.6, 0.7, -3.0] }, fov: 40 },
               do: [{ do: 'actorSet', id: 'mace', look: G.tarp }],
               lines: [{ at: 1.6, who: 'mace', text: 'c4.mace.not_that', seconds: 1.8, mood: 'sad' }] },
-            { seconds: 5.2, cam: { from: { of: 'player', p: [0.85, 1.8, -0.85] }, look: { of: 'mace', p: [0, 1.58, 0] }, fov: 30 },
+            { seconds: 5.2, cam: { from: { of: 'player', p: [0.85, 1.8, -0.85] }, look: { garage: [-0.66, 1.5, 2.07] }, fov: 24 },   // (a little beside Mace: the lift post stays out)
               do: [{ do: 'actorSet', id: 'mace', look: 'player', pose: 'hips', face: 331 }, { do: 'player', stage: { at: G.nate, face: 151, pose: 'idle' } }],
               lines: [{ at: 0.4, who: 'mace', text: 'c4.mace.old', seconds: 3.6, mood: 'stern' }] },
-            { if: { flag: 'chip_holder', is: 'lena' }, seconds: 3.8, cam: { from: { garage: [0.02, 1.06, -3.05] }, look: { of: 'lena', p: [0, 0.68, 0.02] }, fov: 36 },
+            { if: { flag: 'chip_holder', is: 'lena' }, seconds: 3.8, cam: { from: { garage: [0.3, 1.02, -1.75] }, look: { of: 'lena', p: [0, 0.72, 0.1] }, fov: 34 },
               lines: [{ at: 0.3, who: 'lena', text: 'c4.lena.go', seconds: 3.0, mood: 'neutral' }] },
           ],
         },

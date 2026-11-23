@@ -1347,7 +1347,7 @@ Start any of them from the title screen (**MISSIONS**) or with the address optio
 | 4.0 | **THE TICKET** | Quiet. Mace's garage at night: Nate holds the race ticket under the lamp; Mace sees it and says nothing. Lena (if she kept the chip) sits at the bench with her laptop: "Dante will not talk to you. He will race you." Nate asks for a car. Mace looks at the cloth over Theo's car: "Not that one." He gives him his old street car (a worn bronze body, quick, with nitro). Drive to Neon Mile. | `?story=chapter04.0` |
 | 4.1 | **NEON MILE QUALIFIER 1** | A sprint through the city with a 3 minute clock (not last). It teaches the race screen (place, lap, checkpoint gauge) and the **drift boost**. | `?story=chapter04.1` |
 | 4.2 | **NEON MILE QUALIFIER 2** | Three laps **in the rain**: a hairpin by the sea and a **jump** over the road works on the hill. | `?story=chapter04.2` |
-| 4.3 | **NEON MILE QUALIFIER 3** | Three laps through the **night market**: people on the road step back to the sidewalk when the cars come; **Rigg**, a Chrome Wolf, tries to push Nate into a wall. Only a win counts. | `?story=chapter04.3` |
+| 4.3 | **NEON MILE QUALIFIER 3** | Four short laps through the **night market**: people on the road step back to the sidewalk when the cars come; **Rigg**, a Chrome Wolf, tries to push Nate into a wall. Only a win counts. | `?story=chapter04.3` |
 | 4.4 | **FACE TO FACE** | Quiet. Dante arrives (a wolf engraved on the hood of his chrome car), wearing **Theo's old blue jacket**, a little small on him. "You have his eyes. You also killed him." **Choice** (with a timer - waiting is also an answer): say nothing, "I am sorry", or "Race me." | `?story=chapter04.4` |
 | 4.5 | **IRONHILL NIGHT RUN** | Quiet moments on the grid: Nate wipes the rain off the windshield, Dante pours a little water on the road. Two laps: up the ramp onto the raised highway, round at the top, down again, and back to **the turn of the prologue**. **Choice:** the risky shortcut (the old diagonal: faster, but it hurts the car) or stay on the road. The last turn is only won on **Theo's line** (stay wide, brake late, cut in at the corner, run out wide); after two misses a faint ghost line shows it. Theo's voice: "Don't slow down, Nate." Then **Zero** comes out of the dark, passes Nate without touching him and stops every other car (they spin and stop, the drivers climb out), stands in front of him with its lights on, and drives away. | `?story=chapter04.5` |
 | 4.6 | **THE ROOF** | Quiet. Dante's car smokes below. On a roof he takes off the jacket: "He did not come for the race, Nate. He was running from someone." **Choice:** hold out your hand for the jacket, or let him keep it. A long fade on the rain. | `?story=chapter04.6` |
@@ -1360,7 +1360,7 @@ Start any of them from the title screen (**MISSIONS**) or with the address optio
 | `dante_response` | `'silence'`, `'sorry'` or `'race'` (4.4). The Chrome Wolves' lines on the grid and Dante's lines on the roof follow it |
 | `took_shortcut` | the old diagonal was taken in the final race (the car is hurt; Dante says so on the roof) |
 | `zero_found_race` | Zero showed itself in the final race. **From now on, in free roam:** drive at full speed for more than 10 seconds and Zero can come out of the dark behind you |
-| `jacket_taken` | Nate took Theo's jacket. From now on it lies folded on the seat next to him in every car, and a small sign of it is on the screen |
+| `jacket_taken` | Nate took Theo's jacket. From now on **he wears it** (in free roam and in the chapters after this one: it is painted over his own clothes, like Dante's), and a small sign of it is on the screen |
 
 It reads Chapter 3's `chip_holder` (Lena is in the garage only when she kept the chip; else WREN speaks).
 
@@ -1395,7 +1395,8 @@ It reads Chapter 3's `chip_holder` (Lena is in the garage only when she kept the
 - **The proximity system** (free roam, after `zero_found_race`): full speed (140 km/h or more, or nearly the top
   speed of a slower car) for more than 10 seconds and a
   black car with one thin cold bar of light can appear about 100 m behind you, on your own track. It stays
-  about 40 m back, never comes closer, never touches you. A deep slow heartbeat is heard while it is near.
+  about 40 m back, never comes closer, never touches you (inside 32 m it can never be faster than you). The
+  rear-view mirror comes up and shows its cold bar of light; a deep slow heartbeat is heard while it is near.
   Slow down below 80 km/h and it lets go: it brakes, its light goes out, it is gone (and stays away at least a
   minute and a half).
 - **The strike** (the final race): it comes down the dark street, passes Nate close on his left, goes through
@@ -1408,7 +1409,7 @@ It reads Chapter 3's `chip_holder` (Lena is in the garage only when she kept the
   player's car in a film scene), `zero`; the `choice` step takes **three** answers; a flag can be compared with
   a word (`{ flag: 'chip_holder', is: 'lena' }`); a prop can be laid on the hood of a car (`hood`); `say` can
   pick one of several lines; `music` has `zero` (the deep heartbeat).
-- **Theo's jacket on Dante** (`src/story/actors.js`): the character models are one mesh with one picture, so
+- **Theo's jacket on Dante, later on Nate** (`src/story/actors.js`): the character models are one mesh with one picture, so
   clothes cannot be swapped. The jacket is **painted over** the body in the shader: chest, back and arms
   (from where the auto rig found the shoulders, elbows and wrists), the model's own folds kept as light and
   shadow, an open front, white stripes at the cuffs and the hem - and the sleeves end a little short.
@@ -1420,6 +1421,14 @@ It reads Chapter 3's `chip_holder` (Lena is in the garage only when she kept the
   and the same half second of slow motion at the brake point (added to the prologue too).
 - Sound: the crowd murmur and cheers, two more engine voices for the nearest rivals, the deep slow heartbeat
   for Zero, silence in the last turn and on the roof.
+- **Draw calls** (MEDIUM): every rival drives one of the model cars (small city car, tuned patrol car, Dante's
+  chrome supercar), so far from you each one is a light version of 2 or 3 draw calls. In a pack only the
+  **nearest** computer car shows its detailed model (about 27 draw calls: doors, glass, wheels with brakes);
+  four on HIGH. Measured by the test robot at MEDIUM: the grid of the final race **217** draw calls, the race
+  159 to 186; the night market 193 on the grid, 166 to 205 in the race (before this, a pack of six cost up to 292).
+- Every race was driven from the grid by the test robot: the race cars join the raised highway 9 m before the
+  barriers that close its ramp in the city, and no race goes down the street of the maglev line (its pillars
+  stand in the middle of the road).
 
 ## Known limits
 
@@ -1463,7 +1472,7 @@ It reads Chapter 3's `chip_holder` (Lena is in the garage only when she kept the
 - CHAPTER 4: the races were driven to the end only by a test robot (with a stronger car than yours), in a
   software renderer. How hard the rivals are, how often a player wrecks, the drift boost and the jump still need
   real play on a phone (SETTINGS → DRIVING changes the rivals). Dante wears Theo's jacket as paint on his body
-  (the model has no separate clothes); in his hands and on the seat the jacket is a simple folded shape. Zero's
+  (the model has no separate clothes), and so does Nate after he takes it; in their hands the jacket is a simple folded shape. Zero's
   strike is moved by the story (not by the car physics) - it always ends the same way.
 - THE STREET BIKE drives with the car physics: the lean is only for the eye. It cannot do wheelies or
   stoppies and does not fall over in a crash; it is not used by traffic or the story (yet). The rider's

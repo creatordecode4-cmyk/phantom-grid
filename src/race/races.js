@@ -27,7 +27,9 @@
 
 const NM_N = -384.5, NM_S = -399.5;     // the middle of the north and the south half of Neon Mile
 
-// the cars of the street racers (tuned versions of the cars of the city)
+// the cars of the street racers (tuned versions of the cars of the city). Every rival drives one of the model
+// cars (small_city_car, tech_patrol_car; Dante the chrome_supercar): they have a light version for when they are
+// not right next to the player, so a pack of six stays cheap to draw. 'or' is only used when a model is missing.
 const TUNED_CITY = { topSpeed: 176, accel: 8.6, grip: 1.04 };
 const TUNED_PATROL = { topSpeed: 204, accel: 9.4, grip: 1.1 };
 const WOLF_CAR = { topSpeed: 210, accel: 9.9, grip: 1.12 };
@@ -42,8 +44,8 @@ export const RACES = {
     rivals: [
       { id: 'q1a', name: 'race.r.vee', kind: 'small_city_car', or: 'sedan', color: [0.78, 0.36, 0.08], skill: 0.55, aggression: 0.2, lane: 1.2, type: TUNED_CITY, dot: '#ff9a4a' },
       { id: 'q1b', name: 'race.r.oslo', kind: 'tech_patrol_car', or: 'sedan', color: [0.16, 0.2, 0.26], skill: 0.62, aggression: 0.3, lane: -1.2, type: TUNED_PATROL, nitro: true, dot: '#7fb4ff' },
-      { id: 'q1c', name: 'race.r.marisol', kind: 'coupe', color: [0.55, 0.06, 0.08], skill: 0.58, aggression: 0.35, lane: 0.6, type: { topSpeed: 190, accel: 9.0, grip: 1.08 }, dot: '#ff6b5a' },
-      { id: 'q1d', name: 'race.r.tam', kind: 'sedan', color: [0.82, 0.82, 0.8], skill: 0.5, aggression: 0.15, lane: -0.6, type: { topSpeed: 182, accel: 8.4, grip: 1.02 }, dot: '#e8e8e8' },
+      { id: 'q1c', name: 'race.r.marisol', kind: 'tech_patrol_car', or: 'sedan', color: [0.55, 0.06, 0.08], skill: 0.58, aggression: 0.35, lane: 0.6, type: { topSpeed: 190, accel: 9.0, grip: 1.08 }, dot: '#ff6b5a' },
+      { id: 'q1d', name: 'race.r.tam', kind: 'small_city_car', or: 'sedan', color: [0.82, 0.82, 0.8], skill: 0.5, aggression: 0.15, lane: -0.6, type: { topSpeed: 182, accel: 8.4, grip: 1.02 }, dot: '#e8e8e8' },
       { id: 'q1e', name: 'race.r.kuro', kind: 'small_city_car', or: 'sedan', color: [0.08, 0.3, 0.22], skill: 0.6, aggression: 0.25, lane: 1.8, type: TUNED_CITY, dot: '#5fe0a0' },
     ],
     crowds: [
@@ -58,17 +60,18 @@ export const RACES = {
   q2: {
     title: 'race.q2', laps: 3, startS: 0, need: 5,
     route: [
-      [150, NM_S, 5.5], [-90, NM_S, 5.5], [-101, NM_S, 7], [-101, -198, 7], [87, -198, 7], [87, -312, 7], [181, -312, 7], [181, NM_N, 7],
+      // (not down the street of the maglev line, x 87: its pillars stand in the middle of that road)
+      [150, NM_S, 5.5], [-90, NM_S, 5.5], [-101, NM_S, 7], [-101, -198, 7], [181, -198, 7], [181, NM_N, 7],
       [262, NM_N, 5.5], [277, -386.5, 6], [280.5, -392, 5], [277, -397.5, 6], [262, NM_S, 5.5],
     ],
     // the bridge: steel ramps over the old drain cut on the street north of Neon Mile
     jumps: [{ at: [-101, -282], face: 0, len: 6, h: 0.75, w: 6.6, kick: 0.2 }],
     rivals: [
       { id: 'q2a', name: 'race.r.oslo', kind: 'tech_patrol_car', or: 'sedan', color: [0.16, 0.2, 0.26], skill: 0.66, aggression: 0.35, lane: -1.2, type: TUNED_PATROL, nitro: true, dot: '#7fb4ff' },
-      { id: 'q2b', name: 'race.r.marisol', kind: 'coupe', color: [0.55, 0.06, 0.08], skill: 0.64, aggression: 0.4, lane: 0.8, type: { topSpeed: 192, accel: 9.2, grip: 1.08 }, dot: '#ff6b5a' },
+      { id: 'q2b', name: 'race.r.marisol', kind: 'tech_patrol_car', or: 'sedan', color: [0.55, 0.06, 0.08], skill: 0.64, aggression: 0.4, lane: 0.8, type: { topSpeed: 192, accel: 9.2, grip: 1.08 }, dot: '#ff6b5a' },
       { id: 'q2c', name: 'race.r.vee', kind: 'small_city_car', or: 'sedan', color: [0.78, 0.36, 0.08], skill: 0.6, aggression: 0.25, lane: 1.5, type: TUNED_CITY, dot: '#ff9a4a' },
       { id: 'q2d', name: 'race.r.kuro', kind: 'small_city_car', or: 'sedan', color: [0.08, 0.3, 0.22], skill: 0.62, aggression: 0.3, lane: -1.8, type: TUNED_CITY, dot: '#5fe0a0' },
-      { id: 'q2e', name: 'race.r.ash', kind: 'sedan', color: [0.3, 0.3, 0.33], skill: 0.58, aggression: 0.2, lane: 0, type: { topSpeed: 184, accel: 8.6, grip: 1.03 }, dot: '#b8b8c0' },
+      { id: 'q2e', name: 'race.r.ash', kind: 'small_city_car', or: 'sedan', color: [0.3, 0.3, 0.33], skill: 0.58, aggression: 0.2, lane: 0, type: { topSpeed: 184, accel: 8.6, grip: 1.03 }, dot: '#b8b8c0' },
     ],
     crowds: [
       { a: [110, -407.5], b: [200, -407.5], n: 40, face: 0, flare: true },
@@ -80,25 +83,26 @@ export const RACES = {
 
   // ======================================================================= 3. the night market: people on the road, a crew car that pushes
   q3: {
-    title: 'race.q3', laps: 3, startS: 0, need: 1, people: 60,
+    title: 'race.q3', laps: 4, startS: 0, need: 1, people: 60,     // (a short loop of 600 m: four laps)
     route: [
-      [-195, -150, 7], [-195, -84, 7], [87, -84, 7], [87, -198, 7], [-195, -198, 7],
+      // (the loop turns south at x -7: the street at x 87 has the pillars of the maglev line in the middle)
+      [-195, -150, 7], [-195, -84, 7], [-7, -84, 7], [-7, -198, 7], [-195, -198, 7],
     ],
     rivals: [
       { id: 'crew', name: 'race.r.crew', kind: 'tech_patrol_car', or: 'sedan', color: [0.06, 0.065, 0.075], tint: null, skill: 0.74, aggression: 0.95, push: true, lane: 0.5, type: WOLF_CAR, nitro: true, dot: '#c9d2dc' },
       { id: 'q3b', name: 'race.r.oslo', kind: 'tech_patrol_car', or: 'sedan', color: [0.16, 0.2, 0.26], skill: 0.68, aggression: 0.35, lane: -1.2, type: TUNED_PATROL, nitro: true, dot: '#7fb4ff' },
-      { id: 'q3c', name: 'race.r.marisol', kind: 'coupe', color: [0.55, 0.06, 0.08], skill: 0.66, aggression: 0.45, lane: 1.0, type: { topSpeed: 194, accel: 9.3, grip: 1.09 }, dot: '#ff6b5a' },
+      { id: 'q3c', name: 'race.r.marisol', kind: 'tech_patrol_car', or: 'sedan', color: [0.55, 0.06, 0.08], skill: 0.66, aggression: 0.45, lane: 1.0, type: { topSpeed: 194, accel: 9.3, grip: 1.09 }, dot: '#ff6b5a' },
       { id: 'q3d', name: 'race.r.vee', kind: 'small_city_car', or: 'sedan', color: [0.78, 0.36, 0.08], skill: 0.62, aggression: 0.25, lane: 1.8, type: TUNED_CITY, dot: '#ff9a4a' },
       { id: 'q3e', name: 'race.r.kuro', kind: 'small_city_car', or: 'sedan', color: [0.08, 0.3, 0.22], skill: 0.64, aggression: 0.3, lane: -1.8, type: TUNED_CITY, dot: '#5fe0a0' },
     ],
     crowds: [
       // the market: people on both sidewalks, and small groups ON the road that step back when the cars come
-      { a: [-170, -74.5], b: [60, -74.5], n: 60, face: 180, flare: true },
-      { a: [-170, -93.5], b: [60, -93.5], n: 54, face: 0 },
+      { a: [-170, -74.5], b: [20, -74.5], n: 56, face: 180, flare: true },
+      { a: [-170, -93.5], b: [-16, -93.5], n: 46, face: 0 },
       // (z -91..-77 is the road: these step back onto the sidewalks, north or south)
       { a: [-120, -86], b: [-110, -82], n: 6, clear: true, go: [0, 9.5], face: 90 },
-      { a: [-20, -82], b: [-10, -86], n: 6, clear: true, go: [0, -9.5], face: 270 },
-      { a: [40, -86], b: [48, -82], n: 5, clear: true, go: [0, 9.5], face: 90 },
+      { a: [-50, -82], b: [-40, -86], n: 6, clear: true, go: [0, -9.5], face: 270 },
+      { a: [-82, -86], b: [-74, -82], n: 5, clear: true, go: [0, 9.5], face: 90 },
       { a: [-203.5, -165], b: [-203.5, -130], n: 16, face: 270 },
     ],
   },
@@ -136,8 +140,8 @@ export const RACES = {
       { id: 'dante', name: 'name.dante', kind: 'chrome_supercar', or: 'coupe', color: [0.6, 0.62, 0.66], skill: 0.93, aggression: 0.55, lane: 1.0, nitro: true, type: { topSpeed: 226, accel: 11.4, grip: 1.2 }, dot: '#ffd36a' },
       { id: 'wolf1', name: 'race.r.wolf1', kind: 'tech_patrol_car', or: 'sedan', color: [0.06, 0.065, 0.075], skill: 0.8, aggression: 0.65, lane: -1.4, type: WOLF_CAR, nitro: true, dot: '#c9d2dc' },
       { id: 'wolf2', name: 'race.r.wolf2', kind: 'tech_patrol_car', or: 'sedan', color: [0.22, 0.23, 0.25], skill: 0.78, aggression: 0.6, lane: 1.6, type: WOLF_CAR, nitro: true, dot: '#c9d2dc' },
-      { id: 'wolf3', name: 'race.r.wolf3', kind: 'coupe', color: [0.1, 0.1, 0.11], skill: 0.76, aggression: 0.55, lane: -0.5, type: { topSpeed: 208, accel: 9.8, grip: 1.12 }, nitro: true, dot: '#c9d2dc' },
-      { id: 'f5', name: 'race.r.marisol', kind: 'coupe', color: [0.55, 0.06, 0.08], skill: 0.72, aggression: 0.35, lane: 0.4, type: { topSpeed: 200, accel: 9.6, grip: 1.1 }, nitro: true, dot: '#ff6b5a' },
+      { id: 'wolf3', name: 'race.r.wolf3', kind: 'small_city_car', or: 'sedan', color: [0.1, 0.1, 0.11], skill: 0.76, aggression: 0.55, lane: -0.5, type: { topSpeed: 208, accel: 9.8, grip: 1.12 }, nitro: true, dot: '#c9d2dc' },
+      { id: 'f5', name: 'race.r.marisol', kind: 'tech_patrol_car', or: 'sedan', color: [0.55, 0.06, 0.08], skill: 0.72, aggression: 0.35, lane: 0.4, type: { topSpeed: 200, accel: 9.6, grip: 1.1 }, nitro: true, dot: '#ff6b5a' },
     ],
     crowds: [
       // the start and finish: both sidewalks of the street at the lights (behind the guardrail on the west side)

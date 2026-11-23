@@ -41,10 +41,13 @@ export function createRaces(G) {
   let R = null;
   const H = layout.highway;
   // the raised highway: the same "arena" as in the story (its own ground and crash walls)
-  const HWY = { minX: H.minX + 0.45, maxX: H.maxX - 0.45, minZ: H.rampBottomZ - 4, maxZ: 760, ground: (x, z) => H.heightAt(z) };
-  // the way UP the ramp from Neon Mile (in the city the ramp is a wall; a race car that drives into its
-  // foot, heading north, joins the highway)
-  const rampGate = { arena: HWY, test: (v) => !!R && R.byCar.has(v) && v.x > H.minX + 0.6 && v.x < H.maxX - 0.6 && v.z > HWY.minZ + 0.05 && v.z < H.rampBottomZ - 0.4 && Math.cos(v.heading) > 0.2 };
+  const HWY = { minX: H.minX + 0.45, maxX: H.maxX - 0.45, minZ: H.rampBottomZ - 4, maxZ: 760, ground: (x, z) => H.heightAt(z), entry: null };
+  // the way UP the ramp from Neon Mile (in the city the ramp is closed by a row of barriers 1.5 m before its foot;
+  // a race car that drives into the 9 m in front of it, heading north, joins the highway before it touches them,
+  // and stays on it while it is there heading north - it only leaves the highway going south)
+  const inEntry = (v) => v.x > H.minX + 0.6 && v.x < H.maxX - 0.6 && v.z > H.rampBottomZ - 9 && v.z < H.rampBottomZ - 0.4 && Math.cos(v.heading) > 0.2;
+  HWY.entry = inEntry;
+  const rampGate = { arena: HWY, test: (v) => !!R && R.byCar.has(v) && inEntry(v) };
   const groundAt = (x, z) => { const g = city.groundHeight(x, z); return x > H.minX && x < H.maxX && z > H.rampBottomZ ? Math.max(g, H.heightAt(z)) : g; };
 
   // ---- the ghost of Theo's line (the final race, after two misses): a faint trail on the road ----

@@ -72,6 +72,12 @@ export function createZero({ vehicles, drivers, music, sound, effects, flags }) 
     if (!ctx.free) { gone(); return; }                         // (a mission starts: it is not part of it)
     if (!Z.leaving) drivers.update();                          // (his track for the shadow driver: the story is not running it now)
     const d = c ? Math.hypot(v.x - c.x, v.z - c.z) : 999;
+    // IT NEVER COMES CLOSE: inside 32 m it cannot be faster than him (when he stops dead - a crash - it simply
+    // stands still out there; nobody sees how it braked)
+    if (d < 32) {
+      const ps = c ? Math.hypot(c.vx, c.vz) : 0, zs = Math.hypot(v.vx, v.vz), cap = Math.max(0, ps - 1);
+      if (zs > cap) { const k = zs > 0 ? cap / zs : 0; v.vx *= k; v.vz *= k; v.forward = Math.min(v.forward, cap); }
+    }
     Z.slow = !c || kmh < 80 ? Z.slow + dt : 0;
     if (!Z.leaving && (!allowed || Z.slow > 0.8)) letGo(v);
     if (Z.leaving) {
@@ -269,6 +275,7 @@ export function createZero({ vehicles, drivers, music, sound, effects, flags }) 
   return {
     update, strike, stare, stopStrike, gone,
     get car() { return S.v || Z.v; },
+    get follower() { return Z.v; },        // (the one behind him in free roam: main.js shows it in the mirror)
     get striking() { return S.active; },
     get stage() { return S.stage; },
     takeEvents() { return S.events.splice(0); },

@@ -218,7 +218,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       const nodes = [...v.tilt.children, ...v.group.children].filter((o) => !before.has(o) && o !== v.tilt && o !== v.driver);
       let on = true;
       simple.visible = false;
-      v.setDetail = (want) => { if (want === on) return; on = want; simple.visible = !want; for (const o of nodes) o.visible = want; };
+      v.detailOn = true;
+      v.setDetail = (want) => { if (want === on) return; on = want; v.detailOn = want; simple.visible = !want; for (const o of nodes) o.visible = want; };
     }).catch((e) => console.warn('[vehicles] could not show the detailed model of', v.kind, e)); };
   }
   // THE STREET BIKE (bike.js): the body, a front that turns about the raked steering head, two detailed wheels.
@@ -474,11 +475,18 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       // computer drivers (the Guard, the racers) show their detailed model only right next to the player
       // (when they ram you, they do not look like soft blobs any more)
       if (v.noDetail && d > 14) { if (v.setDetail) v.setDetail(false); continue; }
-      v.lodD = d; byDist.push(v);
+      // (a computer driver that shows its detailed model already counts 3 m nearer: two cars side by side do not
+      // swap back and forth between the two versions)
+      v.lodD = d; v.lodKey = v.noDetail && v.detailOn ? d - 3 : d; byDist.push(v);
     }
-    byDist.sort((a, b) => a.lodD - b.lodD);
+    byDist.sort((a, b) => a.lodKey - b.lodKey);
+    // computer drivers in a pack (a race grid, the rivals around him): only the nearest one shows the detailed
+    // model (four on HIGH): a detailed car costs about 27 draw calls, the light one 2 or 3
+    const npcMax = budget >= 8 ? 4 : 1;
+    let npc = 0;
     byDist.forEach((v, i) => {
-      const want = v === active || (i < budget && v.lodD < 20);
+      let want = v === active || (i < budget && v.lodD < 20);
+      if (want && v.noDetail && v !== active) want = ++npc <= npcMax;
       if (want && !v.detailAsked && (v === active || v.lodD < 10)) v.needDetail();
       if (v.setDetail) v.setDetail(want);
     });
@@ -618,7 +626,9 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       if (v.x < A.minX + r0) { v.x = A.minX + r0; if (v.vx < 0) { impact = Math.max(impact, -v.vx * 0.7); v.vx *= -0.2; lever -= 0.25 * Math.sign(v.vz || 1); } }
       if (v.x > A.maxX - r0) { v.x = A.maxX - r0; if (v.vx > 0) { impact = Math.max(impact, v.vx * 0.7); v.vx *= -0.2; lever += 0.25 * Math.sign(v.vz || 1); } }
       if (v.z > A.maxZ - 2) { v.z = A.maxZ - 2; if (v.vz > 0) v.vz *= -0.2; }
-      if (v.z < A.minZ) v.arena = null;                 // out of the arena (the foot of the ramp): the normal city rules again
+      // out of the arena (the foot of the ramp): the normal city rules again (not while the car is still in the
+      // arena's way in, heading into it: entry)
+      if (v.z < A.minZ && !(A.entry && A.entry(v))) v.arena = null;
       if (impact < 0.05) return null;
       hitOut.impact = impact; hitOut.lever = lever;
       return hitOut;

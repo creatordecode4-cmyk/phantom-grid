@@ -69,6 +69,7 @@ export function createSpectators(scene) {
   };
   mat.customProgramCacheKey = () => 'spectators';
   const mesh = new THREE.InstancedMesh(geo, mat, MAX);
+  mesh.name = 'spectators';
   mesh.count = 0;
   mesh.frustumCulled = false;
   mesh.castShadow = false; mesh.receiveShadow = false;
@@ -96,6 +97,7 @@ export function createSpectators(scene) {
     fragmentShader: `varying float vA; void main() { vec2 d = gl_PointCoord - 0.5; float r = dot(d, d); float a = smoothstep(0.25, 0.0, r) * vA; gl_FragColor = vec4(vec3(0.75, 0.85, 1.0) * a, a); }`,
   });
   const phones = new THREE.Points(pGeo, pMat);
+  phones.name = 'spectatorPhones';
   phones.frustumCulled = false;
   phones.renderOrder = 15;
   scene.add(phones);
