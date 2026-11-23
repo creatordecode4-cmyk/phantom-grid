@@ -4,7 +4,8 @@
 // and right change places) in a rounded mirror at the top of the screen, under the film bar. It is only made while a
 // film shot asks for it: one more picture of the city costs time on a phone, so it is small and made every second frame.
 //   const mirror = createRearView({ renderer, scene, camera });
-//   mirror.set(car, { x }) ... mirror.set(null)    (the story step "rearView"; x: where across the top, -1 left .. 1 right)
+//   mirror.set(car, { x, look }) ... mirror.set(null)   (the story step "rearView"; x: where across the top, -1 left ..
+//                                                        1 right; look: [x, y, z] the mirror is turned to, else straight back)
 //   mirror.render(dt)                             (every frame, just before the picture of the game is drawn)
 import * as THREE from 'three';
 
@@ -33,7 +34,7 @@ void main() {
 }`;
 
 export function createRearView({ renderer, scene, camera }) {
-  let rt = null, cam = null, quad = null, car = null, fade = 0, frame = 0, across = 0;
+  let rt = null, cam = null, quad = null, car = null, fade = 0, frame = 0, across = 0, aim = null;
   // (made the first time it is used: most games never need it)
   function build() {
     rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, depthBuffer: true, stencilBuffer: false });
@@ -53,7 +54,9 @@ export function createRearView({ renderer, scene, camera }) {
     const back = (car.info && car.info.backZ) || -2.4;
     const s = Math.sin(h), c = Math.cos(h), d = back - 0.3;
     cam.position.set(x + s * d, y + 2.15, z + c * d);
-    cam.lookAt(x + s * (d - 20), y + 1.55, z + c * (d - 20));
+    // (turned to one place - the door he leaves - as a driver turns the mirror; else straight back along the road)
+    if (aim) cam.lookAt(aim[0], aim[1], aim[2]);
+    else cam.lookAt(x + s * (d - 20), y + 1.55, z + c * (d - 20));
     cam.layers.mask = camera.layers.mask;
   }
 
@@ -69,7 +72,7 @@ export function createRearView({ renderer, scene, camera }) {
   return {
     get active() { return !!car; },
     // car: the car whose mirror it is, or null (the mirror fades out)
-    set(v, o = {}) { if (v && !rt) build(); car = v || null; if (v) across = Math.max(-1, Math.min(1, o.x || 0)); },
+    set(v, o = {}) { if (v && !rt) build(); car = v || null; if (v) { across = Math.max(-1, Math.min(1, o.x || 0)); aim = o.look || null; } },
     render(dt) {
       if (!rt) return;
       fade = car ? Math.min(1, fade + dt / 0.6) : Math.max(0, fade - dt / 0.4);
