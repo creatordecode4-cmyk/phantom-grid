@@ -1813,7 +1813,8 @@ their own pictures are shown as clearly as possible, and the eyes and the mouths
   is sharpened - an unsharp mask on the brightness only (no colored fringes), only inside the pieces of the picture,
   very small differences left alone (the compression noise does not grow), limited (no halos) and weaker next to
   the edge of a piece (seams do not stand out). The eyes, brows, lips, wrinkles, seams and folds of the clothes
-  come out. Anisotropic filtering (8x) on all of its pictures.
+  come out. Anisotropic filtering (8x) on all of its pictures. It is done once per character (when a chapter
+  loads its people), in three short steps with a break between them, so the game never stops for long.
 - CLEAN SEAMS: the empty space around each piece of the picture is filled with the piece's own edge colors
   (6 points wide), so no dark lines along the seams.
 - THE SCREEN PICTURE (`src/world/postfx.js`): MEDIUM and HIGH now sharpen the finished picture (contrast adaptive
@@ -1841,7 +1842,10 @@ with no halos.
 Cost (MEDIUM, the same test before and after, two runs each, in the test robot's software renderer): the same draw
 calls (164), and the drawing time is the same within the measuring noise - the game view with 4 people 1367 ->
 1385 ms per picture (+1%), a face close-up 1355 -> 1391 (+3%), an arm close-up 1320 -> 1265 (-4%); the same test
-run twice differs by up to 6%. The work on each character's picture is done once, while it loads.
+run twice differs by up to 6%. The work on each character's picture is done once, while the character is loaded:
+two short pauses of the game of about 60-90 ms each in the test robot (on a phone a few times more), about as
+long as the cleaning of the face that was there before; in one piece it was 130-270 ms. (Tried and dropped: doing
+it in the background worker - in the test robot the game then paused longer, not shorter.)
 
 ### The traffic and the cars left on the road (`src/ai/traffic.js`, `src/main.js`)
 

@@ -32,9 +32,11 @@
 // ---------------------------------------------------------------------------
 // THREE: the three.js module. A: the analysis of autoRig.js (bones, skin weights). geo: the finished geometry
 // (with skinIndex / skinWeight). material: the character's material. face: what readFace found (or null).
-// opts: { sharpen: 0..1.5 (0 = off) }. Returns the detail for applyCharacterLook, or null.
+// opts: { sharpen: 0..1.5 (0 = off) }. Returns (a promise of) the detail for applyCharacterLook, or null. The work on
+// the picture is done in three steps with a short break between them (the game draws a picture meanwhile), so the
+// game never stops for long while a character is prepared.
 // ---------------------------------------------------------------------------
-export function prepareCharacter(THREE, A, geo, material, face, opts = {}) {
+export async function prepareCharacter(THREE, A, geo, material, face, opts = {}) {
   if (!A || !geo || !geo.attributes.position || !geo.attributes.skinIndex) return null;
   const pos = geo.attributes.position.array, count = pos.length / 3;
   const si = geo.attributes.skinIndex.array, sw = geo.attributes.skinWeight.array;
@@ -112,7 +114,9 @@ export function prepareCharacter(THREE, A, geo, material, face, opts = {}) {
             }
           }
         }
+        await breath();
         sharpenInside(px, W, H, inside, amount);
+        await breath();
         padPieces(px, W, H, inside, 6);
         g2.putImageData(data, 0, 0);
         sharpened = true;
@@ -144,6 +148,9 @@ export function prepareCharacter(THREE, A, geo, material, face, opts = {}) {
 
   return { eyes, sharpened };
 }
+
+// a short break: the game goes on for a moment (draws a picture) before the next step
+const breath = () => new Promise((r) => setTimeout(r, 0));
 
 // Unsharp mask on the brightness: px (RGBA bytes) is changed in place where inside[i] is 1. The blur only uses
 // inside points (normalized), so the edges of the pieces of the picture get no halo from the empty space.

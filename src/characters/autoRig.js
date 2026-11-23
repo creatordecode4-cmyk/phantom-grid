@@ -1071,7 +1071,8 @@ export async function autoRig(THREE, model, opts = {}) {
   // close up: a sharper picture with clean seams, wet eyes (characterDetail.js). opts.detail: false = off
   let detail = null;
   if (opts.look !== false && opts.detail !== false) {
-    try { detail = prepareCharacter(THREE, A, geo, material, face, { sharpen: opts.sharpen }); } catch (e) { detail = null; console.warn('[autoRig] no close-up detail:', e); }
+    await wait();                                          // (a breath for the game between the face and the picture)
+    try { detail = await prepareCharacter(THREE, A, geo, material, face, { sharpen: opts.sharpen }); } catch (e) { detail = null; console.warn('[autoRig] no close-up detail:', e); }
   }
   rig.detail = detail;
   // the light on a character: a soft fill light from the camera, a matt head (characterLook.js). opts.look: false = off
