@@ -2115,8 +2115,19 @@ raised up to XL in SETTINGS → SUBTITLES). In 8.1, 8.2 and 8.4 you only drive.
 Only the highway and the tunnel are active: traffic is limited to 8 cars, people to 0, at most two Phantoms at once and
 two drones. The safehouse is a set of its own (the city is not drawn while it is shown). The long film scenes stay on
 the dark stretch north of the city (z 540 to 1385), where few buildings are in view. Measured draw calls:
-PERF_TABLE
-The limit asked for was 250.
+
+
+| Mission | Draw calls | Where they are highest |
+|---|---|---|
+| 8.0 The pilot key | 28 - 41 | the wide shot of the room with the TV |
+| 8.1 Be seen | 162 - 246 | the film shot of Zero going past, still near the city's edge |
+| 8.2 Side by side | 104 - 230 | the first wide shot, with the city behind the two cars |
+| 8.3 Talk | 21 - 241 | the wide shots of the two cars (21: the memory, in the small set) |
+| 8.4 Run | 165 - 217 | the start of the chase, near the city |
+| 8.5 Driver | 68 - 219 | the two cars coming out of the tunnel |
+
+The limit asked for was 250. Frame times were not measured: the robot's software renderer is far slower than a phone's
+graphics chip, so 60 fps has to be checked on a real phone.
 
 ### What was built for it
 
