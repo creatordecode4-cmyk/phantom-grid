@@ -787,8 +787,9 @@ export default {
         { do: 'actor', id: 'vance', model: 'Adrian_Vance', name: 'name.vance', at: s(0, 0, -14), face: 0, fixed: true, mood: 'smirk', look: null },
         { do: 'prop', id: 'laptop', kind: 'laptop', at: SAFE.laptop, face: 0 },
         // on the work table: Harrow's master card, and Theo's mixtape
-        { do: 'prop', id: 'card', kind: 'accessCard', at: s(0.98, 0.768, -1.62), face: 200 },
-        { do: 'prop', id: 'tape', kind: 'tape', at: s(1.5, 0.768, -1.56), face: 160 },
+        // (turned so their words read the right way up from where Nate stands and the camera looks)
+        { do: 'prop', id: 'card', kind: 'accessCard', at: s(0.98, 0.768, -1.62), face: 20 },
+        { do: 'prop', id: 'tape', kind: 'tape', at: s(1.5, 0.768, -1.56), face: 340 },
         { do: 'player', stage: { at: s(SAFE.nate[0], 0, SAFE.nate[1]), face: 110, pose: 'idle' }, mood: 'tired', look: SAFE.tv },
         { do: 'allow', enter: 'none', move: false },
         { do: 'wanted', stars: 0 },

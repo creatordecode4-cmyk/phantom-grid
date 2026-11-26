@@ -347,12 +347,14 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
     gate.prop.traverse((m) => { if (m.isMesh) { m.geometry.dispose(); if (m.material && m.material.dispose) m.material.dispose(); } });
     gate.prop = null;
   }
-  // can the gate be hacked now? (Nate driving toward it, 130 to 320 m before it)
+  // can the gate be hacked now? (Nate driving toward it, 130 to 320 m before it - and in front of at least one Guard
+  // car: the gate drops behind him, so with all of them ahead it would trap nobody and the one hack would be wasted)
   function gateReady() {
     const pc = playerCar();
     if (!on || gate.z === null || gate.state !== 'open' || gate.spent || !pc) return false;
     const d = (gate.z - pc.z) * dir;
-    return d > 130 && d < 320 && Math.cos(pc.heading - roadH()) > 0.5;
+    if (!(d > 130 && d < 320 && Math.cos(pc.heading - roadH()) > 0.5)) return false;
+    return G.some((g) => g.state === 'active' && (pc.z - g.v.z) * dir > 4);
   }
   function gateUpdate(dt) {
     if (gate.z === null) return;
