@@ -219,6 +219,14 @@ export function createNightRun({ scene, vehicles, sound, music, effects, weather
       v.forward = sp; v.vx = Math.sin(v.heading) * sp; v.vz = Math.cos(v.heading) * sp;
       v.lights = mode === 'appear' ? 'off' : 'bar';
       if (mode === 'appear') Z.glow = 0; else Z.glow = 1;
+    } else if (o.snap && pc && (mode === 'cruise' || mode === 'beside')) {
+      // (snap, at a cut: it is put right beside him again at his speed, however far back the chase left it)
+      const v = Z.v;
+      v.x = clamp(pc.x + besideSide(pc) * 4.2, H.minX + 1.6, H.maxX - 1.6); v.z = pc.z; v.heading = pc.heading;
+      v.y = vehicles.world.ground(v.x, v.z);
+      const sp = speedOf(pc);
+      v.forward = sp; v.vx = Math.sin(v.heading) * sp; v.vz = Math.cos(v.heading) * sp;
+      Z.glow = 1;
     }
     Z.mode = mode; Z.t = 0; Z.away = null; Z.blockT = 0; Z.target = null;
     if (o.speed) Z.base = o.speed / KMH;

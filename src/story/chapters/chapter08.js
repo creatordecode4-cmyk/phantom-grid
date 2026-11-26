@@ -56,14 +56,21 @@ const RUN_CAR = (at, more = {}) => [
 // (on the middle of the dashboard: the radio's dial on top, the tape deck under it - empty until the end - and the
 //  pilot key lying on the console, plugged in)
 const AT_DIAL = [0, -0.1, -0.185], AT_DECK = [0, -0.175, -0.18], AT_KEY = [0.07, -0.245, -0.235];
+// (in Mace's old street car - when Theo's car is not Nate's - the dash is the plain one every car has: the key lies on
+//  the front of the middle console, and a dark housing behind the radio covers the car's own glowing screen)
+const THEO = { flag: 'theo_car' }, AT_KEY_M = [0, -0.432, -0.17];
 const DASH = [
-  { do: 'prop', id: 'key', kind: 'pilotKey', in: 'run', at: { cabinAt: 'dash', p: AT_KEY }, rot: [0, 0.3, 0] },
-  { do: 'prop', id: 'dial', kind: 'radioDial', in: 'run', at: { cabinAt: 'dash', p: AT_DIAL } },
+  { do: 'prop', id: 'key', kind: 'pilotKey', in: 'run', at: { cabinAt: 'dash', p: AT_KEY }, rot: [0, 0.3, 0], if: THEO },
+  { do: 'prop', id: 'key', kind: 'pilotKey', in: 'run', at: { cabinAt: 'dash', p: AT_KEY_M }, rot: [0, 0.3, 0], if: { not: THEO } },
+  { do: 'prop', id: 'dial', kind: 'radioDial', in: 'run', at: { cabinAt: 'dash', p: AT_DIAL }, if: THEO },
+  { do: 'prop', id: 'dial', kind: 'radioDial', plate: [0.38, 0.16, 0.008, 0.034], in: 'run', at: { cabinAt: 'dash', p: AT_DIAL }, if: { not: THEO } },
   { do: 'prop', id: 'deck', kind: 'deck', empty: true, in: 'run', at: { cabinAt: 'dash', p: AT_DECK } },
 ];
 const plus = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+// a place by the pilot key, in either car (more: an offset from the key)
+const KEY_AT = (more = [0, 0, 0]) => ({ either: { if: THEO, then: { cabin: 'run', at: 'dash', p: plus(AT_KEY, more) }, else: { cabin: 'run', at: 'dash', p: plus(AT_KEY_M, more) } } });
 // the faint green of the pilot key in the car
-const KEY_LIGHT_CAR = { do: 'light', at: { cabin: 'run', at: 'dash', p: plus(AT_KEY, [0, 0.08, -0.05]) }, color: 0x46ff9c, power: 0.32, range: 1.1 };
+const KEY_LIGHT_CAR = { do: 'light', at: KEY_AT([0, 0.08, -0.05]), color: 0x46ff9c, power: 0.32, range: 1.1 };
 // the faint warm glow of the dash lamps (the end: the key is dark, the radio is dead)
 const DASH_GLOW = { do: 'light', at: { cabin: 'run', at: 'dash', p: plus(AT_DECK, [0.02, 0.13, -0.12]) }, color: 0xffc58a, power: 0.4, range: 1.0 };
 // Zero's glow on Nate's car while it rides beside him
@@ -87,7 +94,7 @@ const C = {
   nateClose: { from: { cabin: 'run', at: 'pass', p: [0.12, 0.0, 0.38] }, to: { cabin: 'run', at: 'pass', p: [0.16, 0.0, 0.3] }, look: { cabin: 'run', at: 'eye', p: [0, -0.03, 0] }, fov: 30, near: NEAR },
   povZero: { from: { cabin: 'run', at: 'eye', p: [0, 0.0, -0.02] }, look: { of: 'zero', p: [0, 0.85, 0.5] }, fov: 46, near: NEAR },
   dial: { from: { cabin: 'run', at: 'mid', p: [0.04, -0.17, 0.36] }, to: { cabin: 'run', at: 'mid', p: [0.03, -0.18, 0.42] }, look: { cabin: 'run', at: 'dash', p: AT_DIAL }, fov: 34, near: 0.03 },
-  key: { from: { cabin: 'run', at: 'mid', p: [0.1, -0.24, 0.38] }, to: { cabin: 'run', at: 'mid', p: [0.1, -0.26, 0.44] }, look: { cabin: 'run', at: 'dash', p: AT_KEY }, fov: 32, near: 0.03 },
+  key: { from: { cabin: 'run', at: 'mid', p: [0.1, -0.24, 0.38] }, to: { cabin: 'run', at: 'mid', p: [0.1, -0.26, 0.44] }, look: KEY_AT(), fov: 32, near: 0.03 },
   hands: { from: { cabin: 'run', at: 'pass', p: [0.08, 0.05, 0.15] }, look: { cabin: 'run', at: 'wheel', p: [0, 0, 0] }, fov: 38, near: NEAR },
   side: { from: { of: 'run', p: [-4.2, 1.05, 0.8] }, to: { of: 'run', p: [-4.0, 1.05, -0.4] }, look: { of: 'run', p: [2.2, 0.85, 0.4] }, fov: 44 },
   // (out on his left, past the lane Zero comes up in: it goes by between the camera and his car)
@@ -310,7 +317,7 @@ export default {
           do: 'cutscene', keep: true, shots: talk([
             { seconds: 4.2, cam: C.dial, do: [BACK, { do: 'music', radio: 0.75, calm: 0 }, { do: 'propSet', id: 'dial', call: { tune: 0.81, setSignal: 1 } }, { do: 'sound', name: 'tune' }],
               lines: [{ at: 1.6, do: [{ do: 'sound', name: 'radioClick' }] }] },
-            { seconds: 3.8, cam: C.key, do: [{ do: 'propSet', id: 'key', call: { setLink: 1 } }, { do: 'light', at: { cabin: 'run', at: 'dash', p: plus(AT_KEY, [0, 0.08, -0.05]) }, color: 0x46ff9c, power: 0.9, range: 1.4 }],
+            { seconds: 3.8, cam: C.key, do: [{ do: 'propSet', id: 'key', call: { setLink: 1 } }, { do: 'light', at: KEY_AT([0, 0.08, -0.05]), color: 0x46ff9c, power: 0.9, range: 1.4 }],
               lines: [{ at: 1.0, who: 'wren', text: 'c8.wren.unlocked' }] },
             // WREN, for two sentences, in a voice more like Theo's
             { seconds: 7.6, cam: C.nateFace, do: [{ do: 'player', mood: 'afraid' }],
@@ -526,7 +533,8 @@ export default {
             //  stops in front of these cameras, not far up the road)
             { seconds: 5.0, cam: { from: [LANE[0] + 3.5, 10.4, 1395], to: [LANE[0] + 3.0, 10.2, 1388], look: { of: 'run', p: [0, 0.8, 0] }, fov: 44 },
               do: [{ do: 'run', rewind: 1345 }, { do: 'vehicleSet', id: 'run', speed: 62 },
-                { do: 'run', cruise: { x: LANE[2] + 0.8, speed: 30 } }, { do: 'run', zero: 'cruise' }, KEY_LIGHT_CAR, { do: 'music', silence: 1.2 }],
+                // (Zero comes out of the tunnel beside him: wherever the chase left it, the cut puts it there)
+                { do: 'run', cruise: { x: LANE[2] + 0.8, speed: 30 } }, { do: 'run', zero: 'cruise', snap: true }, KEY_LIGHT_CAR, { do: 'music', silence: 1.2 }],
               lines: [{ at: 2.4, do: [{ do: 'run', cruise: null }, { do: 'autoDrive', brake: 0.7 }] }] },
             // Zero turns away: its glow goes back into the orange of the tunnel
             { seconds: 7.5, cam: { from: { of: 'run', p: [0.2, 1.9, -4.5] }, look: [LANE[0], 9.0, 1300], fov: 40 },

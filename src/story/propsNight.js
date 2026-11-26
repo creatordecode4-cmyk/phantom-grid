@@ -53,9 +53,15 @@ export function nightProps(H) {
     },
 
     // ---- THE RADIO OF THE CAR ----
-    radioDial() {
+    // (o.plate: [width, height, up, depth] - a dark housing behind it, as if an old radio was fitted over the car's own
+    //  screen; it covers that screen and reaches back to the dashboard)
+    radioDial(o = {}) {
       const g = new THREE.Group();
       const face = box(0.15, 0.06, 0.02, std(0x0d0e10, 0.45, 0.4)); g.add(face);
+      if (o.plate) {
+        const [w, h, up, d] = o.plate;
+        const plate = box(w, h, d, std(0x111214, 0.7, 0.3)); plate.position.set(0, up, 0.01 + d / 2); g.add(plate);
+      }
       // the round scale: an amber ring, numbers as small ticks, and the needle
       const amber = std(0xffa640, 0.35, 0, 1.6);
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.019, 0.023, 32), amber);

@@ -2213,6 +2213,7 @@ in a film shot from the side it looked like a white sheet lying on the road.
   every sound (Theo's voice with its delay, the static, the pad, the engine ticks) still need a real phone. Chapter 7 is
   not written: its flags are only set by the `flags=` address option for now. Theo's voice is a made sound without
   words (the words are in the subtitles). In the talk the story drives both cars - you do not steer while Theo speaks.
-  The cars do not really stop at a cut: the road is moved back under them (you do not see it). Theo's car has no floor
-  inside, so in a very low shot inside the cabin the road could show through.
+  The cars do not really stop at a cut: the road is moved back under them (you do not see it). Inside Theo's car (made
+  in code) the carpet stops at the pedals: a camera very low in the footwell could see the road under them (the film
+  shots of this chapter do not look there).
 - Shop names, signs and adverts are invented. No real brands are used.

@@ -195,6 +195,9 @@ export function createStory(G) {
     if (a.safe) return world.safehouse ? world.safehouse.at(a.safe[0], a.safe[1], a.safe[2]) : [0, 0, 0];
     if (a.parking) return PARKING.ready ? PARKING.at(a.parking[0], PARKING.curb + a.parking[1], a.parking[2]) : [0, 0, 0];
     if (a.roof) return [a.roof[0], roofAt(a.roof[0], a.roof[1]) + (a.up || 0), a.roof[1]];
+    // (one of two places, by a condition: { either: { if, then, else } } - e.g. a spot in the dash that is somewhere
+    //  else in another car)
+    if (a.either) return pt(test(a.either.if) ? a.either.then : a.either.else);
     if (a.cabin) {
       const v = car(a.cabin);
       if (!v) return [0, 0, 0];
@@ -1558,7 +1561,7 @@ export function createStory(G) {
     // (forget what happened on the road before: a tunnel passed in an earlier mission is not this mission's tunnel)
     if (s.start || s.forget) for (const e of [...events]) if (e.startsWith('run:')) events.delete(e);
     if (s.stop) { R.stop(); for (const id of ['zero', 'ph1', 'ph2', 'ph3']) cars.delete(id); return null; }
-    if (s.zero) { R.zero(s.zero, { speed: s.speed, gap: s.gap }); if (R.zeroCar) { cars.set('zero', R.zeroCar); R.zeroCar.storyId = 'zero'; } }
+    if (s.zero) { R.zero(s.zero, { speed: s.speed, gap: s.gap, snap: s.snap }); if (R.zeroCar) { cars.set('zero', R.zeroCar); R.zeroCar.storyId = 'zero'; } }
     if ('phantoms' in s) { R.phantoms(s.phantoms, { back: s.back }); for (const v of R.phantomCars) cars.set(v.storyId, v); }
     if ('drones' in s) R.drones(s.drones);
     if ('cruise' in s) R.cruise(s.cruise);
