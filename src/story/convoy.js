@@ -170,8 +170,9 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
           }
           if (passLane >= 0) { tx = laneX(passLane, dir); want = speedOf(pc) + 6; }
           else { tx = v.x; want = Math.min(want, speedOf(pc) - 1.2); }
-          // (Nate right in front of it in its lane: it brakes - it never drives into him from behind)
-          if (gap > -12 && Math.abs(pc.x - v.x) < 2.6) want = Math.min(want, speedOf(pc) - 1.2);
+          // (Nate in front of it in its lane: it brakes - it never drives into him from behind, and it first pulls
+          //  out of his lane before it speeds up to go round him)
+          if (gap > -30 && Math.abs(pc.x - v.x) < 2.6) want = Math.min(want, speedOf(pc) - 1.2);
         } else {
           // ahead of him: it moves over into his lane to shut it (not at once: a quick driver can still go round it),
           // and it keeps its own place by the truck - it does not run away when he comes up fast, so he can hit it
