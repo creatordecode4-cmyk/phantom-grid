@@ -30,6 +30,19 @@ export function harrowProps(H) {
   const { std, box, tex, textTexture, glowTexture } = H;
   const glowMat = (color, opacity) => new THREE.MeshBasicMaterial({ map: tex('harrowGlow', glowTexture), color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
   const cyl = (r0, r1, h, seg, mat) => new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, seg), mat);
+  // AN OLD PHONE'S HANDSET: a rounded handle along y, the two round cups (the ear one at +y, the mouth one at -y) on
+  // its +x side, each turned a little toward the other, like the real ones. Three draws.
+  const handsetShape = () => {
+    const g = new THREE.Group(), plastic = std(0x1e1f21, 0.42, 0.1);
+    const handle = new THREE.Mesh(new THREE.CapsuleGeometry(0.0135, 0.15, 4, 10), plastic);
+    handle.scale.set(1, 1, 0.8); g.add(handle);
+    for (const sy of [-1, 1]) {
+      const cup = cyl(0.027, 0.021, 0.034, 18, plastic);
+      cup.rotation.z = -Math.PI / 2 - sy * 0.15;           // (its wide round face toward +x)
+      cup.position.set(0.016, sy * 0.088, 0); g.add(cup);
+    }
+    return g;
+  };
 
   // red and white stripes (the boom, the barriers)
   const stripes = () => tex('harrowStripes', () => {
@@ -175,10 +188,10 @@ export function harrowProps(H) {
       const base = box(0.2, 0.06, 0.16, plastic); base.position.y = 0.03; g.add(base);
       const slope = box(0.2, 0.04, 0.08, plastic); slope.position.set(0, 0.065, 0.03); slope.rotation.x = -0.3; g.add(slope);
       const plate = cyl(0.04, 0.04, 0.006, 24, dial); plate.position.set(0, 0.088, 0.04); plate.rotation.x = -0.3; g.add(plate);
-      // the handset: a group, so it can be lifted
-      const hs = new THREE.Group(); hs.position.set(0, 0.11, -0.03); g.add(hs);
-      const bar = box(0.2, 0.026, 0.04, plastic); hs.add(bar);
-      for (const sx of [-1, 1]) { const cup = box(0.05, 0.04, 0.055, plastic); cup.position.set(sx * 0.085, -0.012, 0); hs.add(cup); }
+      // the handset on its cradle: a group, so it can be lifted (the same handset as the one held at the ear, lying
+      // along x with its cups down)
+      const hs = new THREE.Group(); hs.position.set(0, 0.112, -0.03); g.add(hs);
+      const lying = handsetShape(); lying.rotation.z = -Math.PI / 2; hs.add(lying);
       // the coiled cord (a few loops)
       const cord = new THREE.Mesh(new THREE.TorusGeometry(0.012, 0.004, 6, 10), plastic); cord.position.set(-0.11, 0.04, -0.03); cord.rotation.y = Math.PI / 2; g.add(cord);
       g.userData.lift = (k) => { hs.position.set(0, 0.11 + k * 0.18, -0.03 + k * 0.08); hs.rotation.set(k * 0.6, 0, k * -0.5); };
@@ -187,12 +200,7 @@ export function harrowProps(H) {
       return g;
     },
     // the handset alone (held at the ear: its middle is where the hand holds it)
-    handset() {
-      const g = new THREE.Group(), plastic = std(0x1e1f21, 0.45, 0.1);
-      const bar = box(0.026, 0.2, 0.04, plastic); g.add(bar);
-      for (const sy of [-1, 1]) { const cup = box(0.04, 0.05, 0.055, plastic); cup.position.set(0.012, sy * 0.085, 0); g.add(cup); }
-      return g;
-    },
+    handset() { return handsetShape(); },
 
     // ---- THE BACK DOORS OF THE PRISON TRUCK ----
     // (built on the truck's back face: the doors' bottom edge in the middle, x across, y up, -z out behind the truck)

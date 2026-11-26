@@ -732,6 +732,18 @@ export function createAnimator(THREE, rig, opts = {}) {
   // put a hand at a place (character space); the elbow points along (px, py, pz). The arm is then solved like
   // a real one, so a hand that should rest ON something really is there - it does not hang in the air.
   function handAt(q, x, y, z, px, py, pz) { const A = hand[q]; A.on = true; A.hasPole = true; A.p.set(x, y, z); A.pole.set(px, py, pz); }
+  // A PHONE AT THE RIGHT EAR (Chapter 9): the elbow hangs down, the wrist is under the ear, the palm lies on the cheek,
+  // the thumb points up to the ear and the fingers close round the handle - so a handset held in this hand lies along
+  // the line from the thumb to the little finger: the earpiece on the ear, the mouthpiece by the mouth.
+  // up, fwd: a little higher / further forward (when the body leans over a desk)
+  // (the numbers were found by measuring Rask in Chapter 9: the earpiece ends up about 1 cm from his ear)
+  const phoneDir = V().set(0, 0.85, 1).normalize(), phonePalm = V().set(-1, 0, 0);
+  function phoneHand(up = 0, fwd = 0) {
+    handAt(1, -0.115 * k, hipsPos.y + (0.625 + up) * k, hipsPos.z + (0.17 + fwd) * k, -0.45, -0.85, 0.2);
+    // (the palm is on the -x side of a right hand's own frame: x = -1 turns it in, toward the face)
+    setTarget('hand_R', phoneDir, phonePalm);
+    fingers(1, 62, 24);
+  }
   // CARRY: a box in front of the belly, held with both hands - a palm flat on each side of it, the fingers forward
   // and a little down. The box sits where this body can hold it (it rides up and down with the hips while
   // walking), and the arms are solved to its sides like real arms (the elbows down and out), so the hands are ON
@@ -794,11 +806,10 @@ export function createAnimator(THREE, rig, opts = {}) {
       fingers(1, 55); setDelta('neck', 14 * DEG, 0, 0); setDelta('head', 16 * DEG, -6 * DEG, 0);
     }
     else if (pose === 'call') {
-      // a phone held at the right ear (the handset of an old desk phone, Chapter 9): the elbow out and down, the
-      // head bent a little toward it
+      // a phone held at the right ear (the handset of an old desk phone, Chapter 9), the head bent a little toward it
       armAngles(0, 4, 9, 8, 12);
-      handAt(1, -0.13 * k, hipsPos.y + 0.6 * k, hipsPos.z + 0.05 * k, -0.85, -0.35, 0.3);
-      fingers(1, 62); setDelta('neck', 6 * DEG, 0, -4 * DEG); setDelta('head', 5 * DEG, 0, -6 * DEG);
+      phoneHand();
+      setDelta('neck', 6 * DEG, 0, -4 * DEG); setDelta('head', 5 * DEG, 0, -6 * DEG);
     }
     else if (pose === 'aim') {
       // both hands forward on a rifle, the body turned a little, the head down on the sight
@@ -814,10 +825,12 @@ export function createAnimator(THREE, rig, opts = {}) {
   // a desk: low down, the back bends to it); lean: both hands on the edge of the bench, leaning on them; give: a hand
   // held out (a key in it); callDesk: the left hand flat on a desk, the right one holding a phone at the ear.
   const wq = V(), wsh = V();
-  // (a hand never reaches further than the arm: a point too far is pulled toward the shoulder)
+  let reachBend = 0;              // (how far the back is bent forward right now: set by handsPose)
+  // (a hand never reaches further than the arm: a point too far is pulled toward the shoulder - where the shoulder
+  // really is: a back bent forward over a desk brings it forward and a little down, so the hand still reaches the desk)
   function reachable(out, q) {
-    const s = SIDES[q].s;
-    wsh.set(s * 0.18 * k, hipsPos.y + 0.5 * k, hipsPos.z);
+    const s = SIDES[q].s, a = reachBend * 27 * DEG;
+    wsh.set(s * 0.18 * k, hipsPos.y + 0.5 * k * Math.cos(a), hipsPos.z + 0.5 * k * Math.sin(a));
     const d = out.distanceTo(wsh), max = (upperLen + foreLen) * 0.97;
     if (d > max) out.sub(wsh).multiplyScalar(max / d).add(wsh);
     return out;
@@ -830,8 +843,12 @@ export function createAnimator(THREE, rig, opts = {}) {
     const wx = W.x, wy = W.y, wz = W.z;
     // (low work: the back bends to it)
     const bend = clamp((hipsPos.y + 0.15 * k - wy) / (0.55 * k), 0, 1);
-    // (the hand on a car's roof is higher than the hips: no bend; on a desk it bends like the other poses)
-    if (pose !== 'give') { setDelta('spine1', bend * 18 * DEG, 0, 0); setDelta('chest', bend * 9 * DEG, 0, 0); }
+    // (the hand on a car's roof is higher than the hips: no bend; on a desk it bends like the other poses - further:
+    // to lay a hand flat on a desk a standing body leans well over it, else the arm is too short and the hand hangs
+    // in the air above the desk)
+    const lean = pose === 'putDown' ? 2 : pose === 'roof' || pose === 'callDesk' ? 1.55 : 1;
+    if (pose !== 'give') { setDelta('spine1', bend * 18 * lean * DEG, 0, 0); setDelta('chest', bend * 9 * lean * DEG, 0, 0); }
+    reachBend = pose !== 'give' ? bend * lean : 0;
     if (pose === 'work') {
       const a = Math.sin(t * 2.1) * 0.012 * k, b = Math.cos(t * 1.7) * 0.01 * k;
       handTo(0, wx + 0.12 * k + a, wy + b, wz - 0.02 * k, 0.8, -0.6, -0.3);
@@ -862,8 +879,8 @@ export function createAnimator(THREE, rig, opts = {}) {
       setDelta('spine1', 13 * DEG, 0, 0); setDelta('neck', 10 * DEG, 0, 0); setDelta('head', 12 * DEG, 0, 0);
     } else if (pose === 'callDesk') {
       handTo(0, wx, wy + 0.02 * k, wz, 0.9, -0.5, -0.2);
-      handAt(1, -0.13 * k, hipsPos.y + 0.6 * k - bend * 0.06 * k, hipsPos.z + 0.05 * k + bend * 0.1 * k, -0.85, -0.35, 0.3);
-      fingers(0, 10, 12, 8); fingers(1, 62);
+      phoneHand(-bend * 0.06, bend * 0.2);
+      fingers(0, 10, 12, 8);
       setDelta('neck', 8 * DEG, 0, -4 * DEG); setDelta('head', 8 * DEG, 0, -6 * DEG);
     } else if (pose === 'give') {
       const gx = workAt ? wx : -0.1 * k, gy = workAt ? wy : hipsPos.y + 0.27 * k, gz = workAt ? wz : hipsPos.z + 0.4 * k;

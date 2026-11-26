@@ -2147,6 +2147,123 @@ fades out softly at its edges (`makeBeamTexture` in `src/vehicles/vehicle.js`) -
 in a film shot from the side it looked like a white sheet lying on the road. Theo's car got a closed floor up to the
 firewall (`src/vehicles/theoCar.js`), for the close-ups in the dark cabin.
 
+## Chapter 9: HARROW'S LINE (version 12.0)
+
+The night after Chapter 8. Tense, then quiet: a betrayal, a rescue, and one still scene. Short plain lines, nobody
+gives speeches; the feelings are in two objects - Rask's stopped watch and Harrow's daughter's drawing.
+
+### The missions, and how to start each one
+
+Start any of them from the title screen (**MISSIONS**) or with the address option.
+
+| # | Mission | What happens | Address option |
+|---|---|---|---|
+| 9.0 | **THE ROUTE** | Lena's safehouse, short. Dante is in a Meridian Guard prison convoy; tomorrow they move him to KVI. Lena has no route. Viktor Rask stands by the door in his wet coat: "My men know the roads the Guard uses." A close-up of the child's watch on his wrist, stopped at 4:12. If Nate once told him "I work for anyone who can pay" (`rask_stance` *paid*) Rask is friendly and sure of himself ("This one is on me"); otherwise stiff and brief. **Choice: trust Rask's road, or say you don't** (`trusted_rask`). If Mace was forgiven he offers to drive a second van (after the silent ending of Chapter 6 he offers quietly) - **choice: take his help or go alone** (`support_driver`); if Nate left Mace, Lena says Mace is not an option. | `?story=chapter09.0` (Rask friendly: `&flags=rask_stance:paid`; no Mace: `&flags=mace_forgiven:false`) |
+| 9.1 | **TAKE THE ROUTE** | The crew's courier van up the ramp onto Ironhill Highway ("Rask's men opened the ramp for us"), north in the rain, with a few cars on the road. Two KVI Phantoms come out of the tunnel the other way, lights flashing, and go past - they ignore Nate (the Zero rule is off in the story). Pull over at the ambush point, lights off. Through the windshield: the Guard's bridge gate far ahead, before the tunnel. Then headlights behind: the convoy goes past - a tech car in front, the armored prison truck, two escorts, a drone with a searchlight. | `?story=chapter09.1` |
+| 9.2 | **HIT THE CONVOY** | Take out the two escorts, then stop the truck - without hurting Dante. Only driving, no weapons: **ram** an escort a few times, **spin** it with a hit at its back corner, **block** it (get in front of it and brake until it gives up), or **hack the bridge gate**: get in front of the escorts before the tunnel, press the big HACK THE GATE button - while your finger draws, the van keeps its lane and speed by itself and the world runs slower - and the gate drops behind you; every Guard car behind it stops at the boom. The escort on your side defends the truck: it moves into your lane, brake-checks you and leans into you when you come alongside. With both escorts out, get in front of the truck in its lane and slow down: the driver will not ram a car with a prisoner in the back, so it slows with you (it tries to go round a few times). If Mace drives support, his van comes up fast, gets in front of the truck and slows it with you. The tech car does not fight: leave it, ram it, or trap it. Hit the truck hard and the DANTE bar drops - at zero the mission fails. When the truck comes out of the far end of the tunnel, a short dip to black and the chase is back on the long straight. | `?story=chapter09.2` (alone: `&flags=support_driver:none`) |
+| 9.3 | **THE TRAP** | The truck stands in the rain, the van across its nose. Then lights behind them, coming fast, and lights ahead: KVI Phantoms on both sides, drones dropping red flares on the road, a roadblock across the lanes. Nate on the radio: "Rask. They were waiting for us." Static. Then nothing. "Rask?" A long silence on his face. | `?story=chapter09.3` |
+| 9.4 | **HARROW** | Captain Sloane Harrow comes in her own patrol car. Inside it, on the dash: her daughter Ivy's drawing (Chapter 2), in close-up. She gets out in the rain: "Nate Calloway." - "My orders are to take you in. Tonight." Then she looks at her tablet: KVI's **Phantom list**, the people whose minds will be moved into Phantoms - one line is red: HARROW, SLOANE. "They put my name on it." - "All units. Stand down." - "Captain?" - "I said stand down." The Phantoms' lights go out one by one; the drones turn away. If she let the girl go in Chapter 3, a Tidewalker child stands on a roof by the highway and waves; Harrow almost smiles. **Choice: say nothing, "Thank you", or "Do not do this for me"** (`harrow_reply`). | `?story=chapter09.4` (no girl: `&flags=harrow_let_girl_go:false`) |
+| 9.5 | **DANTE FREE** | Harrow opens the truck's heavy back doors herself. Dante steps out of the dark - thinner, slower - in Theo's old blue jacket if Nate let him keep it in Chapter 4, else in an old Chrome Wolves jacket. He nods at Nate: "You came." Harrow holds out a small glowing card - the KVI tower master card: "KVI tower. Every door." - "Do not make me regret this." She drives away, south, into the rain. | `?story=chapter09.5` (Theo's jacket: `&flags=jacket_taken:false`) |
+| 9.6 | **RASK AND MILA** | No gameplay. Rustwater Docks, before dawn, Rask's office over the yards (the docks map on the wall, the old armchair he sat in all night with a blanket on its arm, a cold mug on the desk). He puts Mila's core (Chapter 5), its small blue light in his fingers, into a small old machine on his desk. A soft warm light wakes on its round screen. A girl's voice: "Hello." ... "Who are you?" She does not know him. He keeps his hand flat on the desk, the stopped watch on its wrist. The music stops. After a long silence he takes off the watch and lays it down with his hand, gently, face up, beside the other hand. Then he lifts the old handset to his ear and calls Nate - the camera stays on the watch and his hand - "Tell me where to come." (and, if Nate did not trust him: "I knew you would not trust me."). A soft pad starts with his words. | `?story=chapter09.6` (not trusted: `&flags=trusted_rask:false`) |
+| 9.7 | **ASCEND** | The safehouse before dawn. Dante in his chair again, Lena, Mace (if he is with them). On the TV, low, through the glass: Vance - "Project Ascend begins at midnight tomorrow. Every HALO backup will be migrated to KVI Continuity, for your safety." Lena whispers: "After that, every mind in this city belongs to him." Nate looks at the master card on the table, then at the mixtape. Cut to black. | `?story=chapter09.7` |
+
+### Chapter 9 choices and flags
+
+| Flag | Set when |
+|---|---|
+| `trusted_rask` | `true` ("We take your road.") or `false` ("I don't trust you.") |
+| `support_driver` | `'mace'` (Mace drives the second van) or `'none'` (Nate went alone, or Mace was not an option) |
+| `ambush_style` | how the ambush was done: `'ram'` (the tech car was rammed or spun out), `'hack'` (the bridge gate was hacked, or it trapped the tech car), `'gentle'` (the tech car was left alone) |
+| `rask_betrayed_nate` | `true`, in the trap |
+| `harrow_reply` | `'silent'`, `'thanks'` or `'notforme'` (silence is chosen when no button is pressed in 12 seconds) |
+| `harrow_switched`, `harrow_access_card` | `true`, when Harrow lets them go and gives Nate the card |
+| `rask_redeemed` | `true`, when Rask calls |
+| `ascend_announced` | `true`, at the end |
+
+Uses from earlier chapters: `rask_stance` (Chapter 5), `mace_forgiven` (Chapter 6), `harrow_let_girl_go` (Chapter 3),
+`jacket_taken` (Chapter 4), `dante_captured` (Chapter 7, not written yet: started from the mission list it is `true`).
+
+### The convoy (`src/story/convoy.js`)
+
+One system runs the ambush: the **armored prison truck** (the armored van made bigger, with Dante inside as its load:
+hard hits lower the DANTE bar, like the crates of Chapter 5), **two escort coupes** (the one nearest to Nate defends
+the truck; how an escort goes out: rammed - a few solid hits -, spun by a hit at its back corner, blocked - held under
+35 km/h by Nate in front of it -, or trapped behind the closed gate), the **tech car** in front (it does not fight),
+one **surveillance drone** over the truck, the **bridge gate** (a Guard gantry with a striped boom over the northbound
+road, closed by the hack after Nate has passed under it), **Mace's van**, and the dip to black that puts the chase back
+on the long straight when the truck comes out of the tunnel. The convoy goes **north**, away from the city: the chase
+looks along the long dark road and into the tunnel, not at the towers.
+
+### Mobile UX
+
+The convoy panel at the top: the DANTE bar (it shakes red on a hit) and one small car icon per Guard car (the escorts,
+the tech car; a crossed-out icon when one is out; the one to go for is lit). A marker beam over the car to go for. The
+hack button is big (112 px) and sits at the top right under the map, away from the steering buttons; while you draw,
+the van drives itself. HOLD TO SKIP in every film scene; subtitles with the speaker's name (the TV and Mila's machine
+have their own colours); the choices are big buttons. The driving assists of the settings work as before.
+
+### Sound (made in code)
+
+Rain, the engines, the escorts' sirens and the drone, tyre squeals, the radio crackle; a tense pulse during the ambush;
+silence in the trap (only rain and the hiss of the flares) and at the watch; the gate's motor, the truck's heavy door;
+Mila's voice small and close out of the machine; the old phone lifted and dialled; Vance on the TV, low, with a faint
+glass echo. A soft pad starts only when Rask speaks.
+
+### Performance (measured in the test robot's software renderer at MEDIUM)
+
+At most six cars besides Nate's van in a scene (the convoy: truck, two escorts, tech car, Mace's van; the trap: the
+truck, three Phantoms, Harrow's car, Mace's van) and two drones. The roadblock (all its barriers, stripes and lamps)
+and the flares are drawn with instancing: three draws each. LOW quality keeps half the rain streaks and now also
+weakens the lamps' light on the wet road (`wetReflections` in `src/config.js`). Measured draw calls:
+
+| Mission | Draw calls | Where they are highest |
+|---|---|---|
+| 9.0 The route | 28 - 50 | the room with Rask, Lena and Mace |
+| 9.1 Take the route | 78 - 168 | on the ramp, with the city around it |
+| 9.2 Hit the convoy | 92 - 189 | the chase, with the escorts and Mace's van near the city's edge |
+| 9.3 The trap | 114 - 162 | the shots looking back at the Phantoms |
+| 9.4 Harrow | 106 - 189 | the wide shot of the trap from behind the truck |
+| 9.5 Dante free | 100 - 199 | behind the truck, looking north past all the cars |
+| 9.6 Rask and Mila | 73 - 156 | the office, with the yards in its window |
+| 9.7 Ascend | 29 - 44 | the TV |
+
+The limit asked for was 250. Frame times were not measured: the robot's software renderer is far slower than a phone's
+graphics chip, so 60 fps has to be checked on a real phone.
+
+### Quality pass (after the first play-tests)
+
+The film scenes were looked at frame by frame in close-ups, and what looked wrong was fixed:
+
+- **The phone at the ear.** A real grip (`phoneHand` in `src/characters/proceduralAnim.js`, used by the poses `call`
+  and `callDesk`): the elbow hangs down, the palm lies on the cheek, the thumb points to the ear and the fingers close
+  round the handle. The hand's place was found by measuring: the earpiece ends up about 1 cm from Rask's ear and the
+  mouthpiece points at his mouth. The handset is now a rounded handle with two round cups (the same three draws).
+- **Hands on a desk.** A standing body now leans well over a desk to lay a hand on it (the poses `roof`, `callDesk`
+  and `putDown`), and the check that keeps a hand within the arm's reach follows the shoulder when the back bends.
+  Before, Rask's hand hung in the air above the desk; now it lies on it, and he lays the watch down with his hand.
+- **The stopped watch on the wrist.** It sat under the thick knit cuff of his sweater, so it could not be seen. The
+  `stopWatch` prop has a `band` option: a wider band that goes over the cuff, the small dial the same size. Things held
+  in a hand (the core, the watch) now sit in the palm, toward the fingers.
+- **The office.** The docks map on the wall (as in Chapter 5) instead of a blank board, his old armchair with a
+  blanket, a cold mug (`mug` with `cold`: no steam). The lamp and the machine's light are softer: up close they burnt
+  his hands and the desk to white.
+- **The gate hack in the test.** The robot "pressed" the HACK button with a mouse click, but the game's buttons answer
+  a touch (`pointerdown`), so in the robot's runs the hack never started. The game itself was fine; the robot now
+  presses it like a finger does.
+
+### What was built for it
+
+`src/story/convoy.js` (the convoy: the truck, the escorts' defence, how a Guard car goes out, the gate, Mace's van, the
+dip to black, the hack's autopilot), `src/story/propsHarrow.js` (the bridge gate, the instanced roadblock, the falling
+flares, the truck's back doors, Mila's core, the old machine with its little screen, the desk phone and its handset, the
+master card, the Phantom list), the steps `convoy`, `convoyGoal` and `forget` in the story engine, the convoy panel and
+the big HACK button (`src/ui/storyUI.js`, `index.html`), what every computer-driven car felt from a hit
+(`hitFelt` in `src/vehicles/vehicle.js`, read by the convoy and by the truck's load in `src/vehicles/cargo.js`), the TV
+voice and Mila's voice (`src/audio/music.js`), the gate motor, the heavy door, the core's click and the phone
+(`src/audio/sound.js`), the poses `wave` (the girl on the roof), `call` and `callDesk` (a phone at the ear, standing
+or with the other hand on a desk) and the deeper lean over a desk in `src/characters/proceduralAnim.js`, a trim colour for jackets (`src/story/actors.js`: the Chrome Wolves jacket), and
+`src/story/chapters/chapter09.js` (only data).
+
 ## Known limits
 
 - Traffic cars drive on lanes: when hit they are shoved along the lane and a little to the side, stop and
@@ -2161,6 +2278,11 @@ firewall (`src/vehicles/theoCar.js`), for the close-ups in the dark cabin.
   no climbing animation: climbing onto a pontoon is a quick step up. The drone has no camera
   of its own and does not collide with trees or lamps, only with buildings.
 - The police only chase by car; they do not get out and there is no shooting (on purpose).
+- Chapter 9: the prison truck's back doors are a part laid over the back of the model: they swing open onto a dark
+  inside (there is no cell to see). The escorts' defence and the hits that put them out were tuned with a test robot
+  that drives by numbers (it took out both escorts by ramming, and stopped the truck with Dante unhurt), not by a person
+  on a phone - expect a round of tuning. The TV voice and Mila's voice are made in code, without words (the words are
+  in the subtitles). The girl on the roof is shown close up: from the road her roof's edge hides her.
 - Chapter 2: the voices of the news screens, the radio and the drone loudspeakers are made in code
   and have no words (the words are in the subtitles). The press conference is seen without shadows
   (the shadows follow the player, who is far away in the alley at that moment).

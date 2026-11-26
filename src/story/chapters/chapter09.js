@@ -56,10 +56,11 @@ const SAFE = {
   mace: s(-1.9, 0, -1.85),          // by the window, his back to the wall
 };
 const LENA = (more = {}) => ({ do: 'actor', id: 'lena', model: 'Lena_Marchetti', name: 'name.lena', at: SAFE.lena, face: 180, pose: 'sit', floorBelow: 0.5, fixed: true, mood: 'stern', look: SAFE.laptop, ...more });
-// VIKTOR RASK, with the child's watch that stopped at 4:12 on his left wrist
+// VIKTOR RASK, with the child's watch that stopped at 4:12 on his left wrist (worn right at the wrist joint: a little
+// further up the arm it disappears under the knit cuff of his sweater)
 const RASK_SAFE = [
   { do: 'actor', id: 'rask', model: 'Viktor_Rask', name: 'name.rask', at: SAFE.rask, face: 172, pose: 'hold', fixed: true, look: null, mood: 'stern' },
-  { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_L', p: [0, -0.04, 0], wrist: true },
+  { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_L', p: [0, 0.004, 0], wrist: true, band: 1.4 },
 ];
 const MACE = (at, face, more = {}) => ({ do: 'actor', id: 'mace', model: 'Mace_Doyle', name: 'name.mace', at, face, pose: 'crossed', fixed: true, look: null, mood: 'tired', ...more });
 // (Mace is here when he was forgiven, or when Nate stayed silent; 'neutral' = the quiet offer)
@@ -175,26 +176,36 @@ const BACK = {
 // ---- Rask's office over the docks (Chapter 5: the desk by the window, floor 6.4 m up) ----
 // (everything he touches is within an old man's reach: the desk's near edge is at z -350.05, its top 7.18 m up)
 const OFF = {
-  rask: [-838, 6.4, -349.84],                  // standing at the desk, on its north side, facing the window
-  hands: [-838.24, 7.2, -350.14],              // his left hand flat on the desk (the watch on that wrist)
-  machine: [-837.9, 7.18, -350.36],            // in front of him, a little to his right
-  slot: [-837.82, 7.392, -350.38],             // the core in the machine's socket
-  phone: [-837.34, 7.18, -350.22],
-  watchDesk: [-838.08, 7.188, -350.16],        // the watch, set down face up, beside his left hand
+  rask: [-838, 6.4, -349.97],                  // standing close at the desk, on its north side, facing the window
+  hands: [-838.24, 7.2, -350.1],               // his left hand flat on the desk (the watch on that wrist)
+  machine: [-837.74, 7.18, -350.36],           // in front of him, to his right
+  slot: [-837.66, 7.392, -350.38],             // the core in the machine's socket
+  phone: [-837.26, 7.18, -350.2],
+  watchDesk: [-838.0, 7.188, -350.16],        // the watch laid down: in front of him, by his left hand (his right hand reaches it)
   nate: [-832, 6.4, -347],                     // (Nate is not in this scene: he stays out of sight)
 };
 const RASK_OFFICE = [
   { do: 'actor', id: 'rask', model: 'Viktor_Rask', name: 'name.rask', at: OFF.rask, face: 180, pose: 'phone', fixed: true, look: null, mood: 'sad' },
-  { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_L', p: [0, -0.04, 0], wrist: true },
-  { do: 'prop', id: 'core', kind: 'haloCore', on: 'rask', bone: 'hand_R', p: [0.0, -0.075, 0.03] },
+  { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_L', p: [0, 0.004, 0], wrist: true, band: 1.4 },
+  // (in the hand: +y of a hand bone runs toward the fingers, the palm is on the -x side of a right hand)
+  { do: 'prop', id: 'core', kind: 'haloCore', on: 'rask', bone: 'hand_R', p: [-0.025, 0.075, 0.0] },
   { do: 'prop', id: 'machine', kind: 'oldMachine', at: OFF.machine, face: 0 },
   { do: 'prop', id: 'deskPhone', kind: 'deskPhone', at: OFF.phone, face: 0 },
+  // the room: the docks map on the wall (as in Chapter 5), the old armchair he sat in all night (a blanket on its
+  // arm), a cold mug at the end of the desk
+  { do: 'prop', id: 'wallMap', kind: 'docksMap', at: [-838, 8.4, -342.25], rot: [-Math.PI / 2, 0, 0], scale: 2.6 },
+  { do: 'prop', id: 'armchair', kind: 'armchair', at: [-844.6, 6.4, -349.2], face: 200 },
+  { do: 'prop', id: 'mug', kind: 'mug', cold: true, at: [-838.95, 7.18, -350.78], face: 30 },
 ];
-const OFFICE_LAMP = { do: 'light', at: [-837.5, 8.6, -349.9], color: 0xffc890, power: 5, range: 6 };
-const MACHINE_LIGHT = { do: 'light', at: [-837.92, 7.5, -350.1], color: 0xffd6a0, power: 1.5, range: 2.2 };
+// (soft: a light that is too strong this close burns the hands and the desk to white)
+const OFFICE_LAMP = { do: 'light', at: [-837.5, 8.6, -349.9], color: 0xffc890, power: 4.2, range: 6 };
+const MACHINE_LIGHT = { do: 'light', at: [-837.78, 7.56, -350.1], color: 0xffd6a0, power: 0.85, range: 2.2 };
 // the hand on the desk and the watch on its wrist; the watch set down on the desk (camera places for the close-ups)
 const AT_WRIST = [-838.2, 7.25, -350.06];
-const CAM_WATCH = { from: [-838.98, 7.56, -350.64], to: [-838.94, 7.55, -350.6], look: [-838.14, 7.22, -350.12], fov: 30, near: 0.03 };
+// (low beside the desk, at his left: his hand on the desk, the watch on its wrist - later the watch lying by it)
+const CAM_WATCH = { from: [-838.9, 7.55, -350.32], to: [-838.88, 7.54, -350.3], look: [-838.14, 7.22, -350.12], fov: 30, near: 0.03 };
+// (from above, in front of his left side: the back of his hand on the desk, and the stopped watch on its wrist)
+const CAM_WRIST = { from: [-838.75, 7.8, -350.4], to: [-838.73, 7.78, -350.38], look: [-838.2, 7.24, -350.06], fov: 28, near: 0.03 };
 
 export default {
   id: 'chapter09',
@@ -704,7 +715,7 @@ export default {
             // the office over the yards: the rain on the big window, the floodlights outside, an old man at his desk
             { seconds: 6.0, fade: 'in', fadeSeconds: 2.0, cam: { from: [-833.2, 8.25, -345.9], to: [-833.6, 8.2, -346.3], look: [-838, 7.55, -350.1], fov: 42 } },
             // in his hand: Mila's core, its small blue light (over his shoulder)
-            { seconds: 5.2, cam: { from: { of: 'rask', p: [-0.42, 1.78, -0.25] }, to: { of: 'rask', p: [-0.4, 1.74, -0.2] }, look: { of: 'rask', p: [-0.14, 1.23, 0.09] }, fov: 30, near: NEAR } },
+            { seconds: 5.2, cam: { from: { of: 'rask', p: [-0.62, 1.86, -0.12] }, to: { of: 'rask', p: [-0.6, 1.82, -0.08] }, look: { of: 'rask', p: [-0.05, 1.27, 0.16] }, fov: 28, near: NEAR } },
             // he puts it into the little old machine
             { seconds: 4.6, cam: { from: [-837.66, 7.74, -350.8], to: [-837.7, 7.72, -350.76], look: OFF.slot, fov: 32, near: 0.03 },
               do: [{ do: 'actorSet', id: 'rask', pose: 'putDown', hands: [OFF.slot[0], OFF.slot[1] + 0.07, OFF.slot[2]] }],
@@ -719,16 +730,16 @@ export default {
             { seconds: 4.4, cam: { from: [-838.25, 7.62, -350.95], look: { of: 'rask', p: [0, 1.5, 0] }, fov: 28, near: NEAR },
               lines: [{ at: 1.6, who: 'mila', kind: 'machine', text: 'c9.mila.who', seconds: 1.8 }] },
             // he keeps his hand on the desk. A long silence. (The watch on his wrist, stopped at 4:12.)
-            { seconds: 7.0, cam: CAM_WATCH, do: [{ do: 'music', silence: 16 }] },
+            { seconds: 7.0, cam: CAM_WRIST, do: [{ do: 'music', silence: 16 }] },
             { seconds: 4.6, cam: { from: [-838.25, 7.62, -350.95], look: { of: 'rask', p: [0, 1.48, 0] }, fov: 24, near: NEAR },
               do: [{ do: 'actorSet', id: 'rask', look: AT_WRIST }] },
             // he takes off the watch
-            { seconds: 4.6, cam: { from: [-838.6, 7.62, -350.55], look: [-838.12, 7.38, -350.0], fov: 30, near: NEAR },
+            { seconds: 4.6, cam: { from: [-838.45, 7.5, -350.55], look: [-838.1, 7.38, -350.02], fov: 34, near: NEAR },
               do: [{ do: 'actorSet', id: 'rask', pose: 'work', hands: [-838.1, 7.38, -350.04] }] },
             // and sets it down, gently, face up
-            { seconds: 5.0, cam: { from: [-837.64, 7.6, -350.62], look: OFF.watchDesk, fov: 32, near: NEAR },
+            { seconds: 5.0, cam: { from: [-838.58, 7.64, -350.62], look: OFF.watchDesk, fov: 32, near: NEAR },
               do: [{ do: 'remove', ids: ['wwatch'] }, { do: 'actorSet', id: 'rask', pose: 'putDown', hands: [OFF.watchDesk[0], OFF.watchDesk[1] + 0.035, OFF.watchDesk[2]] },
-                { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_R', p: [0.0, -0.07, 0.03] }],
+                { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_R', p: [-0.02, 0.07, 0.0] }],
               lines: [{ at: 2.6, do: [{ do: 'remove', ids: ['wwatch'] }, { do: 'prop', id: 'watch', kind: 'stopWatch', at: OFF.watchDesk, face: 200 }] },
                 { at: 3.4, do: [{ do: 'actorSet', id: 'rask', pose: 'roof', hands: OFF.hands }] }] },
             // the watch on the desk, and his hand beside it
@@ -736,7 +747,7 @@ export default {
             // the phone
             { seconds: 4.4, cam: { from: [-839.2, 7.95, -351.2], look: { of: 'rask', p: [0, 1.25, 0] }, fov: 36 },
               do: [{ do: 'actorSet', id: 'rask', pose: 'call', hands: null }, { do: 'propSet', id: 'deskPhone', call: { setHandset: false } },
-                { do: 'prop', id: 'handset', kind: 'handset', on: 'rask', bone: 'hand_R', p: [0.0, -0.06, 0.04] }, { do: 'sound', name: 'phoneLift' }],
+                { do: 'prop', id: 'handset', kind: 'handset', on: 'rask', bone: 'hand_R', p: [-0.03, 0.06, 0.0], rot: [-1.5708, 3.1416, 0] }, { do: 'sound', name: 'phoneLift' }],
               lines: [{ at: 1.6, do: [{ do: 'sound', name: 'phoneDial' }] }] },
             // "Tell me where to come." - the camera stays on the watch and his hand (the other hand holds the phone at his
             // ear). A soft pad starts with his words.
@@ -751,7 +762,7 @@ export default {
           ],
         },
         { do: 'flag', set: { rask_redeemed: true } },
-        { do: 'remove', ids: ['rask', 'handset', 'core', 'machine', 'deskPhone', 'watch', 'wwatch'] },
+        { do: 'remove', ids: ['rask', 'handset', 'core', 'machine', 'deskPhone', 'watch', 'wwatch', 'wallMap', 'armchair', 'mug'] },
         { do: 'light' },
         { do: 'music', calm: 0 },
         { do: 'player', hidden: false },

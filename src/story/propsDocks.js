@@ -200,13 +200,16 @@ export function docksProps(H) {
         return b;
       };
       if (o.wrist) {
-        // round the wrist: the band goes round the bone's y axis, the case on the back of the wrist (-x)
-        head.rotation.z = Math.PI / 2; head.position.x = -0.0305;
+        // round the wrist: the band goes round the bone's y axis, the case on the back of the wrist (-x).
+        // o.band: a wider band (1.35 = a third wider) for a thick sleeve cuff - the band goes over the cuff, the case
+        // stays the same small size
+        const br = o.band || 1;
+        head.rotation.z = Math.PI / 2; head.position.x = -0.0305 * br;
         g.add(head);
         const pts = [];
-        for (let i = 0; i <= 48; i++) { const a = (i / 48) * Math.PI * 2; pts.push(V(-Math.cos(a) * 0.029, 0, Math.sin(a) * 0.033)); }
+        for (let i = 0; i <= 48; i++) { const a = (i / 48) * Math.PI * 2; pts.push(V(-Math.cos(a) * 0.029 * br, 0, Math.sin(a) * 0.033 * br)); }
         g.add(new THREE.Mesh(ribbon(pts, V(0, 1, 0), 0.016, 0.0024), leather));
-        g.add(buckle(V(0.0305, 0, 0), 'y'));
+        g.add(buckle(V(0.0305 * br, 0, 0), 'y'));
       } else {
         g.add(head);
         // lying open on the desk: each half of the strap leaves the lugs and settles on the wood

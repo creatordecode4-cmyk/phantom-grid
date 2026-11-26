@@ -307,11 +307,13 @@ export function wantedProps(H) {
       return g;
     },
     // a hot drink in a chipped mug, steam rising from it
-    mug() {
+    // (o.cold: tea gone cold - no steam, the tea lower)
+    mug(o = {}) {
       const g = new THREE.Group();
       const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.038, 0.1, 14), std(0xd9d4c8, 0.6)); cup.position.y = 0.05; g.add(cup);
-      const tea = new THREE.Mesh(new THREE.CircleGeometry(0.038, 14), std(0x3a2414, 0.25)); tea.rotation.x = -Math.PI / 2; tea.position.y = 0.092; g.add(tea);
+      const tea = new THREE.Mesh(new THREE.CircleGeometry(0.038, 14), std(0x3a2414, 0.25)); tea.rotation.x = -Math.PI / 2; tea.position.y = o.cold ? 0.07 : 0.092; g.add(tea);
       const handle = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.007, 6, 12), std(0xd9d4c8, 0.6)); handle.position.set(0.05, 0.05, 0); g.add(handle);
+      if (o.cold) return g;
       const sm = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.16, depthWrite: false, map: tex('glow', glowTexture), side: THREE.DoubleSide });
       const steam = [];
       for (let i = 0; i < 3; i++) { const s = new THREE.Mesh(new THREE.PlaneGeometry(0.07, 0.12), sm.clone()); s.rotation.y = i * 1.05; g.add(s); steam.push(s); }
