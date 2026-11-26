@@ -136,7 +136,10 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
     if (g.role === 'escort' && engaged && pc && tr && T.state === 'run') {
       const pAlong = along(tr, pc);                       // how far Nate is ahead of the truck (- = behind it)
       const mine = nearestEscortTo(pc) === g;
-      if (mine && pAlong < 6 && pAlong > -55) {
+      // (shut in: Nate in front of it in its lane - it stays in this, even when the truck has gone on far ahead; it
+      //  used to give up here and rush back to the truck, round or into Nate, so a block never held)
+      const shutIn = along(v, pc) > 2.5 && along(v, pc) < 30 && Math.abs(pc.x - v.x) < 2.6;
+      if ((mine && pAlong < 6 && pAlong > -55) || shutIn) {
         alertNow();
         const gap = along(pc, v);                         // how far the escort is ahead of Nate (- = behind him)
         // (Nate over the middle line, on the empty half of the road: the escort stays on its own half, in the lane by
