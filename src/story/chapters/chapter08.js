@@ -63,7 +63,7 @@ const DASH = [
   { do: 'prop', id: 'key', kind: 'pilotKey', in: 'run', at: { cabinAt: 'dash', p: AT_KEY }, rot: [0, 0.3, 0], if: THEO },
   { do: 'prop', id: 'key', kind: 'pilotKey', in: 'run', at: { cabinAt: 'dash', p: AT_KEY_M }, rot: [0, 0.3, 0], if: { not: THEO } },
   { do: 'prop', id: 'dial', kind: 'radioDial', in: 'run', at: { cabinAt: 'dash', p: AT_DIAL }, if: THEO },
-  { do: 'prop', id: 'dial', kind: 'radioDial', plate: [0.38, 0.16, 0.008, 0.034], in: 'run', at: { cabinAt: 'dash', p: AT_DIAL }, if: { not: THEO } },
+  { do: 'prop', id: 'dial', kind: 'radioDial', plate: [0.38, 0.172, 0.014, 0.034], in: 'run', at: { cabinAt: 'dash', p: AT_DIAL }, if: { not: THEO } },
   { do: 'prop', id: 'deck', kind: 'deck', empty: true, in: 'run', at: { cabinAt: 'dash', p: AT_DECK } },
 ];
 const plus = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -76,8 +76,10 @@ const DASH_GLOW = { do: 'light', at: { cabin: 'run', at: 'dash', p: plus(AT_DECK
 // Zero's glow on Nate's car while it rides beside him
 const ZERO_LIGHT = { do: 'light', at: { of: 'zero', p: [0, 1.0, 0] }, color: 0xa8d8ff, power: 24, range: 9 };
 // (the cars of the run are moved back along the road at a cut when they are this far north: the long talk stays on
-//  the open, dark stretch north of the city - z 540 .. 1000 - with the tunnel's mouth far ahead and never reached)
-const BACK = { do: 'run', rewind: { over: 600, to: 540 } };
+//  the open, dark stretch north of the city - z 620 .. 1000 - with the tunnel's mouth far ahead and never reached.
+//  The longest way without a cut: a shot from z 680, 4 s more, then the 12 s choice at 70 km/h - it ends before z 1000.
+//  Nearer the city the wide shots look back at all its towers: too many draw calls for a phone)
+const BACK = { do: 'run', rewind: { over: 680, to: 620 } };
 const TALK_KMH = 70;
 // (every shot of the long talk starts with it: a cut is where the road may be moved back)
 const talk = (shots) => shots.map((sh) => (sh.do && sh.do.includes(BACK) ? sh : { ...sh, do: [BACK, ...(sh.do || [])] }));
@@ -297,7 +299,7 @@ export default {
         ...onLoad([
           NIGHT,
           { do: 'world', traffic: 8, people: 0, indoors: false, now: true },
-          ...RUN_CAR([LANE[1], 560], { speed: 70 }),
+          ...RUN_CAR([LANE[1], 620], { speed: 70 }),
           ...DASH,
           { do: 'player', inCar: 'run' },
           { do: 'allow', enter: ['run'] },
@@ -315,7 +317,8 @@ export default {
         // ---- THE LINK: the radio finds Zero; WREN's locked part opens ----
         {
           do: 'cutscene', keep: true, shots: talk([
-            { seconds: 4.2, cam: C.dial, do: [BACK, { do: 'music', radio: 0.75, calm: 0 }, { do: 'propSet', id: 'dial', call: { tune: 0.81, setSignal: 1 } }, { do: 'sound', name: 'tune' }],
+            // (the cut puts the two cars at z 620, wherever the last mission left them)
+            { seconds: 4.2, cam: C.dial, do: [BACK, { do: 'run', rewind: 620 }, { do: 'music', radio: 0.75, calm: 0 }, { do: 'propSet', id: 'dial', call: { tune: 0.81, setSignal: 1 } }, { do: 'sound', name: 'tune' }],
               lines: [{ at: 1.6, do: [{ do: 'sound', name: 'radioClick' }] }] },
             { seconds: 3.8, cam: C.key, do: [{ do: 'propSet', id: 'key', call: { setLink: 1 } }, { do: 'light', at: KEY_AT([0, 0.08, -0.05]), color: 0x46ff9c, power: 0.9, range: 1.4 }],
               lines: [{ at: 1.0, who: 'wren', text: 'c8.wren.unlocked' }] },
@@ -532,7 +535,8 @@ export default {
             // (at the cut the run is put just past the tunnel mouth at 62 km/h, however fast he came out: the car then
             //  stops in front of these cameras, not far up the road)
             { seconds: 5.0, cam: { from: [LANE[0] + 3.5, 10.4, 1395], to: [LANE[0] + 3.0, 10.2, 1388], look: { of: 'run', p: [0, 0.8, 0] }, fov: 44 },
-              do: [{ do: 'run', rewind: 1345 }, { do: 'vehicleSet', id: 'run', speed: 62 },
+              // (his headlights a little softer on the road: these cameras look across their light at the car)
+              do: [{ do: 'run', rewind: 1345 }, { do: 'vehicleSet', id: 'run', speed: 62, beam: 0.4 },
                 // (Zero comes out of the tunnel beside him: wherever the chase left it, the cut puts it there)
                 { do: 'run', cruise: { x: LANE[2] + 0.8, speed: 30 } }, { do: 'run', zero: 'cruise', snap: true }, KEY_LIGHT_CAR, { do: 'music', silence: 1.2 }],
               lines: [{ at: 2.4, do: [{ do: 'run', cruise: null }, { do: 'autoDrive', brake: 0.7 }] }] },
@@ -572,6 +576,7 @@ export default {
         { do: 'flag', set: { nate_partial_peace: false } },
         { do: 'if', cond: { any: [said('theo_reply_b', 'sorry'), said('theo_reply_b', 'silence')] }, then: [{ do: 'flag', set: { nate_partial_peace: true } }] },
         { do: 'run', stop: true },
+        { do: 'vehicleSet', id: 'run', beam: 1 },
         { do: 'wait', seconds: 1.2 },
         { do: 'end', over: 'c8.end.over', title: 'c8.title', lines: ['c8.end.1', 'c8.end.2', 'c8.end.3'], locked: 'c8.end.locked' },
       ],

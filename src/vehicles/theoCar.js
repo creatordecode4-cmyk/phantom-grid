@@ -728,7 +728,10 @@ export function makeTheoCar(opts = {}) {
   const cabin = new THREE.Group();
   root.add(cabin);
   const cbox = (w, h, d, x, y, z, mat, r = 0.02, rot = null) => { const m = add(new RoundedBoxGeometry(w, h, d, 2, r), mat, cabin, false); m.position.set(x, y, z); if (rot) m.rotation.set(rot[0], rot[1], rot[2]); return m; };
-  cbox(1.36, 0.04, 1.6, 0, 0.2, -0.3, mats.carpet, 0.01);                       // the floor
+  // the floor: from behind the seats all the way to the firewall (the body's own floor is only seen from outside: a
+  // gap in front of the pedals showed the road to a camera low in the car)
+  cbox(1.36, 0.04, 1.75, 0, 0.2, -0.225, mats.carpet, 0.01);
+  cbox(1.16, 0.3, 0.03, 0, 0.33, 0.6, mats.dash, 0.01);                         // the toe board under the firewall
   cbox(0.2, 0.18, 1.0, 0, 0.3, -0.05, mats.dash, 0.03);                         // the tunnel
   for (const sx of [1, -1]) {
     cbox(0.5, 0.12, 0.5, sx * 0.37, 0.32, -0.42, mats.seat, 0.05);              // the seat cushion

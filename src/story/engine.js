@@ -562,6 +562,7 @@ export function createStory(G) {
     if (s.stop) { v.vx = v.vz = 0; v.forward = 0; }
     // (speed, km/h: the car rolls on at this speed along its heading - used at a cut, so the jump is not seen)
     if (s.speed !== undefined && s.do === 'vehicleSet') { v.forward = s.speed / KMH; v.vx = Math.sin(v.heading) * v.forward; v.vz = Math.cos(v.heading) * v.forward; }
+    if (s.beam !== undefined) v.beamK = s.beam;                // how strong its headlights' light on the road is (1 = normal)
     if (s.dead !== undefined) v.dead = !!s.dead;               // a wreck: the engine is silent
     if (s.door !== undefined) v.doorOpen = s.door;             // the driver's door stands open (0..1)
     if (s.curbSide !== undefined) v.curbSide = !!s.curbSide;   // the driver gets out on the sidewalk side

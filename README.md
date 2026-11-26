@@ -2132,7 +2132,8 @@ memory look in `src/world/postfx.js` (a soft cold grade with more grain), rain l
 `src/world/weather.js`, the radio voice, static and the new sounds in `src/audio/music.js` and `src/audio/sound.js`, and
 `src/story/chapters/chapter08.js` (only data). One change for every car: the light of the headlights on the road now
 fades out softly at its edges (`makeBeamTexture` in `src/vehicles/vehicle.js`) - before, its sides were a hard line and
-in a film shot from the side it looked like a white sheet lying on the road.
+in a film shot from the side it looked like a white sheet lying on the road. Theo's car got a closed floor up to the
+firewall (`src/vehicles/theoCar.js`), for the close-ups in the dark cabin.
 
 ## Known limits
 
@@ -2213,7 +2214,7 @@ in a film shot from the side it looked like a white sheet lying on the road.
   every sound (Theo's voice with its delay, the static, the pad, the engine ticks) still need a real phone. Chapter 7 is
   not written: its flags are only set by the `flags=` address option for now. Theo's voice is a made sound without
   words (the words are in the subtitles). In the talk the story drives both cars - you do not steer while Theo speaks.
-  The cars do not really stop at a cut: the road is moved back under them (you do not see it). Inside Theo's car (made
-  in code) the carpet stops at the pedals: a camera very low in the footwell could see the road under them (the film
-  shots of this chapter do not look there).
+  The cars do not really stop at a cut: the road is moved back under them (you do not see it). In Mace's old street
+  car (the branch where Theo's car is not Nate's) the radio, the deck and the key sit on the plain dashboard every car
+  shares, with a dark radio housing over its screen.
 - Shop names, signs and adverts are invented. No real brands are used.
