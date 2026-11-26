@@ -2010,7 +2010,9 @@ The same line gets the same gestures from the same person every time (the plan i
 people say it a little differently.
 
 Tested: every gesture held still, from the front and from the side (Mace and Lena); lines in a neutral, an angry
-and a sad mood frame by frame; standing, sitting, working, with arms crossed; Nate (the player).
+and a sad mood frame by frame; standing, sitting, working, with arms crossed; Nate (the player); and as story
+scenes, with no errors: the Chapter 6 confrontation (Mace's hands stay on the bench, only his head and shoulders
+speak - the scene stays quiet), the start of Chapter 2 (Nate at the wheel) and the first two missions of Chapter 5.
 
 ## Known limits
 
