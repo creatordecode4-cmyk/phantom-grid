@@ -8,8 +8,8 @@ The story now runs from the Prologue to **Chapter 9, "Harrow's Line"** (version 
 Ironhill Highway, a trap, a captain who finds her own name on a list, and an old man with a stopped watch - see
 "Chapter 9: HARROW'S LINE" below). Version 12.1 makes the people close up better in every chapter: smooth faces and
 necks, clean edges, a sharper picture in film scenes, subtitles out of the faces, Rask's whole watch (see "Characters
-close up" below). Version 12.2: the bridge-gate hack of mission 9.2 can be reached by driving now (see "Quality pass" in
-Chapter 9). Chapter 8, "Talk to Zero" (version 11.0) is a night highway in the rain, two cars
+close up" below). Version 12.2: the convoy of mission 9.2 plays fair - the bridge-gate hack can be reached by
+driving, a block holds, and the escorts no longer crash into the truck (see "Quality pass" in Chapter 9). Chapter 8, "Talk to Zero" (version 11.0) is a night highway in the rain, two cars
 side by side, a voice from the radio; Chapter 7 is not written yet, the story steps over it. Chapter 6, "Old Debts" (version 10.0) is the quietest chapter: one garage, one night, Theo's car
 rebuilt part by part. Since version 10.1 people speak with the **whole body**:
 the hands, the chest, the shoulders, the head and the weight move with the words (see "Body language" below).
@@ -2163,7 +2163,7 @@ Start any of them from the title screen (**MISSIONS**) or with the address optio
 |---|---|---|---|
 | 9.0 | **THE ROUTE** | Lena's safehouse, short. Dante is in a Meridian Guard prison convoy; tomorrow they move him to KVI. Lena has no route. Viktor Rask stands by the door in his wet coat: "My men know the roads the Guard uses." A close-up of the child's watch on his wrist, stopped at 4:12. If Nate once told him "I work for anyone who can pay" (`rask_stance` *paid*) Rask is friendly and sure of himself ("This one is on me"); otherwise stiff and brief. **Choice: trust Rask's road, or say you don't** (`trusted_rask`). If Mace was forgiven he offers to drive a second van (after the silent ending of Chapter 6 he offers quietly) - **choice: take his help or go alone** (`support_driver`); if Nate left Mace, Lena says Mace is not an option. | `?story=chapter09.0` (Rask friendly: `&flags=rask_stance:paid`; no Mace: `&flags=mace_forgiven:false`) |
 | 9.1 | **TAKE THE ROUTE** | The crew's courier van up the ramp onto Ironhill Highway ("Rask's men opened the ramp for us"), north in the rain, with a few cars on the road. Two KVI Phantoms come out of the tunnel the other way, lights flashing, and go past - they ignore Nate (the Zero rule is off in the story). Pull over at the ambush point, lights off. Through the windshield: the Guard's bridge gate far ahead, before the tunnel. Then headlights behind: the convoy goes past - a tech car in front, the armored prison truck, two escorts, a drone with a searchlight. | `?story=chapter09.1` |
-| 9.2 | **HIT THE CONVOY** | Take out the two escorts, then stop the truck - without hurting Dante. Only driving, no weapons: **ram** an escort a few times, **spin** it with a hit at its back corner, **block** it (get in front of it and brake until it gives up), or **hack the bridge gate**: get in front of the escorts before the tunnel - pass the convoy on the empty southbound side, the escorts stay on their own half of the road - press the big HACK THE GATE button (it shows only when at least one Guard car is behind you: the gate drops behind you, so with all of them ahead it would trap nobody) - while your finger draws, the van keeps its lane and speed by itself and the world runs slower - and the gate drops behind you; every Guard car behind it stops at the boom. The escort on your side defends the truck: it moves into your lane, brake-checks you and leans into you when you come alongside (on its own half of the road: it does not cross the middle line). With both escorts out, get in front of the truck in its lane and slow down: the driver will not ram a car with a prisoner in the back, so it slows with you (it tries to go round a few times). If Mace drives support, his van comes up fast, gets in front of the truck and slows it with you. The tech car does not fight: leave it, ram it, or trap it. Hit the truck hard and the DANTE bar drops - at zero the mission fails. When the truck comes out of the far end of the tunnel, a short dip to black and the chase is back on the long straight. | `?story=chapter09.2` (alone: `&flags=support_driver:none`) |
+| 9.2 | **HIT THE CONVOY** | Take out the two escorts, then stop the truck - without hurting Dante. Only driving, no weapons: **ram** an escort a few times, **spin** it with a hit at its back corner, **block** it (get in front of it and brake until it gives up), or **hack the bridge gate**: get in front of the escorts before the tunnel - pass the convoy on the empty southbound side, the escorts stay on their own half of the road - press the big HACK THE GATE button (it shows only when at least one Guard car is behind you: the gate drops behind you, so with all of them ahead it would trap nobody) - while your finger draws, the van keeps its lane and speed by itself and the world runs slower - and the gate drops behind you; every Guard car behind it stops at the boom. The escort on your side defends the truck: it moves into your lane, brake-checks you and leans into you when you come alongside (on its own half of the road: it does not cross the middle line). Get in front of it in its lane and brake: it tries to go round you twice, then it gives up and brakes with you. With both escorts out, get in front of the truck in its lane and slow down: the driver will not ram a car with a prisoner in the back, so it slows with you (it tries to go round a few times). If Mace drives support, his van comes up fast, gets in front of the truck and slows it with you. The tech car does not fight: leave it, ram it, or trap it. Hit the truck hard and the DANTE bar drops - at zero the mission fails. When the truck comes out of the far end of the tunnel, a short dip to black and the chase is back on the long straight. | `?story=chapter09.2` (alone: `&flags=support_driver:none`) |
 | 9.3 | **THE TRAP** | The truck stands in the rain, the van across its nose. Then lights behind them, coming fast, and lights ahead: KVI Phantoms on both sides, drones dropping red flares on the road, a roadblock across the lanes. Nate on the radio: "Rask. They were waiting for us." Static. Then nothing. "Rask?" A long silence on his face. | `?story=chapter09.3` |
 | 9.4 | **HARROW** | Captain Sloane Harrow comes in her own patrol car. Inside it, on the dash: her daughter Ivy's drawing (Chapter 2), in close-up. She gets out in the rain: "Nate Calloway." - "My orders are to take you in. Tonight." Then she looks at her tablet: KVI's **Phantom list**, the people whose minds will be moved into Phantoms - one line is red: HARROW, SLOANE. "They put my name on it." - "All units. Stand down." - "Captain?" - "I said stand down." The Phantoms' lights go out one by one; the drones turn away. If she let the girl go in Chapter 3, a Tidewalker child stands on a roof by the highway and waves; Harrow almost smiles. **Choice: say nothing, "Thank you", or "Do not do this for me"** (`harrow_reply`). | `?story=chapter09.4` (no girl: `&flags=harrow_let_girl_go:false`) |
 | 9.5 | **DANTE FREE** | Harrow opens the truck's heavy back doors herself. Dante steps out of the dark - thinner, slower - in Theo's old blue jacket if Nate let him keep it in Chapter 4, else in an old Chrome Wolves jacket. He nods at Nate: "You came." Harrow holds out a small glowing card - the KVI tower master card: "KVI tower. Every door." - "Do not make me regret this." She drives away, south, into the rain. | `?story=chapter09.5` (Theo's jacket: `&flags=jacket_taken:false`) |
@@ -2257,20 +2257,34 @@ The film scenes were looked at frame by frame in close-ups, and what looked wron
   Guard car is behind him.
 - **The table in the last scene.** The master card and the mixtape lay upside down for the camera; they are turned
   so their words read the right way up.
-- **The gate hack, all the way (version 12.2).** The robot could press HACK, but in its runs it never got in front of
-  the convoy by driving: the escort that defends crossed the middle line to shut the empty southbound side too, and
-  with its brake checks and a higher top speed than the van it was always in front again. Three things were fixed:
-  - the escorts defend on their own half of the road; on the empty other half a quick driver can pass the convoy
-    (the tip before the tunnel says so now);
+- **The convoy, all the ways (version 12.2).** The robot could press HACK, but in its runs it never got in front of
+  the convoy by driving; and when the robot drove all three ways for a long time (ram, block, gate), the Guard cars
+  showed more faults. Fixed in `src/story/convoy.js`:
+  - the escorts defend on their own half of the road. The one that defends crossed the middle line to shut the
+    empty southbound side too, and with its brake checks and a higher top speed than the van it was always in front
+    again. Now a quick driver can pass the convoy on the empty side (the tip before the tunnel says so);
+  - an escort goes round Nate only in a lane next to its own, and only when nothing is in that lane from 10 m behind
+    to 30 m ahead. It used to swerve into the truck's lane - into the back or the side of the truck - and Dante's bar
+    dropped with no fault of the player;
+  - a block can hold. Shut in by Nate in front of it in its lane, an escort pulls out to go round him only twice, for
+    a few seconds each (like the truck); it never speeds up before it is out of his lane; it follows him about 7 m
+    behind and brakes with him, so it is within the 11 m a block needs; and it stays in this even when the truck has
+    gone on far ahead. Before, it always found a way out, dropped back too far, or rushed back to the truck;
   - a car that gave up (blocked, trapped, or held at the end) stays where it stopped. It was held with the brake
     pedal, and the physics puts a car into reverse when the brake is held at a standstill: the trapped tech car crept
-    back into the truck (Dante's bar lost 3 %). Now the brake stops it and the handbrake holds it;
-  - at the closed gate the truck stops behind a Guard car that stopped in its lane, instead of driving into it.
+    back into the truck. Now the brake stops it and the handbrake holds it;
+  - at the closed gate the truck stops behind a Guard car that stopped in its lane, instead of driving into it;
+  - at the dip to black, a Nate far behind the truck (after a crash) is put back at most 300 m behind it; every dip
+    used to push him further back, down to the foot of the ramp.
 
-  Then, two robot runs by driving alone: past the convoy on the southbound side on the second lap, HACK, the gate
-  drops behind the van, the tech car and both escorts stop at the boom (out by `gate`), the truck stops behind them,
-  Dante's bar at 100 %, `ambush_style` = `'hack'`, on to 9.3 (at most 164 draw calls). The ram way (both escorts
-  rammed, Mace's van stops the truck, Dante at 100 %, at most 189 draw calls) still works.
+  Tested by robot runs that drive the van by themselves (no test hooks), in mission 9.2:
+  - the gate, five runs: past the convoy on the southbound side on the second lap, HACK, the gate drops behind the van,
+    the tech car and both escorts stop at the boom (out by `gate`), the truck stops behind them, Dante's bar at
+    100 %, `ambush_style` = `'hack'`, on to 9.3 (at most 164 draw calls);
+  - ram: both escorts rammed out, Mace's van stops the truck, Dante at 100 % (at most 164 draw calls);
+  - block: an escort held under 35 km/h and out by `block` with no hit at all, then the truck blocked to a stop
+    (out by `block`), on to 9.3 (at most 189 draw calls). The robot is a clumsy blocker: it sometimes cuts in hard
+    and causes a crash of its own, so Dante's bar ended at 85 % to 95 % in those runs.
 
 ### What was built for it
 
