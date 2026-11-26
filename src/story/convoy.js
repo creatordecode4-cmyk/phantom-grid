@@ -147,10 +147,10 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
           // behind him: it goes past him in a lane beside his, to get in front of him - the nearest lane of its half
           // that is free: not his, and not one where the truck or another Guard car is just ahead of it (it used to
           // swerve into the truck's lane and run into the back of the truck). No free lane: it stays behind him.
-          // Shut in by him (Nate right in front of it, in its lane): it pulls out to go round him only twice, for a
-          // few seconds each; after that it stays behind him and brakes with him, so a block can work (like the
-          // truck, which tries to go round a few times). Before, it always found a way out and a block never held.
-          const shut = gap > -14 && Math.abs(pc.x - v.x) < 2.6;
+          // Shut in by him (Nate in front of it in its lane, within 30 m): it pulls out to go round him only twice,
+          // for a few seconds each; after that it stays behind him and brakes with him, so a block can work (like
+          // the truck, which tries to go round a few times). Before, it always found a way out and a block never held.
+          const shut = gap > -30 && Math.abs(pc.x - v.x) < 2.6;
           g.passT = Math.max(0, (g.passT || 0) - dt); g.restT = Math.max(0, (g.restT || 0) - dt);
           let passLane = -1;
           if (!shut || g.passT > 0 || (g.restT <= 0 && (g.tries || 0) < 2)) {
