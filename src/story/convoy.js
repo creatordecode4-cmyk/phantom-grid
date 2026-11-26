@@ -160,9 +160,11 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
           if (!shut || g.passT > 0 || (g.restT <= 0 && (g.tries || 0) < 2)) {
             const pLane = across ? -1 : clamp(Math.round((Math.abs(pc.x - cx) - 2.1) / 4.15), 0, 2);
             let best = 1e9;
+            // (only a lane next to its own: to get to the far one it would cut across the middle lane - the truck)
+            const myLane = clamp(Math.round((Math.abs(v.x - cx) - 2.1) / 4.15), 0, 2);
             for (let L = 0; L < 3; L++) {
               const lx = laneX(L, dir);
-              if (L === pLane || Math.abs(v.x - lx) >= best) continue;
+              if (L === pLane || Math.abs(L - myLane) > 1 || Math.abs(v.x - lx) >= best) continue;
               const busy = [T.v, ...G.map((q) => q.v)].some((q) => q !== v && live(q) && Math.abs(q.x - lx) < 2.4 && along(v, q) > -10 && along(v, q) < 30);
               if (!busy) { best = Math.abs(v.x - lx); passLane = L; }
             }
