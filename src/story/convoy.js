@@ -144,11 +144,19 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
         //  bridge gate hack needs that)
         const across = (pc.x - cx) * dir > 0.8;
         if (gap < -2.5) {
-          // behind him: it goes past him in the next lane over, to get in front of him
-          const pLane = clamp(Math.round((Math.abs(pc.x - cx) - 2.1) / 4.15), 0, 2);
-          const passLane = across ? 0 : pLane === 1 ? (Math.abs(v.x - laneX(0, dir)) < Math.abs(v.x - laneX(2, dir)) ? 0 : 2) : 1;
-          tx = laneX(passLane, dir);
-          want = speedOf(pc) + 6;
+          // behind him: it goes past him in a lane beside his, to get in front of him - the nearest lane of its half
+          // that is free: not his, and not one where the truck or another Guard car is just ahead of it (it used to
+          // swerve into the truck's lane and run into the back of the truck). No free lane: it stays behind him.
+          const pLane = across ? -1 : clamp(Math.round((Math.abs(pc.x - cx) - 2.1) / 4.15), 0, 2);
+          let passLane = -1, best = 1e9;
+          for (let L = 0; L < 3; L++) {
+            const lx = laneX(L, dir);
+            if (L === pLane || Math.abs(v.x - lx) >= best) continue;
+            const busy = [T.v, ...G.map((q) => q.v)].some((q) => q !== v && live(q) && Math.abs(q.x - lx) < 2.4 && along(v, q) > -3 && along(v, q) < 30);
+            if (!busy) { best = Math.abs(v.x - lx); passLane = L; }
+          }
+          if (passLane >= 0) { tx = laneX(passLane, dir); want = speedOf(pc) + 6; }
+          else { tx = v.x; want = Math.min(want, speedOf(pc) - 1.2); }
           // (Nate right in front of it in its lane: it brakes - it never drives into him from behind)
           if (gap > -12 && Math.abs(pc.x - v.x) < 2.6) want = Math.min(want, speedOf(pc) - 1.2);
         } else {
@@ -423,6 +431,12 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
     const move = (v) => { if (!live(v)) return; v.z += dz; if (v.p0z !== undefined) v.p0z += dz; if (v.rz !== undefined) v.rz += dz; };
     const pc = playerCar();
     move(pc);
+    // (Nate far behind - after a crash, say: the cut puts him back on the straight at most 300 m behind the truck, so
+    //  the chase goes on; before, every dip pushed him further back, down to the foot of the ramp)
+    if (pc && live(T.v) && pc !== T.v && (toZ - pc.z) * dir > 300) {
+      const d2 = toZ - dir * 300 - pc.z;
+      pc.z += d2; if (pc.p0z !== undefined) pc.p0z += d2; if (pc.rz !== undefined) pc.rz += d2;
+    }
     move(T.v);
     for (const g of G) {
       // (a car out far behind is left behind: it is taken away)
