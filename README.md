@@ -5,7 +5,8 @@ A realistic city of the future: sculpted glass towers, hanging gardens, sky brid
 electric cars and a maglev line. No cartoon look, no neon-toy look.
 
 The story now runs from the Prologue to **Chapter 6, "Old Debts"** (version 10.0, the quietest chapter: one garage, one
-night, Theo's car rebuilt part by part - see "Chapter 6: OLD DEBTS" below).
+night, Theo's car rebuilt part by part - see "Chapter 6: OLD DEBTS" below). Since version 10.1 people speak with the **whole body**:
+the hands, the chest, the shoulders, the head and the weight move with the words (see "Body language" below).
 
 This is **Phase 4, "Prologue + Chapter 1 playable"**: the story starts. A title screen, a save game,
 film scenes, choices that are remembered, and the first two parts of the story - the Prologue
@@ -1968,6 +1969,49 @@ options with a condition, number conditions, WREN keeping quiet, hands that go t
 (the bank record on paper, a spanner, Theo's key, a rag), the vehicle kind `theo_coupe`, the calm screen, the garage
 sounds in `src/audio/music.js` and `src/audio/sound.js`, and `src/story/chapters/chapter06.js` (only data).
 
+## Body language: the whole body speaks (version 10.1)
+
+Reported from play: "Whenever someone talks, their whole body should move - like in real life." Before, a speaker
+moved the mouth, nodded a little on stressed words and lifted one hand. Now the whole body says the line
+(`src/characters/gesture.js`, `src/characters/speech.js`, `src/characters/proceduralAnim.js`).
+
+**The words make the plan.** speech.js gives the time of every word and every sentence (the same times the mouth
+uses), and gesture.js turns them into a short plan of gestures, each on its word:
+- a stressed word: a hand beats (angry: a fist; firm, before a "!": the edge of the hand chops down);
+- "you", "your", "we", "us": a palm turned up and held out to the listener (angry: an open hand toward them);
+- "I", "me", "my", "myself": a hand laid flat on the chest - on the chest of THIS body (the front of the chest is
+  measured from the model, so it lies on a big man's chest and on a thin woman's alike);
+- "no", "not", "never", "don't" and the like: a flat hand swept out, palm down, and the head shakes;
+- "all", "every", "everything", "whole", "always": both hands apart, palms up;
+- "maybe", "if", "guess", and the last word of a question: palms up and the shoulders rise (a shrug), or a palm
+  held out, waiting for an answer;
+- a stressed "this", "that", "here", "there": an open hand toward it.
+
+**The rest of the body goes with it.** The chest leans in a little and turns toward the hand that moves, the
+shoulders rise at a shrug, the head nods on the word, shakes for "no" and tilts at a shrug, and at the start of a
+sentence the weight goes from one foot to the other (the hips over the standing leg, that hip a little higher).
+
+**Like a real gesture.** The hand gets ready a little before its word, moves through on the word, overshoots a
+touch and settles, holds a moment, then waits low or goes on to the next one; after the line the arms go back to
+hanging. An arm always starts from exactly where the hanging arm is, so nothing jumps. The palm turns (up to offer,
+down for "no"), the wrist bends back for an open hand, the fingers open, spread or close.
+
+**The mood decides how much.** Tired, sad or in pain: small, slow and few gestures. Neutral: natural. Happy: open.
+Angry or shouting: sharp, quick and often. (Chapter 6 stays quiet: Mace is tired and sad there.)
+
+**Busy hands keep their work.** Working on the car, arms crossed, hands on the hips, carrying a box, hands on the
+wheel: then only the chest, the shoulders and the head speak. Sitting, the forearms lift from the legs and move,
+smaller. Walking, the arms keep swinging and only a little of the gesture comes through.
+
+**Listening.** People within 7 m of a speaker nod a little now and then and shift their weight (not for WREN in
+the ear or a voice on the radio).
+
+The same line gets the same gestures from the same person every time (the plan is made from its words), but two
+people say it a little differently.
+
+Tested: every gesture held still, from the front and from the side (Mace and Lena); lines in a neutral, an angry
+and a sad mood frame by frame; standing, sitting, working, with arms crossed; Nate (the player).
+
 ## Known limits
 
 - Traffic cars drive on lanes: when hit they are shoved along the lane and a little to the side, stop and
@@ -2037,4 +2081,9 @@ sounds in `src/audio/music.js` and `src/audio/sound.js`, and `src/story/chapters
   Nate does not walk in the film scenes (the cut puts him at his next place), the car's doors do not open (he is
   simply in the seat), and the roller door does not roll up on screen (the picture goes dark). There is no upgrade shop
   in the game yet: the flags for it are saved.
+- BODY LANGUAGE: tested by a robot in a software renderer, frame by frame - not watched on a real phone. The gestures
+  come from rules about English words, not from understanding them: most lines get a fitting gesture, some get a
+  plain beat where a person might do something else. The fingers move together (curl and spread), so there is no
+  pointing index finger and no counting on fingers. The hands are not checked against things near the body: in a
+  tight scene a hand can come close to a table or a wall.
 - Shop names, signs and adverts are invented. No real brands are used.
