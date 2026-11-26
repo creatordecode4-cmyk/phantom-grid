@@ -36,6 +36,9 @@ export function createWeather(scene, lighting) {
     // a roof the camera is under (a garage, a car park): no rain falls inside it. minX, maxX, minZ, maxZ / top
     uShelter: { value: new THREE.Vector4(1e9, -1e9, 1e9, -1e9) },
     uShelterTop: { value: -1e9 },
+    // a soft glow the drops pass through (Chapter 8: Zero's light lights the rain around it): x, y, z, radius
+    uGlow: { value: new THREE.Vector4(0, -1e6, 0, 1) },
+    uGlowCol: { value: new THREE.Color(0, 0, 0) },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,
@@ -48,8 +51,10 @@ export function createWeather(scene, lighting) {
       uniform vec3 uFall;
       uniform vec4 uShelter;
       uniform float uShelterTop;
+      uniform vec4 uGlow;
       varying vec2 vUv;
       varying float vFade;
+      varying float vGlow;
       void main() {
         vUv = uv;
         // each drop starts at a random place and falls; when it leaves the
@@ -70,16 +75,21 @@ export function createWeather(scene, lighting) {
         // under the roof of a garage there is no rain
         float inside = step( uShelter.x, world.x ) * step( world.x, uShelter.y ) * step( uShelter.z, world.z ) * step( world.z, uShelter.w ) * step( world.y, uShelterTop );
         vFade *= 1.0 - inside;
+        // (near the glow: lit drops, the light falling off softly)
+        float g = 1.0 - clamp( length( world - uGlow.xyz ) / uGlow.w, 0.0, 1.0 );
+        vGlow = g * g;
       }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor;
       uniform float uOpacity;
+      uniform vec3 uGlowCol;
       varying vec2 vUv;
       varying float vFade;
+      varying float vGlow;
       void main() {
         float across = 1.0 - abs( vUv.x - 0.5 ) * 2.0;
         float along = smoothstep( 0.0, 0.25, vUv.y ) * ( 1.0 - smoothstep( 0.6, 1.0, vUv.y ) );
-        gl_FragColor = vec4( uColor, across * along * vFade * uOpacity );
+        gl_FragColor = vec4( uColor + uGlowCol * vGlow, across * along * vFade * uOpacity * ( 1.0 + 1.6 * vGlow ) );
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
@@ -125,6 +135,13 @@ export function createWeather(scene, lighting) {
     setZoneRain(v) { zoneRain = !!v; },
     get amount() { return rain; },
     setQuality(q) { geo.instanceCount = Math.min(MAX_STREAKS, q.rainStreaks); },
+    // a glow that lights the drops around it (Zero, Chapter 8): pos [x, y, z] (null = none), color [r, g, b] x strength,
+    // radius in meters
+    setGlow(pos, color = [0, 0, 0], radius = 8) {
+      if (!pos) { uniforms.uGlow.value.set(0, -1e6, 0, 1); uniforms.uGlowCol.value.setRGB(0, 0, 0); return; }
+      uniforms.uGlow.value.set(pos[0], pos[1], pos[2], radius);
+      uniforms.uGlowCol.value.setRGB(color[0], color[1], color[2]);
+    },
     // the roof the camera is under: { minX, maxX, minZ, maxZ, top } or null
     setShelter(b) {
       if (b) { uniforms.uShelter.value.set(b.minX, b.maxX, b.minZ, b.maxZ); uniforms.uShelterTop.value = b.top; }

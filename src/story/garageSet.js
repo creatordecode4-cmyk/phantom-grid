@@ -182,8 +182,8 @@ function drawNight(g, w, h) {
 // ======================================================================= shaders
 // RAIN ON GLASS: drops that slide down and leave a wet trail; a few sit still. Used on the high windows and on a
 // pane in front of the camera ("through the window").
-const RAIN_VS = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }`;
-const RAIN_FS = `
+export const RAIN_VS = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }`;
+export const RAIN_FS = `
 uniform float uTime; uniform vec2 uScale; uniform float uOpacity; uniform vec3 uTint; uniform float uSoft;
 varying vec2 vUv;
 float h1( float n ) { return fract( sin( n ) * 43758.5453 ); }

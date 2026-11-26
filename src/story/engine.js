@@ -146,6 +146,12 @@ export function createStory(G) {
     if (!files.has(id)) files.set(id, import(`./chapters/${id}.js`).then((m) => m.default).catch(() => null));
     return files.get(id);
   }
+  // the next chapter that exists after chapter n (a chapter that is not written yet is stepped over: the story goes on
+  // with the one after it, and when that chapter is added later it is found first)
+  async function nextChapter(n) {
+    for (let k = n + 1; k <= n + 3; k++) { const ch = await loadChapter(chapterFile(k)); if (ch) return ch; }
+    return null;
+  }
 
   // ------------------------------------------------------------------ places
   const H = layout.highway;
@@ -154,7 +160,7 @@ export function createStory(G) {
   //  chapters keep "highway", whose invisible end at z 760 they were made with.)
   const ARENAS = {
     highway: { minX: H.minX + 0.45, maxX: H.maxX - 0.45, minZ: H.rampBottomZ - 4, maxZ: 760, ground: (x, z) => H.heightAt(z) },
-    ironhill: { minX: H.minX + 0.45, maxX: H.maxX - 0.45, minZ: H.rampBottomZ - 4, maxZ: H.northEndZ - 9.5, ground: (x, z) => H.heightAt(z) },
+    ironhill: { minX: H.minX + 0.45, maxX: H.maxX - 0.45, minZ: H.rampBottomZ + 1.5, maxZ: H.northEndZ - 9.5, closed: true, ground: (x, z) => H.heightAt(z) },
   };
   function groundAt(x, z) {
     const g = city.groundHeight(x, z);
@@ -185,6 +191,8 @@ export function createStory(G) {
     if (Array.isArray(a)) return a.length === 2 ? [a[0], groundAt(a[0], a[1]), a[1]] : a;
     if (a.garage) return GARAGE.at(a.garage[0], GARAGE.curb + a.garage[1], a.garage[2]);
     if (a.flat) return GARAGE.at(a.flat[0], GARAGE.flat.floor + a.flat[1], a.flat[2]);
+    // (Chapter 8: a point of Lena's safehouse - src/story/safehouseSet.js: x to the right of the window, y up, z to the door)
+    if (a.safe) return world.safehouse ? world.safehouse.at(a.safe[0], a.safe[1], a.safe[2]) : [0, 0, 0];
     if (a.parking) return PARKING.ready ? PARKING.at(a.parking[0], PARKING.curb + a.parking[1], a.parking[2]) : [0, 0, 0];
     if (a.roof) return [a.roof[0], roofAt(a.roof[0], a.roof[1]) + (a.up || 0), a.roof[1]];
     if (a.cabin) {
@@ -345,11 +353,14 @@ export function createStory(G) {
       seconds: l.seconds, kind, now, hold: !!l.hold,
       // the speaker's mouth says the words of the line (speech.js), a hand moves with them; WREN has her own soft sound
       onShow: (seconds) => {
-        quietTalk(); lineMoods(l); if (kind === 'wren') sound.wren();
+        quietTalk(); lineMoods(l); if (kind === 'wren' || kind === 'wrenTheo') sound.wren();
+        // (Chapter 8: Theo's voice over the broken radio - a murmur of syllables through hiss and a soft delay)
+        if (kind === 'signal' && music.radioVoice) music.radioVoice(seconds, text);
+        if (kind === 'wrenTheo' && music.radioVoice) music.radioVoice(seconds, text, true);
         if (!aloud) return;
         if (a) { a.talking = 1; if (a.anim) a.anim.say(text, seconds); } else if (who === 'nate') { player.talk = 1; player.say(text, seconds); }
         // the people near the one who speaks listen (a small nod now and then); not for a voice in the ear or a radio
-        if (kind !== 'wren' && kind !== 'radio' && (a || who === 'nate')) hear(a, who, seconds);
+        if (kind !== 'wren' && kind !== 'radio' && kind !== 'signal' && kind !== 'wrenTheo' && (a || who === 'nate')) hear(a, who, seconds);
       },
       onDone: () => { if (a) a.talking = 0; else if (who === 'nate') player.talk = 0; },
     });
@@ -501,11 +512,13 @@ export function createStory(G) {
     lighting.setRunning(!!s.run);                           // (the story keeps its hour: the night does not end in the middle of a scene)
     if (s.rain !== undefined) { weather.setInstant(!!s.rain); hud.setRainButton(!!s.rain); }
   };
+  // (the numbers the story asked for last: a room shown for a moment - Lena's safehouse - gives them back after)
+  const worldCaps = { traffic: Infinity, people: Infinity };
   STEP.world = (s) => {
-    if ('traffic' in s) city.traffic.setCap(s.traffic === null ? Infinity : s.traffic);
+    if ('traffic' in s) { worldCaps.traffic = s.traffic === null ? Infinity : s.traffic; city.traffic.setCap(worldCaps.traffic); }
     // (now: true = people over the number vanish at once, for scenes that start behind a black screen;
     //  without it they only go once they are out of sight)
-    if ('people' in s) city.people.setCap(s.people === null ? Infinity : s.people, !!s.now);
+    if ('people' in s) { worldCaps.people = s.people === null ? Infinity : s.people; city.people.setCap(worldCaps.people, !!s.now); }
     if ('indoors' in s) indoors = !!s.indoors;
   };
   // take the parked cars away from a place (so the player can stop there)
@@ -736,7 +749,14 @@ export function createStory(G) {
     const m = new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(up, n).normalize(), up, n);
     holder.quaternion.setFromRotationMatrix(m);
   }
-  STEP.propSet = (s) => { const o = things.get(s.id); if (o && 'hidden' in s) o.holder.visible = !s.hidden; };
+  // { id, hidden } and/or call: { name: value } - a prop's own little actions (Chapter 8: the pilot key's link, the
+  // radio's needle and signal - see propsNight.js)
+  STEP.propSet = (s) => {
+    const o = things.get(s.id);
+    if (!o) return;
+    if ('hidden' in s) o.holder.visible = !s.hidden;
+    if (s.call) for (const k of Object.keys(s.call)) { const f = o.inner.userData[k]; if (typeof f === 'function') f(s.call[k]); }
+  };
   STEP.remove = (s) => {
     for (const id of s.ids) {
       if (cars.has(id)) removeCar(id);
@@ -799,6 +819,9 @@ export function createStory(G) {
     if (s.motif) music.motif(s.motif);                               // the short motif after the choice (Chapter 6)
     if (s.silence) { music.silence(s.silence); sound.duck(s.silence); }
     if ('hud' in s) tapeShown = !!s.hud;
+    // THE RADIO LINK (Chapter 8): radio: 0..1 (the hiss of the open link; 0 = the radio is dead), radioStatic: seconds
+    if (s.radio !== undefined && music.setRadioLink) music.setRadioLink(s.radio);
+    if (s.radioStatic && music.radioStatic) music.radioStatic(s.radioStatic);
   };
   const SOUNDS = {
     honkTwice: (s) => sound.honkTwice(s.volume || 0.8), shot: () => sound.shot(), crash: () => sound.crash('heavy', 1), go: () => sound.chime(), chime: () => sound.chime(),
@@ -808,6 +831,10 @@ export function createStory(G) {
     // Chapter 6: the garage
     clink: () => sound.toolClink(), ratchet: (s) => sound.ratchet(s.times || 4), creak: () => sound.metalCreak(), keys: () => sound.keys(),
     paper: () => sound.paper(), spark: () => sound.spark(), rattle: () => sound.shutter(false), slide: () => sound.clothSlide(),
+    // Chapter 8: the engine cooling, the radio's switch and dial, a siren cut short (the Phantoms arrive)
+    coolTicks: (s) => sound.coolTicks(s.seconds || 18), radioClick: () => sound.radioClick(), tune: () => sound.tuneSweep(),
+    breath: () => sound.breath(), laugh: () => sound.laugh(),
+    sirenBurst: (s) => { sound.setSiren(true); setTimeout(() => sound.setSiren(false), (s.seconds || 1.4) * 1000); },
   };
   STEP.sound = (s) => {
     if (SOUNDS[s.name]) SOUNDS[s.name](s);
@@ -941,6 +968,9 @@ export function createStory(G) {
     }, () => { ui.paint(null); sound.setSpray(false); removeThing('_mist'); if (s.cam && !s.keep) leaveCine(); });
   };
   STEP.mirror = (s) => { mirrorOn = !!s.on; };
+  // A MEMORY (Chapter 8's flashback): the picture goes pale, cold and grainy ({ on: true }) and back ({ on: false })
+  let memoryOn = 0;
+  STEP.memory = (s) => { memoryOn = s.on ? 1 : 0; };
   // the film's rear-view mirror (src/story/rearView.js): { car: id, x, look } shows what is behind that car (x: where
   // across the top of the screen, -1 left .. 1 right; look: a place the mirror is turned to), { off: true } ends it
   STEP.rearView = (s) => { if (world.rearView) world.rearView.set(s.off ? null : car(s.car), { x: s.x, look: s.look ? pt(s.look) : null }); };
@@ -985,7 +1015,7 @@ export function createStory(G) {
       if (o.set) Object.assign(flags, o.set);       // choices leave traces: they are saved with the next checkpoint
       run(o.do);
       done = true;
-    }, s.seconds || 0, s.default || 0);
+    }, s.seconds || 0, s.default || 0, s.layout || '');
     return { update: () => done, end() { choosing = false; } };
   };
   // something to read: a phone ({ from, text, when }) or the ticket ({ t1, t2, t3 }), with buttons like a choice
@@ -1388,6 +1418,24 @@ export function createStory(G) {
   STEP.hack = (s) => {
     let done = false, result = null;
     const my = gen;
+    // THE STEADY LINK (Chapter 8): Lena hacks; the player only holds the car steady beside Zero (the hands stay on the
+    // wheel: nothing is locked). { steady: true, title, hint, wobble, nodes, seconds, ok: [steps] }
+    if (s.steady) {
+      const R = world.nightRun;
+      hack.steady({
+        title: s.title ? t(s.title) : '', hint: s.hint ? t(s.hint) : '', wobble: s.wobble ? t(s.wobble) : '',
+        nodes: s.nodes || 6, seconds: s.seconds || 20, steady: () => (R ? R.steady : 1), labels: { ok: t(s.okLabel || 'c8.hack.linked') },
+      }).then((ok) => { if (my !== gen) return; result = ok; done = true; });
+      // (an objective like any other: its text, its rules)
+      return goal(s, null, (dt) => {
+        hack.stepSteady(dt);
+        if (!done) return false;
+        if (s.flag) flags[s.flag] = !!result;
+        fire(result ? 'hack:ok' : 'hack:fail');
+        run(result ? s.ok : s.fail);
+        return true;
+      }, () => { if (!done) hack.cancel(); });
+    }
     choosing = true;                                      // (hands off the car and the stick while the fingers draw)
     hack.start({
       title: s.title ? t(s.title) : '', sub: s.sub ? t(s.sub) : '', hint: s.hint ? t(s.hint) : t('c3.hack.hint'),
@@ -1468,6 +1516,73 @@ export function createStory(G) {
     if (s.stop) { Z.stopStrike(); cars.delete('zero'); }
     return null;
   };
+  // ---------------------------------------------------------------- Chapter 8: Lena's safehouse
+  // THE SAFEHOUSE SET (src/story/safehouseSet.js) instead of the city: { set: true | false, tv: actor id (the TV shows
+  //   that person's face), headline, ticker (keys: the words of the news), tvOn, lamp: 0..1 }
+  let safeOn = false;
+  function safeShow(on) {
+    const S = world.safehouse;
+    if (!S || on === safeOn) return;
+    safeOn = on;
+    S.show(on);
+    if (on) { city.traffic.setCap(0); city.people.setCap(0, true); indoors = true; rig.setRoom(S.room); }
+    else { city.traffic.setCap(worldCaps.traffic); city.people.setCap(worldCaps.people); indoors = false; rig.setRoom(null); }
+  }
+  STEP.safehouse = (s) => {
+    const S = world.safehouse;
+    if (!S) return null;
+    if (s.set === true) safeShow(true);
+    if (s.set === false) { safeShow(false); return null; }
+    if (s.tv !== undefined || s.headline || s.ticker) S.tvFace(s.tv ? actors.get(s.tv) : null, s.headline ? t(s.headline) : undefined, s.ticker ? t(s.ticker) : undefined);
+    if ('tvOn' in s) S.tv(!!s.tvOn);
+    if (s.lamp !== undefined) S.lamp(s.lamp);
+    return null;
+  };
+
+  // ---------------------------------------------------------------- Chapter 8: the night run
+  // THE NIGHT RUN (src/story/nightRun.js): Zero beside Nate on the highway, the Phantoms, their drones.
+  //   { start: true } (on the "ironhill" arena) | { stop: true }
+  //   zero: 'appear' | 'follow' | 'lead' | 'beside' | 'cruise' | 'guard' | 'block' | 'away' | 'off' (+ speed km/h, gap m)
+  //   phantoms: how many in all (at most 2 at once) | 'giveUp' | 'stop'; back: meters behind him they come from
+  //   drones: how many over the road (0 = gone); cruise: { lane, speed, x } (the story drives his car) | null
+  //   rewind: z (everything of the run moved back along the road, at a cut); autoRewind: { at, to } | null
+  //   reset: the name of a meter to count again from 0
+  STEP.run = (s) => {
+    const R = world.nightRun;
+    if (!R) return null;
+    if (s.start) R.start({ arena: ARENAS.ironhill });
+    // (forget what happened on the road before: a tunnel passed in an earlier mission is not this mission's tunnel)
+    if (s.start || s.forget) for (const e of [...events]) if (e.startsWith('run:')) events.delete(e);
+    if (s.stop) { R.stop(); for (const id of ['zero', 'ph1', 'ph2', 'ph3']) cars.delete(id); return null; }
+    if (s.zero) { R.zero(s.zero, { speed: s.speed, gap: s.gap }); if (R.zeroCar) { cars.set('zero', R.zeroCar); R.zeroCar.storyId = 'zero'; } }
+    if ('phantoms' in s) { R.phantoms(s.phantoms, { back: s.back }); for (const v of R.phantomCars) cars.set(v.storyId, v); }
+    if ('drones' in s) R.drones(s.drones);
+    if ('cruise' in s) R.cruise(s.cruise);
+    // (rewind: a z, or { over, to }: only when the run is further north than "over")
+    if (s.rewind !== undefined) {
+      const r = s.rewind, c = vehicles.state === 'driving' ? vehicles.active : null;
+      if (typeof r === 'number') R.rewind(r); else if (c && c.z > r.over) R.rewind(r.to);
+    }
+    if ('autoRewind' in s) R.autoRewind(s.autoRewind);
+    if (s.reset) R.meterReset(s.reset);
+    return null;
+  };
+  // A METER OF THE RUN to fill: { meter: 'seen' (seconds over 150 km/h) | 'matched' (seconds with Zero in reach while it
+  //   leads), seconds, info (key: the words before the numbers), lostText (key: shown while Zero is out of reach),
+  //   marks: [{ at: seconds, do: [steps] }] (something happens on the way: Zero appears) }
+  STEP.runGoal = (s) => {
+    const R = world.nightRun;
+    if (!R) return null;
+    const marks = (s.marks || []).map((m) => ({ ...m, done: false }));
+    const from = R.meters[s.meter] || 0;
+    return goal(s, null, (dt, st) => {
+      const v = (R.meters[s.meter] || 0) - from;
+      for (const m of marks) if (!m.done && v >= m.at) { m.done = true; run(m.do); }
+      objective.info = `${t(s.info || 'c8.info.' + s.meter)}  ${Math.min(s.seconds, Math.floor(v))} / ${s.seconds} s`;
+      st.text = s.meter === 'matched' && R.meters.lostFor > 2.5 ? t(s.lostText || 'c8.obj.find_zero') : null;
+      return v >= s.seconds;
+    });
+  };
   // THEO'S JACKET (Chapter 4, when Nate took it): it lies on the seat next to him, and a small sign on the screen
   STEP.jacket = (s) => { jacketOn = !!s.on; if (world.jacket) world.jacket(jacketOn); };
 
@@ -1482,7 +1597,7 @@ export function createStory(G) {
   STEP.chapter = (s) => {
     save.setFlags(flags); save.chapterDone(chapter.id);
     // (if that chapter does not exist, the story is over for now: back to the title screen)
-    load(s.id || chapterFile(chapter.number + 1), 0, 0).then((ok) => { if (!ok) G.onExit('title'); });
+    (s.id ? Promise.resolve({ id: s.id }) : nextChapter(chapter.number)).then((next) => (next ? load(next.id, 0, 0) : false)).then((ok) => { if (!ok) G.onExit('title'); });
     return { update: () => false };
   };
   // the end card of a chapter: { over, title, lines: [keys], locked: key }
@@ -1490,7 +1605,7 @@ export function createStory(G) {
     const my = gen, done = chapter;
     save.setFlags(flags); if (met.size) save.unlock([...met]);
     save.chapterDone(done.id); save.finish(done.number);
-    loadChapter(chapterFile(done.number + 1)).then((next) => {
+    nextChapter(done.number).then((next) => {
       if (my !== gen) return;
       const buttons = next ? [[t('ui.next_chapter'), 'next'], [t('ui.title'), 'title']] : [[t('ui.title'), 'title']];
       ui.endCard({ over: t(s.over), title: t(s.title || done.title), lines: (s.lines || []).map(t), locked: next ? '' : t(s.locked || 'ui.locked') }, buttons, (a) => {
@@ -1587,6 +1702,7 @@ export function createStory(G) {
     // (the race of Chapter 4 first: it removes its own cars)
     if (world.races) world.races.stop(true);
     if (world.zero) world.zero.stopStrike();
+    if (world.nightRun) world.nightRun.stop();
     if (world.slow) world.slow.set(1, 0);
     if (world.rearView) world.rearView.set(null);
     vehicles.autoDrive = null; raceOn = false;
@@ -1601,10 +1717,11 @@ export function createStory(G) {
     sound.setSpray(false);
     hack.cancel(); repair.cancel();
     if (garageOn) garageShow(false);
+    if (safeOn) safeShow(false);
     if (calmOn) { calmOn = false; ui.calm(false); }
     if (city.sunk) city.sunk.setLena('intact');
-    city.traffic.setCap(Infinity); city.people.setCap(Infinity);
-    allowDrive = allowMove = true; light = null; mirrorOn = false; tapeShown = false; indoors = false; fovWant = 0; limitedFor = 0;
+    city.traffic.setCap(Infinity); city.people.setCap(Infinity); worldCaps.traffic = Infinity; worldCaps.people = Infinity;
+    allowDrive = allowMove = true; light = null; mirrorOn = false; tapeShown = false; indoors = false; fovWant = 0; limitedFor = 0; memoryOn = 0;
     player.mood = 'neutral';
     objective.text = ''; objective.info = ''; marker = null; beam.visible = false;
     hudState.active = false; hudState.marker = null;
@@ -1655,26 +1772,30 @@ export function createStory(G) {
   async function resume() {
     const d = save.data;
     if (d.ended !== null && d.ended !== undefined) {
-      const next = await loadChapter(chapterFile(d.ended + 1));
+      const next = await nextChapter(d.ended);
       return next ? load(next.id, 0, 0) : 'locked';
     }
     return load(d.chapter, d.mission, d.checkpoint);
   }
   // the mission list: start anywhere, with the choices a normal game would have made by then ("flags" in the data)
-  async function startAt(id, m) {
+  // (extra: flags to set on top - the address option "flags" for testing a branch, e.g. dante_captured,juno_fate:spared)
+  async function startAt(id, m, extra = null) {
     const ch = await loadChapter(id);
     if (!ch) return false;
     const fl = { ...(ch.flags || {}) };
     for (let i = 0; i <= m && i < ch.missions.length; i++) Object.assign(fl, ch.missions[i].flags || {});
+    if (extra) Object.assign(fl, extra);
     save.replaceFlags(fl);
     save.checkpoint(id, m, 0);
     return load(id, m, 0);
   }
   async function missionList() {
     const out = [];
-    for (let n = 0; n < 40; n++) {
+    // (a chapter that is not written yet is stepped over; three missing in a row: the end of the list)
+    for (let n = 0, miss = 0; n < 40; n++) {
       const ch = await loadChapter(chapterFile(n));
-      if (!ch) break;
+      if (!ch) { if (++miss >= 3) break; continue; }
+      miss = 0;
       out.push({ head: n ? `${t('ui.chapter')} ${n}  ·  ${t(ch.title)}` : t(ch.title) });
       ch.missions.forEach((q, i) => out.push({ label: t(q.title), id: { chapter: ch.id, mission: i } }));
     }
@@ -1722,6 +1843,13 @@ export function createStory(G) {
     drivers.update();
     // ---- Zero's moments (Chapter 4) ----
     if (world.zero) for (const e of world.zero.takeEvents()) fire('zero:' + e);
+    // ---- the night run (Chapter 8): what happened on the highway; a new Phantom gets its story name ----
+    if (world.nightRun && world.nightRun.on) {
+      for (const e of world.nightRun.takeEvents()) {
+        fire('run:' + e);
+        if (e.startsWith('phantom:')) { const id = e.slice(8), v = world.nightRun.phantomCars.find((q) => q.storyId === id); if (v) cars.set(id, v); }
+      }
+    }
     // ---- the load on a vehicle (Chapter 5): its hits and scrapes, and when it is broken ----
     for (const e of vehicles.cargo.events) fire('cargo:' + e);
     // ---- the Guard: what happened (for rules and waits), and the drones' loudspeakers ----
@@ -1740,6 +1868,7 @@ export function createStory(G) {
     }
     // ---- the voices around: an old radio, the news screens of the street (for music.js) ----
     ambient.radio = 0; ambient.street = 0; ambient.drone = 0;
+    if (world.nightRun && world.nightRun.on) ambient.drone = world.nightRun.droneNear(camera.position);     // (the Phantoms' drones)
     {
       const cx = camera.position.x, cz = camera.position.z;
       for (const o of things.values()) {
@@ -1831,6 +1960,8 @@ export function createStory(G) {
     get realPolice() { return active && realPolice; },
     get indoors() { return indoors; },     // true: rain is heard on a roof
     get garage() { return active && garageOn; },   // Chapter 6: Mace's garage is shown instead of the city
+    get safehouse() { return active && safeOn; },  // Chapter 8: Lena's safehouse is shown instead of the city
+    get memory() { return active ? memoryOn : 0; }, // Chapter 8: the flashback look (0..1)
     get calm() { return active && calmOn; },       // Chapter 6: the calm screen
     repair,
     get racing() { return active && raceOn; },     // a race of Chapter 4 runs (its own HUD is on the screen)

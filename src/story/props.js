@@ -16,6 +16,7 @@ import { sunkProps } from './propsSunk.js';
 import { raceProps } from './propsRace.js';
 import { docksProps } from './propsDocks.js';
 import { garageProps } from './propsGarage.js';
+import { nightProps } from './propsNight.js';
 
 // a picture with text, drawn in code. lines: [{ text, size, color, y (0..1), font, weight }]
 function textTexture(w, h, bg, lines, border = null) {
@@ -79,12 +80,14 @@ export function createProps() {
     },
     // the tape deck of a car. The cassette can be seen in its window: the hand-written label "DON'T SKIP".
     // (its front looks toward -z: in a car that is toward the driver)
-    deck() {
+    // (o.empty: no tape in it - a dark slot; Chapter 8 puts the tape in at the very end)
+    deck(o = {}) {
       const g = new THREE.Group();
       g.add(box(0.21, 0.078, 0.03, std(0x0c0d0f, 0.4, 0.3)));
       const frame = box(0.118, 0.062, 0.006, std(0x1c1e22, 0.5, 0.4)); frame.position.set(-0.034, 0.002, -0.0135); g.add(frame);
+      if (o.empty) { const slot = box(0.106, 0.012, 0.004, std(0x020203, 0.9)); slot.position.set(-0.034, 0.012, -0.0168); g.add(slot); }
       const label = new THREE.Mesh(new THREE.PlaneGeometry(0.106, 0.053), new THREE.MeshStandardMaterial({ map: tapeLabel(), roughness: 0.9, emissive: 0xffffff, emissiveMap: tapeLabel(), emissiveIntensity: 0.3 }));
-      label.position.set(-0.034, 0.002, -0.0172); label.rotation.y = Math.PI; g.add(label);
+      label.position.set(-0.034, 0.002, -0.0172); label.rotation.y = Math.PI; if (!o.empty) g.add(label);
       // a small warm lamp and three buttons
       const led = box(0.012, 0.007, 0.004, std(0xffb347, 0.4, 0, 1.8)); led.position.set(0.074, 0.022, -0.016); g.add(led);
       for (let i = 0; i < 3; i++) { const b = box(0.016, 0.012, 0.006, std(0x2a2c30, 0.5, 0.5)); b.position.set(0.05 + i * 0.022, -0.016, -0.0165); g.add(b); }
@@ -197,6 +200,8 @@ export function createProps() {
   Object.assign(MAKERS, docksProps({ std, box, tex, textTexture, glowTexture }).makers);
   // the things of Chapter 6 (the bank record on paper, a spanner, Theo's car key, a rag): propsGarage.js
   Object.assign(MAKERS, garageProps({ std, box, tex, textTexture, glowTexture }).makers);
+  // the things of Chapter 8 (the pilot key, the car's radio dial, Solberg's memory card, a TV with the news): propsNight.js
+  Object.assign(MAKERS, nightProps({ std, box, tex, textTexture, glowTexture }).makers);
   // a soft round glow (white in the middle, clear at the edge)
   function glowTexture() {
     const cv = document.createElement('canvas'); cv.width = cv.height = 64;

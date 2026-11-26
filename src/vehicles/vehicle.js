@@ -660,6 +660,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       if (v.x < A.minX + r0) { v.x = A.minX + r0; if (v.vx < 0) { impact = Math.max(impact, -v.vx * 0.7); v.vx *= -0.2; lever -= 0.25 * Math.sign(v.vz || 1); } }
       if (v.x > A.maxX - r0) { v.x = A.maxX - r0; if (v.vx > 0) { impact = Math.max(impact, v.vx * 0.7); v.vx *= -0.2; lever += 0.25 * Math.sign(v.vz || 1); } }
       if (v.z > A.maxZ - 2) { v.z = A.maxZ - 2; if (v.vz > 0) v.vz *= -0.2; }
+      // (a closed arena has a wall at its south end too: the barriers at the foot of the ramp - Chapter 8)
+      if (A.closed && v.z < A.minZ + 2) { v.z = A.minZ + 2; if (v.vz < 0) v.vz *= -0.2; }
       // out of the arena (the foot of the ramp): the normal city rules again (not while the car is still in the
       // arena's way in, heading into it: entry)
       if (v.z < A.minZ && !(A.entry && A.entry(v))) v.arena = null;

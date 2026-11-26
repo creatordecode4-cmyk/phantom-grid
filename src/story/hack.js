@@ -43,6 +43,26 @@ const CSS = `
 #hack .result.ok { display: flex; color: #9fffe0; background: rgba(4, 40, 32, 0.8); }
 #hack .result.fail { display: flex; color: #ff9a7a; background: rgba(40, 8, 4, 0.8); }
 @keyframes hackPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+/* THE STEADY LINK (Chapter 8): a small panel at the top; it takes no touches (the driving buttons stay free) */
+#hackSteady { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 58px); transform: translateX(-50%); width: min(88vw, 430px); z-index: 38;
+  display: none; pointer-events: none; padding: 10px 14px 9px; border-radius: 14px; border: 1px solid rgba(90, 230, 190, 0.32);
+  background: rgba(4, 22, 24, 0.7); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); color: #cfeee6;
+  font-family: "Helvetica Neue", Roboto, Arial, sans-serif; user-select: none; -webkit-user-select: none; transition: opacity 0.5s; }
+#hackSteady.on { display: block; }
+#hackSteady .title { font-size: 11px; letter-spacing: 0.24em; color: #7ff0cc; text-align: center; }
+#hackSteady .chain { position: relative; display: flex; justify-content: space-between; align-items: center; margin: 10px 6px 8px; height: 34px; }
+#hackSteady .line { position: absolute; left: 14px; right: 14px; top: 50%; height: 3px; margin-top: -1.5px; background: rgba(120, 255, 210, 0.13); border-radius: 2px; }
+#hackSteady .line i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #4fe0b4, #a6ffe2); border-radius: 2px; box-shadow: 0 0 10px rgba(80, 255, 200, 0.5); }
+#hackSteady .n { position: relative; width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(110, 230, 200, 0.35);
+  background: radial-gradient(circle, rgba(60, 200, 170, 0.15), rgba(10, 40, 40, 0.65)); }
+#hackSteady .n.cur { border-color: rgba(140, 255, 220, 0.9); background: conic-gradient(rgba(130, 255, 215, 0.75) calc(var(--p, 0) * 1%), rgba(10, 40, 40, 0.65) 0); }
+#hackSteady .n.done { border-color: #a6ffe2; background: radial-gradient(circle, rgba(170, 255, 230, 0.9), rgba(30, 120, 100, 0.75)); box-shadow: 0 0 12px rgba(120, 255, 210, 0.55); }
+#hackSteady .hint { text-align: center; font-size: 13px; letter-spacing: 0.2em; font-weight: 600; min-height: 16px; transition: color 0.3s; }
+#hackSteady .hint.ok { color: #9fffe0; }
+#hackSteady .hint.wobble { color: #ffc46b; animation: steadyPulse 1.1s ease-in-out infinite; }
+#hackSteady.linked { border-color: rgba(160, 255, 225, 0.9); box-shadow: 0 0 30px rgba(80, 255, 200, 0.3); }
+@keyframes steadyPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+body.cine #hackSteady { top: calc(var(--bar, 0px) + 12px); }
 `;
 
 export function createHack() {
@@ -200,10 +220,71 @@ export function createHack() {
     });
   }
 
+  // ---------------------------------------------------------------- THE STEADY LINK (Chapter 8)
+  // Lena does the hacking; the player only holds the car steady beside Zero. The nodes light one after the other while
+  // the two cars are steady ("long nodes": each one takes a few seconds), and simply wait while they are not.
+  // No timer, no wrong move, no penalty.
+  //   opts: { title, hint (shown while steady), wobble (shown while not), nodes (4..8), seconds (steady riding in all),
+  //           steady() -> 0..1, labels: { ok } }. Returns a promise: true when the link is made.
+  let sRoot = null, sEls = null, sRun = null;
+  function buildSteady() {
+    if (sRoot) return;
+    build();
+    sRoot = document.createElement('div');
+    sRoot.id = 'hackSteady';
+    sRoot.innerHTML = '<div class="title"></div><div class="chain"><div class="line"><i></i></div></div><div class="hint"></div>';
+    document.body.appendChild(sRoot);
+    sEls = { title: sRoot.querySelector('.title'), chain: sRoot.querySelector('.chain'), fill: sRoot.querySelector('.line i'), hint: sRoot.querySelector('.hint') };
+  }
+  function steady(opts = {}) {
+    buildSteady();
+    if (sRun) sRun.finish(false);
+    const n = Math.max(4, Math.min(8, opts.nodes || 6)), seconds = Math.max(4, opts.seconds || 20), L = opts.labels || {};
+    sEls.title.textContent = opts.title || 'LINKING';
+    for (const old of sEls.chain.querySelectorAll('.n')) old.remove();
+    const nodes = [];
+    for (let i = 0; i < n; i++) { const d = document.createElement('div'); d.className = 'n'; sEls.chain.appendChild(d); nodes.push(d); }
+    sRoot.classList.remove('linked');
+    sRoot.classList.add('on');
+    document.body.classList.add('steady-link');
+    return new Promise((resolve) => {
+      let got = 0, over = false, hintWas = '';
+      const per = seconds / n;
+      function finish(ok) {
+        if (over) return;
+        over = true; sRun = null;
+        document.body.classList.remove('steady-link');
+        if (ok) {
+          sRoot.classList.add('linked'); sEls.hint.className = 'hint ok'; sEls.hint.textContent = L.ok || 'LINKED';
+          if (navigator.vibrate) { try { navigator.vibrate([20, 40, 20]); } catch (e) { /* no */ } }
+          setTimeout(() => { sRoot.classList.remove('on'); resolve(true); }, 1300);
+        } else { sRoot.classList.remove('on'); resolve(false); }
+      }
+      // (moved on by the game's own clock - stepSteady - so it waits while the game is paused)
+      function tick(dt) {
+        const k = opts.steady ? Math.max(0, Math.min(1, opts.steady())) : 1;
+        // (only a steady ride moves the link on: from a little steady it is slow, fully steady it is full speed)
+        got = Math.min(seconds, got + dt * Math.max(0, Math.min(1, (k - 0.45) / 0.35)));
+        const done = Math.floor(got / per + 1e-6), part = (got - done * per) / per;
+        nodes.forEach((d, i) => { d.className = 'n' + (i < done ? ' done' : i === done ? ' cur' : ''); if (i === done) d.style.setProperty('--p', String(Math.round(part * 100))); });
+        sEls.fill.style.width = `${(Math.min(done, n - 1) / (n - 1)) * 100}%`;
+        const ok = k > 0.62, want = ok ? 'ok' : 'wobble';
+        if (want !== hintWas) { hintWas = want; sEls.hint.className = 'hint ' + want; sEls.hint.textContent = ok ? (opts.hint || 'STEADY') : (opts.wobble || 'STAY BESIDE IT'); }
+        if (got >= seconds - 1e-6) finish(true);
+      }
+      sRun = { finish, tick, add(s) { got = Math.min(seconds, got + s); } };
+      tick(0);
+    });
+  }
+
   return {
-    start,
+    start, steady,
     get active() { return !!run; },
-    cancel() { if (run) run.finish(false, true); },
+    get steadyActive() { return !!sRun; },
+    stepSteady(dt) { if (sRun) sRun.tick(Math.min(0.1, dt)); },
+    cancel() { if (run) run.finish(false, true); if (sRun) sRun.finish(false); },
+    // for tests: the steady link is made at once
+    solveSteady() { if (sRun) { sRun.add(1e6); return true; } return false; },
     // for tests: draw the whole path at once
     solve() {
       if (!run || !els) return false;

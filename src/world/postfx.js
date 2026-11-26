@@ -131,6 +131,7 @@ export function createPostFX(renderer) {
     uSunPos: { value: new THREE.Vector2(0.5, 0.5) },   // where the sun is on the screen (0..1)
     uSunGlow: { value: new THREE.Vector3(0, 0, 0) },   // color x strength of the sun glow (0 = off)
     uSpeed: { value: 0 },                              // 0..1: speed blur at the edges of the picture
+    uMemory: { value: 0 },                             // 0..1: a memory (Chapter 8's flashback): pale, cold, grainy
     uSharp: { value: 0 },                              // 0 = no sharpening .. 1 = the most
   };
   const final = pass(/* glsl */ `
@@ -140,6 +141,7 @@ export function createPostFX(renderer) {
     uniform float uTime;
     uniform float uVignette;
     uniform float uGrain;
+    uniform float uMemory;
     uniform vec2 uRes;
     uniform vec2 uSunPos;
     uniform vec3 uSunGlow;
@@ -202,12 +204,20 @@ export function createPostFX(renderer) {
       float l2 = dot( col, vec3( 0.2126, 0.7152, 0.0722 ) );
       float chroma = max( col.r, max( col.g, col.b ) ) - min( col.r, min( col.g, col.b ) );
       col = mix( vec3( l2 ), col, 1.0 + 0.2 * ( 1.0 - chroma ) );
+      // A MEMORY (the flashback of Chapter 8): most of the color goes, a cold blue-green stays, the blacks are lifted
+      // like old film, the corners close in
+      if ( uMemory > 0.001 ) {
+        float lm = dot( col, vec3( 0.2126, 0.7152, 0.0722 ) );
+        vec3 mem = vec3( lm ) * vec3( 0.8, 0.95, 1.02 ) * 0.92 + vec3( 0.035, 0.045, 0.05 );
+        col = mix( col, mem, uMemory * 0.88 );
+        col *= 1.0 - uMemory * 0.55 * smoothstep( 0.08, 0.62, dot( q, q ) * 2.0 );
+      }
       // the darkest parts stay a little lifted (no crushed black on a phone screen)
       col = col * 0.993 + 0.003;
       gl_FragColor = linearToOutputTexel( vec4( clamp( col, 0.0, 1.0 ), 1.0 ) );
       // film grain, a bit stronger in the shadows
       float n = hash( vUv * uRes + fract( uTime ) * 61.7 ) - 0.5;
-      gl_FragColor.rgb += n * uGrain * ( 1.25 - l );
+      gl_FragColor.rgb += n * ( uGrain + uMemory * 0.06 ) * ( 1.25 - l );
     }`, finalUniforms, { toneMapped: true });
 
   function resize(w, h, msaa) {
@@ -283,6 +293,8 @@ export function createPostFX(renderer) {
 
   // 0 = off .. 1 = strongest (main.js sets it from the car's speed)
   function setSpeed(k) { finalUniforms.uSpeed.value = k; }
+  // 0 = off .. 1 = a memory (the flashback of Chapter 8)
+  function setMemory(k) { finalUniforms.uMemory.value = k; }
 
-  return { supported, resize, render, setQuality, setSun, setSpeed };
+  return { supported, resize, render, setQuality, setSun, setSpeed, setMemory };
 }

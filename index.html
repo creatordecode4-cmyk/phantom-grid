@@ -405,6 +405,18 @@
     #subs-who.radio { color: #b9c9b0; }
     #subs-who.radio::before { content: '\25C9  RADIO  \00B7  '; opacity: 0.7; }
     #subs-who:empty { display: none; }
+    /* Chapter 8: THEO's voice over a broken radio - a warm amber name that reads well over a dark, rainy picture, the
+       words coming through in pieces (the part not yet heard keeps its place, so the line does not jump) */
+    #subs-who.signal { color: #ffc46b; text-shadow: 0 0 10px rgba(255, 170, 70, 0.45), 0 1px 3px #000; }
+    #subs-who.signal::before { content: '\25C9  '; opacity: 0.85; }
+    #subs.signal .plate { background: rgba(10, 6, 2, 0.7); box-shadow: 0 0 0 1px rgba(255, 196, 107, 0.16); }
+    #subs.signal #subs-text { color: #fff4e6; }
+    #subs-text .sig-rest { visibility: hidden; }
+    /* WREN, for two sentences, in a voice more like Theo's: her blue warmed toward his amber */
+    #subs-who.wrenTheo { color: #e8cf9a; text-shadow: 0 0 8px rgba(143, 216, 255, 0.35); }
+    #subs-text.wrenTheo { font-style: italic; color: #fff2de; }
+    #wren.warm { border-color: rgba(255, 200, 120, 0.85); }
+    #wren.warm::after { background: rgba(255, 205, 140, 0.9); }
     #subs-text { font-size: var(--sub); line-height: 1.42; letter-spacing: 0.02em; font-weight: 400; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
     #subs-text.thought { font-style: italic; opacity: 0.92; }
     /* choices: two big buttons */
@@ -415,6 +427,18 @@
       background: rgba(8, 10, 12, 0.84); border: 1px solid rgba(255, 255, 255, 0.28); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); touch-action: manipulation; }
     #choices button:active { background: rgba(255, 255, 255, 0.24); }
     #choices .bar { height: 2px; background: rgba(255, 255, 255, 0.18); border-radius: 1px; overflow: hidden; } #choices .bar i { display: block; height: 100%; width: 100%; background: #ffc94a; }
+    /* THE RADIO REPLIES (Chapter 8): four big buttons in two rows near the top of the picture, far from the driving
+       buttons in the bottom corners; the question stays down in the subtitle */
+    #choices.radio { top: calc(var(--bar, 0px) + 4vh + env(safe-area-inset-top)); bottom: auto; width: min(600px, 94vw);
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    #choices.radio[hidden] { display: none; }
+    #choices.radio .prompt, #choices.radio .bar { grid-column: 1 / -1; }
+    #choices.radio button { min-height: 64px; text-align: center; font-size: 16px; border-radius: 32px; padding: 10px 14px;
+      background: rgba(12, 8, 4, 0.62); border: 1px solid rgba(255, 196, 107, 0.45); color: #fff4e6; }
+    #choices.radio button:active { background: rgba(255, 196, 107, 0.25); }
+    #choices.radio button:last-of-type { color: rgba(255, 244, 230, 0.72); font-style: italic; }
+    #choices.radio .bar i { background: #ffc46b; }
+    body.choosing-radio #subs, body.choosing-radio.cine #subs { bottom: calc(var(--bar, 0px) + 2vh + env(safe-area-inset-bottom)); top: auto; }
     /* hold to skip */
     #skip { position: absolute; right: calc(18px + env(safe-area-inset-right)); bottom: calc(2.2vh + env(safe-area-inset-bottom)); font: inherit; font-size: 10px; letter-spacing: 0.24em; color: #fff;
       background: rgba(10, 12, 14, 0.5); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 22px; height: 44px; padding: 0 18px; overflow: hidden; touch-action: none; }
@@ -468,6 +492,8 @@
     body.cine #btn-act { right: calc(26px + env(safe-area-inset-right)); bottom: calc(var(--bar) + 13vh + env(safe-area-inset-bottom)); }
     #tip { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); padding: 9px 16px; border-radius: 10px; background: rgba(8, 10, 12, 0.72); border: 1px solid rgba(255, 201, 74, 0.6); font-size: 12px; letter-spacing: 0.16em; text-align: center; pointer-events: none; max-width: 84vw; line-height: 1.6; }
     #tip[hidden] { display: none; }
+    /* (Chapter 8: while Lena's link panel is at the top, the tip goes under it) */
+    body.steady-link #tip { top: calc(env(safe-area-inset-top) + 172px); }
     /* things you can read: Theo's phone, the race ticket */
     #reader { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); }
     #reader[hidden] { display: none; }

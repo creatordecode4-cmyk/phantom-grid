@@ -73,14 +73,58 @@ export function createStoryUI() {
     subNow = s;
     el.subs.hidden = false;
     el.who.textContent = s.who || '';
-    el.who.classList.toggle('wren', s.kind === 'wren');
+    el.who.classList.toggle('wren', s.kind === 'wren' || s.kind === 'wrenTheo');
     el.who.classList.toggle('radio', s.kind === 'radio');           // a voice over the radio (Rask, Chapter 5)
-    el.text.textContent = s.text;
+    // Chapter 8: THEO over a broken radio ('signal': the words come through in pieces) and WREN for a moment in a
+    // voice more like his ('wrenTheo')
+    el.who.classList.toggle('signal', s.kind === 'signal');
+    el.who.classList.toggle('wrenTheo', s.kind === 'wrenTheo');
+    el.subs.classList.toggle('signal', s.kind === 'signal');
     el.text.classList.toggle('thought', s.kind === 'thought');
+    el.text.classList.toggle('wrenTheo', s.kind === 'wrenTheo');
+    if (s.kind === 'signal') { sig = { text: s.text, t: 0, gaps: signalGaps(s.text), last: '' }; drawSignal(0); }
+    else { sig = null; el.text.textContent = s.text; }
     subLeft = s.seconds;
-    el.wren.classList.toggle('on', s.kind === 'wren');
+    el.wren.classList.toggle('on', s.kind === 'wren' || s.kind === 'wrenTheo');
+    el.wren.classList.toggle('warm', s.kind === 'wrenTheo');
     if (s.onShow) s.onShow(s.seconds);         // (how long the line stays: the speaker's mouth is timed to it)
   }
+  // ---- THE BROKEN SIGNAL (Chapter 8): a line comes through letter by letter, a little late; now and then a word drops
+  // out into static for a moment and comes back. In the end the whole line is there (it must be read).
+  let sig = null;
+  function signalGaps(text) {
+    // two or three short drop-outs, each over one word, at places that are the same every time for the same line
+    const gaps = [], words = [];
+    text.replace(/\S+/g, (w, i) => { words.push([i, i + w.length]); return w; });
+    let h = 0;
+    for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
+    const n = Math.min(words.length > 6 ? 3 : 2, Math.max(0, words.length - 2));
+    for (let k = 0; k < n; k++) {
+      h = (h * 1664525 + 1013904223) >>> 0;
+      const w = words[1 + (h % Math.max(1, words.length - 1))];
+      if (w && !gaps.some((g) => g.a === w[0])) gaps.push({ a: w[0], b: w[1], at: 0.25 + (k * 0.3) + ((h >>> 8) % 100) / 900, len: 0.28 + ((h >>> 16) % 100) / 500 });
+    }
+    return gaps;
+  }
+  const NOISE = '\u2591\u2592\u00B7';
+  function drawSignal(dt) {
+    if (!sig) return;
+    sig.t += dt;
+    const T = sig.text, n = T.length;
+    // (it starts a little late, like a delay on the line; then about 30 letters a second)
+    const shown = Math.max(0, Math.min(n, Math.floor((sig.t - 0.18) * 30)));
+    const k = n ? sig.t / Math.max(0.6, n / 30 + 0.6) : 1;
+    let out = '';
+    for (let i = 0; i < shown; i++) {
+      const ch = T[i];
+      const g = sig.gaps.find((q) => i >= q.a && i < q.b && k > q.at && k < q.at + q.len);
+      out += g && ch !== ' ' ? NOISE[(i + Math.floor(sig.t * 14)) % NOISE.length] : ch;
+    }
+    const rest = T.slice(shown);
+    const html = `${esc(out)}<span class="sig-rest">${esc(rest)}</span>`;
+    if (html !== sig.last) { sig.last = html; el.text.innerHTML = html; }
+  }
+  const esc = (x) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   // how long a line stays: long enough to read it
   const readTime = (text) => Math.max(1.9, Math.min(7, 1.1 + text.length * 0.062));
   // who: name shown above (may be ''), kind: '' | 'wren' | 'thought' | 'radio'
@@ -89,7 +133,7 @@ export function createStoryUI() {
     if (opts.now || (!subNow && !queue.length)) { queue.length = opts.now ? 0 : queue.length; showSub(s); } else queue.push(s);
     return s.seconds;
   }
-  function clearSubs() { queue.length = 0; subNow = null; subLeft = 0; el.subs.hidden = true; el.wren.classList.remove('on'); }
+  function clearSubs() { queue.length = 0; subNow = null; subLeft = 0; sig = null; el.subs.hidden = true; el.wren.classList.remove('on'); }
   // the line on the screen is over: the next one, or nothing
   function nextSub() {
     const done = subNow && subNow.onDone;
@@ -103,18 +147,22 @@ export function createStoryUI() {
   // ------------------------------------------------------------ choices
   let choiceDone = null, choiceLeft = 0, choiceTotal = 0, choiceDefault = 0;
   // options: list of texts (at most 2 are shown), cb(index). seconds: after this time the default is taken (0 = wait forever)
-  function choice(prompt, options, cb, seconds = 0, def = 0) {
+  // (layout 'radio', Chapter 8: up to four big replies in two rows near the top of the picture, away from the driving
+  //  buttons; the last one is usually the silence)
+  function choice(prompt, options, cb, seconds = 0, def = 0, layout = '') {
     // (no options: take the choice away)
-    if (!options) { el.choices.hidden = true; el.choices.textContent = ''; choiceDone = null; choiceLeft = 0; body.classList.remove('choosing'); dropHeld(); return; }
+    if (!options) { el.choices.hidden = true; el.choices.textContent = ''; el.choices.className = ''; choiceDone = null; choiceLeft = 0; body.classList.remove('choosing'); body.classList.remove('choosing-radio'); dropHeld(); return; }
     el.choices.textContent = '';
+    el.choices.className = layout || '';
+    body.classList.toggle('choosing-radio', layout === 'radio');
     if (prompt) { const p = document.createElement('div'); p.className = 'prompt'; p.textContent = prompt; el.choices.appendChild(p); }
-    options.slice(0, 3).forEach((text, i) => { const b = button(text, ''); press(b, () => pick(i)); el.choices.appendChild(b); });
+    options.slice(0, layout === 'radio' ? 4 : 3).forEach((text, i) => { const b = button(text, ''); press(b, () => pick(i)); el.choices.appendChild(b); });
     if (seconds > 0) { const bar = document.createElement('div'); bar.className = 'bar'; bar.appendChild(document.createElement('i')); el.choices.appendChild(bar); }
     el.choices.hidden = false;
     body.classList.add('choosing');            // (the subtitle moves up, over the buttons: a question stays readable)
     choiceDone = cb; choiceLeft = choiceTotal = seconds; choiceDefault = def;
   }
-  function pick(i) { const cb = choiceDone; choiceDone = null; el.choices.hidden = true; body.classList.remove('choosing'); dropHeld(); if (cb) cb(i); }
+  function pick(i) { const cb = choiceDone; choiceDone = null; el.choices.hidden = true; el.choices.className = ''; body.classList.remove('choosing'); body.classList.remove('choosing-radio'); dropHeld(); if (cb) cb(i); }
 
   // ------------------------------------------------------------ hold to skip
   let skipCb = null, skipHeld = false, skipT = 0;
@@ -377,6 +425,7 @@ export function createStoryUI() {
 
   // ------------------------------------------------------------ every frame (real seconds, also while the game is paused)
   function update(dt) {
+    if (sig && subNow) drawSignal(dt);
     if (subNow) {
       subLeft -= dt;
       if (subLeft <= 0) {
@@ -401,7 +450,7 @@ export function createStoryUI() {
   // everything of the story off the screen (leaving the story, restarting a checkpoint)
   function reset() {
     cine(false); clearSubs(); skip(null); limiter(null); prompt(null); tip(null); tape(false); mirror(false); limitBadge(0, false); cargo(null);
-    card(null); el.choices.hidden = true; choiceDone = null; el.reader.hidden = true; body.classList.remove('quiet'); body.classList.remove('choosing');
+    card(null); el.choices.hidden = true; el.choices.className = ''; choiceDone = null; el.reader.hidden = true; body.classList.remove('quiet'); body.classList.remove('choosing'); body.classList.remove('choosing-radio'); body.classList.remove('steady-link');
     paint(null); video('off');
   }
 

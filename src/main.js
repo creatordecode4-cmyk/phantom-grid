@@ -57,6 +57,8 @@ import { createInteriors } from './interiors/interiors.js';
 import { createRaces } from './race/raceManager.js';
 import { createSpectators } from './race/spectators.js';
 import { createZero } from './ai/zero.js';
+import { createNightRun } from './story/nightRun.js';
+import { createSafehouse } from './story/safehouseSet.js';
 import { raceLook } from './story/propsRace.js';
 import { createGarageSet } from './story/garageSet.js';
 import { createRearView } from './story/rearView.js';
@@ -185,7 +187,7 @@ async function boot() {
   scene.add(flashLight);
   const sirens = [], tags = [];
   const CAM_MODES = ['chase', 'close', 'hood', 'cockpit'];
-  let baseFov = CONFIG.camera.fov, fovNow = CONFIG.camera.fov, pixelH = 720, stars = 0;
+  let baseFov = CONFIG.camera.fov, fovNow = CONFIG.camera.fov, pixelH = 720, stars = 0, memoryNow = 0;
   const missions = createMissions({ scene, city, vehicles, hud, sound });
 
   // ------------------------------------------------- Phase 4: the story
@@ -217,6 +219,11 @@ async function boot() {
   // CHAPTER 6: Mace's garage at night as a room of its own (src/story/garageSet.js) - built the first time the story
   // shows it; while it is shown the city is not drawn at all
   if (GARAGE.ready) world.garageSet = createGarageSet({ scene, renderer, camera, GARAGE, mats: materials.mats, lighting, colliders: city.colliders, sound });
+  // CHAPTER 8: Lena's safehouse as a room of its own (src/story/safehouseSet.js); its TV shows a face taken from a model
+  world.safehouse = createSafehouse({
+    scene, renderer, camera, lighting, props: storyProps,
+    takeFace: (a) => (a && a.rig && a.rig.bones && a.rig.bones.head ? takePortrait(renderer, scene, { root: a.root, head: a.rig.bones.head, heading: a.heading }, setCharacterFill) : null),
+  });
   // a rear-view mirror for a film shot (Chapter 6, "Leave": the garage door behind the van, getting smaller)
   world.rearView = createRearView({ renderer, scene, camera });
   // (what the set's camera must see besides the room: the player, the story's people and things - a fresh list four
@@ -232,6 +239,8 @@ async function boot() {
   // goes through the field (the story calls it)
   const zero = createZero({ vehicles, drivers, music, sound, effects, flags: () => (story && story.active ? story.flags : save.data.flags) });
   world.zero = zero;
+  // THE NIGHT RUN (Chapter 8, src/story/nightRun.js): Zero beside Nate on the highway, the Phantoms of KVI, their drones
+  world.nightRun = createNightRun({ scene, vehicles, sound, music, effects, weather, rig, ui, layout, props: storyProps });
   // THEO'S JACKET (Chapter 4, when Nate took it on the roof): from then on Nate wears it, and a small sign of it is
   // on the screen
   const jacket = { on: false, badge: null, base: null, mat: null, forced: false };
@@ -452,6 +461,7 @@ async function boot() {
     vehicles.update(dt, input, player, night, time);
     races.update(dt, time, input);
     zero.update(dt, { free: gameMode === 'free' && !story.active, car: vehicles.state === 'driving' ? vehicles.active : null });
+    world.nightRun.update(dt, time);
     zeroInMirror();
     updateJacket();
     effects.endFrame(dt);
@@ -471,6 +481,8 @@ async function boot() {
     // Chapter 6: the garage set (its lamps, the rain on its window, the kettle, the radio); the player, the people and
     // the story's things must be in its picture too
     if (world.garageSet && world.garageSet.active) world.garageSet.update(dt, garageCast);
+    // Chapter 8: Lena's safehouse (its rain on the window, the TV, the lamp)
+    if (world.safehouse && world.safehouse.active) world.safehouse.update(dt, garageCast);
     streetLife.update(dt, time, gameMode === 'free' && !inside);
     // ---- the doors of the houses (ENTER / EXIT) ----
     interiors.update(dt, {
@@ -514,6 +526,9 @@ async function boot() {
       // the light dots of the lamps are sized for the lens that is used right now (film scenes use long lenses)
       if (Math.abs(camera.fov - fovSent) > 0.04) { fovSent = camera.fov; effects.setViewport(camera.fov, pixelH); spectators.setViewport(camera.fov, pixelH); }
       if (postfx.setSpeed) postfx.setSpeed(film ? 0 : clamp((kmh - 140) / 90, 0, 1) * 0.8 + boost * 0.25);
+      // (Chapter 8: a memory - the picture fades into the pale, cold look of a flashback and back out)
+      memoryNow += ((S ? S.memory : 0) - memoryNow) * Math.min(1, dt * 2.2);
+      if (postfx.setMemory) postfx.setMemory(memoryNow < 0.002 ? 0 : memoryNow);
       hud.setWindscreen(!film && driving && rain > 0.3 && (view === 'hood' || view === 'cockpit') && !!vehicles.active && vehicles.active.isCar);
     }
     // ---- police: wanted stars, chasers, sirens, the flashing light ----
@@ -641,7 +656,7 @@ async function boot() {
     shared.uPgPlayer.value.copy(player.position);
     // ---- THE SUNK: its water and mist, the steady rain there, the teal dark of the tunnel ----
     // (not while the garage set of Chapter 6 is shown: the canals are not in that picture)
-    const citySleeps = !!(world.garageSet && world.garageSet.active);
+    const citySleeps = !!(world.garageSet && world.garageSet.active) || !!(world.safehouse && world.safehouse.active);
     if (citySleeps) lighting.zone = null;
     else if (TUN && tunnelNear(camera.position).deep > 0) {
       // inside the Ironhill tunnel: a warm, dark haze (the orange of its lamps in the air)
@@ -1160,6 +1175,7 @@ async function boot() {
     THREE, CONFIG, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
     vehicles, missions, gps, sound, hud, minimap, carLib, effects, police, garage, settings,
     story, ui, music, save, actors, drivers, director, storyProps, streetLife, GARAGE, interiors, races, spectators, slow, zero,
+    nightRun: world.nightRun, safehouse: world.safehouse,
     applyQuality, step, draw, carAction, updateGuides, showTitle, startFree, startStory, openPause,
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
@@ -1176,7 +1192,16 @@ async function boot() {
   // ---- where the game opens: the title screen, or straight into a mode (address options, for testing) ----
   const open = urlOption('story');
   if (open === '0') startFree(true);
-  else if (open) { const [id, m] = open.split('.'); startStory(() => story.startAt(id, parseInt(m || '0', 10) || 0)); }
+  else if (open) {
+    // (flags=a,b:c - set saved choices on top, for testing a branch: "a" is true, "b" is the word "c")
+    const extra = {};
+    for (const part of (urlOption('flags') || '').split(',').filter(Boolean)) {
+      const [k, v] = part.split(':');
+      extra[k] = v === undefined ? true : v === 'false' ? false : v === 'true' ? true : (Number.isNaN(Number(v)) ? v : Number(v));
+    }
+    const [id, m] = open.split('.');
+    startStory(() => story.startAt(id, parseInt(m || '0', 10) || 0, Object.keys(extra).length ? extra : null));
+  }
   else showTitle();
 
   hud.hideLoading();

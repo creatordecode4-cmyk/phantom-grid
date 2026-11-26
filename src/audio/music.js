@@ -23,6 +23,10 @@
 //     shelf playing an old waltz (made here from a few chords and a little
 //     tune - not a recording), with the hiss of a weak station; and after the
 //     choice of the chapter a short, quiet motif that is played once.
+//   * THE RADIO LINK (Chapter 8): the car radio tuned to Zero - a bed of hiss, and Theo's voice coming through it:
+//     a lower, warmer voice than the street voices (the same buzz-and-filters voice), through a small radio band,
+//     with a soft digital delay (a short echo that repeats twice, quieter), words dropping out for a moment, little
+//     crackles; a burst of heavy static when the signal breaks; then nothing - the radio is dead.
 //   * SILENCE: everything here can be cut to nothing for a moment.
 //
 // No sound files. Everything uses the audio system of sound.js and only
@@ -61,6 +65,8 @@ export function createMusic(sound) {
   // RUSTWATER DOCKS (Chapter 5): rain on corrugated metal, cranes groaning, ships' horns far out, forklift beeps,
   // gulls at dawn, rusty chains, the low idle of engines
   let docksAmb = null, groanNext = 2, hornNext = 12, beepNext = 6, gullNext = 1, chainNext = 9, plinkNext = 0;
+  // THE RADIO LINK (Chapter 8)
+  let link = null, linkLevel = 0, linkVoiceUntil = 0, linkNext = 0, linkLeft = 0, linkWren = false, linkCrackle = 0;
 
   function ready() {
     if (A) return A.ctx.state === 'running';
@@ -150,6 +156,32 @@ export function createMusic(sound) {
       const rhiss = loopNoise('bandpass', 4300, 0.7, bus, 0);
       radio = { bus, input: hp, hiss: rhiss, next: 0, step: 0 };
       motifBus = c.createGain(); motifBus.gain.value = 1; motifBus.connect(A.out);
+    }
+    // ---- THE RADIO LINK (Chapter 8): hiss, and a voice through a small radio band with a soft digital delay ----
+    {
+      const bus = c.createGain(); bus.gain.value = 0; bus.connect(A.out);
+      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 300; hp.Q.value = 0.7;
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3000; lp.Q.value = 0.9;
+      hp.connect(lp); lp.connect(bus);
+      // the delay: a short echo, fed back twice (quieter each time, a little duller)
+      const dl = c.createDelay(1); dl.delayTime.value = 0.14;
+      const fb = c.createGain(); fb.gain.value = 0.34;
+      const dlp = c.createBiquadFilter(); dlp.type = 'lowpass'; dlp.frequency.value = 2200;
+      const wet = c.createGain(); wet.gain.value = 0.42;
+      lp.connect(dl); dl.connect(dlp); dlp.connect(fb); fb.connect(dl); dlp.connect(wet); wet.connect(bus);
+      // the voice: the buzz of the vocal cords (a little lower than the street voices) through two moving filters
+      const env2 = c.createGain(); env2.gain.value = 0; env2.connect(hp);
+      const f1 = c.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 5; f1.frequency.value = 560;
+      const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 6; f2.frequency.value = 1400;
+      const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 108;
+      const vib = c.createOscillator(); vib.frequency.value = 5.2; const vd = c.createGain(); vd.gain.value = 1.6; vib.connect(vd); vd.connect(o.frequency); vib.start();
+      o.connect(f1); o.connect(f2); f1.connect(env2); f2.connect(env2); o.start();
+      // the hiss of the link (always there while the radio is on) and its crackle
+      const lhiss = loopNoise('bandpass', 2400, 0.45, bus, 0);
+      const crack = loopNoise('highpass', 4200, 0.5, bus, 0);
+      // heavy static for the moment the signal breaks
+      const stat = loopNoise('bandpass', 1500, 0.3, bus, 0);
+      link = { bus, env: env2, f1, f2, o, hiss: lhiss, crack, stat, lp };
     }
     // ---- calm pad: a warm chord that breathes slowly ----
     {
@@ -282,6 +314,15 @@ export function createMusic(sound) {
     if (!ready()) return;
     const c = A.ctx, now = c.currentTime;
     const quiet = now < silentUntil ? 0 : 1;
+    // THE RADIO LINK (Chapter 8)
+    if (link) {
+      const on = linkLevel > 0.001;
+      glide(link.bus.gain, on ? 0.55 : 0, on ? 0.25 : 0.04);
+      glide(link.hiss.g.gain, linkLevel * (linkWren ? 0.025 : 0.05), 0.2);
+      linkCrackle -= dt;
+      if (on && linkCrackle <= 0) { linkCrackle = 0.15 + Math.random() * 0.9; link.crack.g.gain.setTargetAtTime(0.06 * linkLevel * Math.random(), now, 0.01); link.crack.g.gain.setTargetAtTime(0, now + 0.04, 0.02); }
+      if (on && now < linkVoiceUntil) runLinkVoice(now);
+    }
     // the tape: quieter and duller when you are not in the car with it
     glide(tapeBus.gain, want.track > 0 ? 0.5 * want.tapeVol * quiet * (want.inCar ? 1 : 0.35) : 0, 0.12);
     glide(tapeLp.frequency, want.inCar ? 3300 : 900, 0.2);
@@ -489,6 +530,28 @@ export function createMusic(sound) {
       voiceNext += len + 0.015 + (Math.random() < 0.18 ? 0.09 : 0);
     }
   }
+  // THEO'S VOICE over the link: syllables a little ahead of time; a word drops out now and then (the signal), the pitch
+  // falls at the end of a sentence. (wren: WREN with his warmth for a moment - smoother, no drop-outs)
+  function runLinkVoice(now) {
+    const L = link;
+    if (linkNext < now) linkNext = now + 0.05;
+    while (linkNext < now + 0.3 && linkNext < linkVoiceUntil) {
+      const t = linkNext;
+      if (linkLeft <= 0) { linkLeft = 4 + Math.floor(Math.random() * 7); linkNext += 0.28 + Math.random() * 0.4; continue; }
+      linkLeft--;
+      const len = 0.09 + Math.random() * 0.13, open = (0.5 + Math.random() * 0.5) * (linkWren ? 0.8 : 1);
+      L.f1.frequency.setValueAtTime(330 + Math.random() * 420, t);
+      L.f2.frequency.setValueAtTime(900 + Math.random() * 1200, t);
+      L.o.frequency.setValueAtTime((linkWren ? 124 : 104) + Math.random() * 14 - (linkLeft < 2 ? 10 : 0), t);
+      // (the broken signal: about one syllable in seven is lost in the hiss)
+      const lost = !linkWren && Math.random() < 0.14;
+      L.env.gain.setValueAtTime(0.0001, t);
+      L.env.gain.linearRampToValueAtTime(lost ? 0.0001 : open, t + len * 0.25);
+      L.env.gain.linearRampToValueAtTime(0.0001, t + len);
+      if (lost) { L.crack.g.gain.setValueAtTime(0.07, t); L.crack.g.gain.setTargetAtTime(0, t + len, 0.02); }
+      linkNext += len + 0.02 + (Math.random() < 0.16 ? 0.1 : 0);
+    }
+  }
   // one beat of the wanted pulse: a soft low thump into the given bus
   function pulseTo(t, gain, dest) {
     const c = A.ctx, o = c.createOscillator(), g = c.createGain();
@@ -553,7 +616,31 @@ export function createMusic(sound) {
     },
     // ---- everything silent for a moment (seconds) ----
     silence(seconds) { if (ready()) { silentUntil = A.ctx.currentTime + seconds; for (const b of [tapeBus, padBus]) b.gain.setTargetAtTime(0, A.ctx.currentTime, 0.015); } },
+    // ---- THE RADIO LINK (Chapter 8) ----
+    // level: 0 (off) .. 1 - the hiss of the open link
+    setRadioLink(level) { linkLevel = Math.max(0, Math.min(1, level)); },
+    // a line of Theo's over the link (seconds: how long; wren: WREN in his voice, smoother)
+    radioVoice(seconds, text, wren = false) {
+      if (!ready() || !link) return;
+      linkWren = !!wren;
+      if (linkLevel < 0.05) linkLevel = 0.35;
+      const now = A.ctx.currentTime;
+      linkNext = now + 0.14; linkLeft = 0;
+      linkVoiceUntil = now + Math.max(0.6, seconds * 0.9);
+    },
+    // the signal breaks: heavy static for a moment (then call setRadioLink(0) for the dead radio)
+    radioStatic(seconds = 1.6) {
+      if (!ready() || !link) return;
+      const now = A.ctx.currentTime, g = link.stat.g.gain;
+      linkVoiceUntil = now;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(0.0001, now); g.linearRampToValueAtTime(0.22, now + 0.06);
+      // (it stutters: on, off, on)
+      for (let i = 0; i < 5; i++) { const t = now + 0.15 + i * (seconds / 6); g.setValueAtTime(0.05 + Math.random() * 0.2, t); }
+      g.linearRampToValueAtTime(0.0001, now + seconds);
+      link.lp.frequency.setValueAtTime(1600, now); link.lp.frequency.linearRampToValueAtTime(3000, now + seconds);
+    },
     // stop all story sound (leaving the story)
-    reset() { want.track = 0; want.tension = 0; want.heart = 0; want.stars = 0; want.calm = 0; want.zero = 0; want.radioSong = true; tape.onEnd = null; },
+    reset() { want.track = 0; want.tension = 0; want.heart = 0; want.stars = 0; want.calm = 0; want.zero = 0; want.radioSong = true; tape.onEnd = null; linkLevel = 0; linkVoiceUntil = 0; },
   };
 }

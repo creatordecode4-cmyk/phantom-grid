@@ -202,6 +202,9 @@ export function createCameraRig(camera, city) {
     // direction the camera looks at, flat on the ground (x, z)
     forwardXZ(out) { return out.set(Math.sin(yaw), 0, Math.cos(yaw)); },
     set(yawRad, pitchRad) { yaw = yawRad; pitch = clamp(pitchRad, C.minPitch, C.maxPitch); first = true; idle = 10; },
+    // the world moved under the camera (Chapter 8: the cars of the night run are moved back along the straight road):
+    // the camera moves with it, so it does not swoop after the car
+    shift(dx, dy, dz) { pivot.x += dx; pivot.y += dy; pivot.z += dz; camera.position.x += dx; camera.position.y += dy; camera.position.z += dz; },
     // the house the player is in (the camera stays inside it), or null. (walking from room to room: no jump)
     setRoom(r) { if (!r !== !room) first = true; room = r; },
     get room() { return room; },

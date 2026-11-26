@@ -347,6 +347,22 @@ export function createSound() {
     keys() { for (let i = 0; i < 4; i++) setTimeout(() => blip('triangle', 3800 + Math.random() * 1400, 3600, 0.012, 0.09), i * 70 + Math.random() * 30); },
     // a sheet of paper put down on wood
     paper() { burst(3400, 0.7, 0.035, 0.01, 0.12, 'highpass'); burst(600, 0.8, 0.02, 0.005, 0.08); },
+    // ---- Chapter 8 ----
+    // the engine cooling after a hard run: small metal ticks, further and further apart (seconds: how long)
+    coolTicks(seconds = 18) {
+      let t = 0.6;
+      while (t < seconds) {
+        const k = 1 - t / seconds;
+        setTimeout(() => { blip('triangle', 3000 + Math.random() * 900, 2900, 0.006 + 0.006 * k, 0.05); burst(5600, 6, 0.006 * k + 0.002, 0.001, 0.02, 'highpass'); }, t * 1000);
+        t += 0.7 + Math.random() * 1.2 + (1 - k) * 1.6;
+      }
+    },
+    // letting out a long breath; one short, quiet laugh through the nose (no voice: only air)
+    breath() { burst(700, 0.45, 0.035, 0.18, 0.9); burst(1900, 0.6, 0.012, 0.2, 0.7, 'highpass'); },
+    laugh() { burst(820, 0.7, 0.05, 0.01, 0.12); setTimeout(() => burst(760, 0.7, 0.03, 0.01, 0.18), 140); },
+    // the click of a radio switch, and the sweep of its dial being turned
+    radioClick() { burst(2800, 3, 0.05, 0.001, 0.02); burst(400, 1, 0.03, 0.002, 0.04, 'lowpass'); },
+    tuneSweep() { for (let i = 0; i < 8; i++) setTimeout(() => burst(900 + i * 260 + Math.random() * 200, 3, 0.02, 0.01, 0.08), i * 70); },
     // everything that runs all the time goes quiet (when the player leaves the vehicle)
     quiet() {
       this.setEngine(false); this.setScreech(0); this.setWind(0); this.setRoad(0); this.setScrape(false); this.setSqueal(false); this.setHorn(false); this.setSiren(false); this.setInside(false); this.setSpray(false);

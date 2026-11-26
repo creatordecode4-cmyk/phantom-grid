@@ -26,14 +26,46 @@ const KMH = 3.6;
 const DARK = [0.07, 0.075, 0.085];          // the paint: almost black, a little blue
 const TRAIL_STEP = 2.5;                     // meters between the points of the player's track
 
+// THE BLACK CAR itself (also used by the night run of Chapter 8, src/story/nightRun.js). arena: a place with its own
+// ground and walls (the raised highway), or null
+export function spawnZeroCar(vehicles, x, z, heading, arena = null) {
+  const o = { keep: true, npc: true, noDetail: true, tint: DARK, lights: 'bar', arena };
+  const v = vehicles.spawn('tech_patrol_car', x, z, heading, lin([0.02, 0.02, 0.025]), o)
+    || vehicles.spawn('sedan', x, z, heading, lin([0.02, 0.02, 0.025]), { ...o, noDetail: false });
+  if (v) { v.type = { ...v.type, role: 'car', topSpeed: 260 }; v.role = 'car'; v.label = 'ZERO'; v.zero = true; v.lockExit = true; }
+  return v;
+}
+
+// A CAR THAT ZERO TOUCHES: it spins, slides and stops (the brakes lock; smoke from the tires). No fire, no gore.
+// from: the car that touched it (Zero). fx: { vehicles, sound, effects }. side: push it this way (-1 / 1 across the
+// road, 0 = away from Zero)
+const STOP_IN = { steer: 0, gas: 0, brake: 1, handbrake: true, nitro: false };
+export function spinOutCar(car, from, fx, side = 0) {
+  car.damage = Math.max(car.damage || 0, 0.5); fx.vehicles.showDamage(car);
+  // most of its speed is gone in the touch (so nobody slides on into Nate), and it turns hard
+  const dx = car.x - from.x, dz = car.z - from.z, l = Math.hypot(dx, dz) || 1;
+  const across = dx * Math.cos(from.heading) - dz * Math.sin(from.heading);
+  car.vx *= 0.3; car.vz *= 0.3; car.forward *= 0.3;
+  const kick = 4.5 + Math.random() * 2;
+  if (side) car.vx += side * kick; else { car.vx += (dx / l) * kick; car.vz += (dz / l) * kick; }
+  car.yawSpin = (across > 0 ? 1 : -1) * (4.5 + Math.random() * 2);
+  car.nitroOn = false; car.boost = 0;
+  fx.sound.crash('heavy', 0.5);
+  for (let i = 0; i < 9; i++) fx.effects.emit('spark', car.x - (dx / l) * 1.2, car.y + 0.5, car.z - (dz / l) * 1.2, (Math.random() - 0.5) * 6, 1 + Math.random() * 3, (Math.random() - 0.5) * 6);
+  car.spunOut = true;
+  car.braking = true;
+  // from now on it only brakes (the same physics as every car: it slides, turns, and stops)
+  car.ai = (c, dt, world) => {
+    stepCar(c, STOP_IN, dt, world);
+    c.spin += (c.forward * dt) / (c.info.wheelR || 0.33);
+    c.braking = true;
+    if (Math.abs(c.slide) + Math.abs(c.forward) > 2.5 && Math.random() < 0.3) fx.effects.emit('smoke', c.x, c.y + 0.3, c.z, 0, 0.8, 0, 1.1);
+  };
+}
+
 export function createZero({ vehicles, drivers, music, sound, effects, flags }) {
   // ---- the black car ----
-  function spawnCar(x, z, heading) {
-    const v = vehicles.spawn('tech_patrol_car', x, z, heading, lin([0.02, 0.02, 0.025]), { keep: true, npc: true, noDetail: true, tint: DARK, lights: 'bar' })
-      || vehicles.spawn('sedan', x, z, heading, lin([0.02, 0.02, 0.025]), { keep: true, npc: true, tint: DARK, lights: 'bar' });
-    if (v) { v.type = { ...v.type, role: 'car', topSpeed: 260 }; v.role = 'car'; v.label = 'ZERO'; v.zero = true; v.lockExit = true; }
-    return v;
-  }
+  const spawnCar = (x, z, heading) => spawnZeroCar(vehicles, x, z, heading);
 
   // ================================================================== 1. the proximity system
   const Z = { v: null, fast: 0, slow: 0, cool: 0, leaving: 0, level: 0 };
@@ -166,29 +198,8 @@ export function createZero({ vehicles, drivers, music, sound, effects, flags }) 
     return g;
   }
   // a car of the field is touched: it spins, slides and stops (the brakes lock; smoke from the tires)
-  const STOP_IN = { steer: 0, gas: 0, brake: 1, handbrake: true, nitro: false };
   function spinOut(car) {
-    const z = S.v;
-    car.damage = Math.max(car.damage || 0, 0.5); vehicles.showDamage(car);
-    // most of its speed is gone in the touch (so nobody slides on into Nate), and it turns hard
-    const dx = car.x - z.x, dz = car.z - z.z, l = Math.hypot(dx, dz) || 1;
-    const side = dx * Math.cos(z.heading) - dz * Math.sin(z.heading);
-    car.vx *= 0.3; car.vz *= 0.3; car.forward *= 0.3;
-    const kick = 4.5 + Math.random() * 2;
-    car.vx += (dx / l) * kick; car.vz += (dz / l) * kick;
-    car.yawSpin = (side > 0 ? 1 : -1) * (4.5 + Math.random() * 2);
-    car.nitroOn = false; car.boost = 0;
-    sound.crash('heavy', 0.5);
-    for (let i = 0; i < 9; i++) effects.emit('spark', car.x - (dx / l) * 1.2, car.y + 0.5, car.z - (dz / l) * 1.2, (Math.random() - 0.5) * 6, 1 + Math.random() * 3, (Math.random() - 0.5) * 6);
-    car.spunOut = true;
-    car.braking = true;
-    // from now on it only brakes (the same physics as every car: it slides, turns, and stops)
-    car.ai = (c, dt, world) => {
-      stepCar(c, STOP_IN, dt, world);
-      c.spin += (c.forward * dt) / (c.info.wheelR || 0.33);
-      c.braking = true;
-      if (Math.abs(c.slide) + Math.abs(c.forward) > 2.5 && Math.random() < 0.3) effects.emit('smoke', c.x, c.y + 0.3, c.z, 0, 0.8, 0, 1.1);
-    };
+    spinOutCar(car, S.v, { vehicles, sound, effects });
     S.events.push('hit');
   }
   function stepStrike(dt) {
