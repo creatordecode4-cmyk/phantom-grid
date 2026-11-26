@@ -147,13 +147,23 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
           // behind him: it goes past him in a lane beside his, to get in front of him - the nearest lane of its half
           // that is free: not his, and not one where the truck or another Guard car is just ahead of it (it used to
           // swerve into the truck's lane and run into the back of the truck). No free lane: it stays behind him.
-          const pLane = across ? -1 : clamp(Math.round((Math.abs(pc.x - cx) - 2.1) / 4.15), 0, 2);
-          let passLane = -1, best = 1e9;
-          for (let L = 0; L < 3; L++) {
-            const lx = laneX(L, dir);
-            if (L === pLane || Math.abs(v.x - lx) >= best) continue;
-            const busy = [T.v, ...G.map((q) => q.v)].some((q) => q !== v && live(q) && Math.abs(q.x - lx) < 2.4 && along(v, q) > -3 && along(v, q) < 30);
-            if (!busy) { best = Math.abs(v.x - lx); passLane = L; }
+          // Shut in by him (Nate right in front of it, in its lane): it pulls out to go round him only twice, for a
+          // few seconds each; after that it stays behind him and brakes with him, so a block can work (like the
+          // truck, which tries to go round a few times). Before, it always found a way out and a block never held.
+          const shut = gap > -14 && Math.abs(pc.x - v.x) < 2.6;
+          g.passT = Math.max(0, (g.passT || 0) - dt); g.restT = Math.max(0, (g.restT || 0) - dt);
+          let passLane = -1;
+          if (!shut || g.passT > 0 || (g.restT <= 0 && (g.tries || 0) < 2)) {
+            const pLane = across ? -1 : clamp(Math.round((Math.abs(pc.x - cx) - 2.1) / 4.15), 0, 2);
+            let best = 1e9;
+            for (let L = 0; L < 3; L++) {
+              const lx = laneX(L, dir);
+              if (L === pLane || Math.abs(v.x - lx) >= best) continue;
+              const busy = [T.v, ...G.map((q) => q.v)].some((q) => q !== v && live(q) && Math.abs(q.x - lx) < 2.4 && along(v, q) > -3 && along(v, q) < 30);
+              if (!busy) { best = Math.abs(v.x - lx); passLane = L; }
+            }
+            // (a new try to go round him)
+            if (passLane >= 0 && shut && g.passT <= 0) { g.tries = (g.tries || 0) + 1; g.passT = 3; g.restT = 6; }
           }
           if (passLane >= 0) { tx = laneX(passLane, dir); want = speedOf(pc) + 6; }
           else { tx = v.x; want = Math.min(want, speedOf(pc) - 1.2); }
