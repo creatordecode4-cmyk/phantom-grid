@@ -178,10 +178,10 @@ export function createNightRun({ scene, vehicles, sound, music, effects, weather
       const pv = ph.v, rel = (pv.z - v.z) * dir;              // (+: the Phantom is ahead of Zero)
       // (on its inside: the side toward the middle line; the touch then sends it toward its own crash wall)
       const sideX = pv.x + (pv.x < cx ? 2.6 : -2.6);
-      const want = speedOf(pv) + clamp(rel * 1.2, -10, 16);
+      const want = speedOf(pv) + clamp(rel * 1.2, -18, 16);      // (it drops back hard: the move takes a few seconds)
       drive(v, sideX, want, dt);
       const dx = Math.abs(pv.x - v.x), dz = Math.abs(pv.z - v.z);
-      if ((dx < 3.6 && dz < 3.4) || (Z.blockT > 7 && Math.hypot(pv.x - v.x, pv.z - v.z) < 30)) {
+      if ((dx < 3.6 && dz < 3.4) || (Z.blockT > 5 && Math.hypot(pv.x - v.x, pv.z - v.z) < 30)) {
         // the touch: the Phantom spins toward the crash wall on its own side and slides into it
         spinOutCar(pv, v, fx, pv.x < cx ? -1 : 1);
         ph.state = 'out'; ph.outT = 0;
@@ -228,8 +228,10 @@ export function createNightRun({ scene, vehicles, sound, music, effects, weather
     Z.v.ai = (v, dt) => zeroAI(v, dt);
     Z.v.aiInfo = null;
     if ((mode === 'cruise' || mode === 'beside') && pc) Z.side = besideSide(pc);
-    // (its headlights lie on the road beside his: "beamOn" shows the light of a car nobody drives)
-    Z.v.beamOn = mode !== 'away' && mode !== 'appear';
+    // (its headlights lie on the road beside his: "beamOn" shows the light of a car nobody drives. The light is soft and
+    //  calm (beamK), and it is off while Zero rides close behind him (guard, block): no white flood around his car)
+    Z.v.beamOn = mode !== 'away' && mode !== 'appear' && mode !== 'guard' && mode !== 'block';
+    Z.v.beamK = 0.5;
   }
 
   // ---------------------------------------------------------------- THE PHANTOMS
@@ -420,7 +422,7 @@ export function createNightRun({ scene, vehicles, sound, music, effects, weather
   }
 
   // ---------------------------------------------------------------- every frame
-  let tunnelWas = false;
+  let tunnelWas = false, nearWas = false;
   function update(dt, time) {
     if (!on) return;
     clock += dt;
@@ -436,6 +438,11 @@ export function createNightRun({ scene, vehicles, sound, music, effects, weather
     if (pc && T) {
       const inT = pc.z > T.z0 && pc.z < T.z1;
       if (inT !== tunnelWas) { tunnelWas = inT; say(inT ? 'tunnelIn' : 'tunnelOut'); }
+      // (150 m before the south mouth: "tunnelNear" - a moment that should happen AT the tunnel starts here, because at
+      //  200 km/h the 320 m of the tunnel go by in six seconds)
+      const near = pc.z > T.z0 - 150 && pc.z < T.z1;
+      if (near && !nearWas) say('tunnelNear');
+      nearWas = near;
     }
     // ZERO's glow: it breathes slowly; the rain around it is lit; its engine goes with his
     if (Z.v) {
@@ -467,7 +474,7 @@ export function createNightRun({ scene, vehicles, sound, music, effects, weather
   function start(o = {}) {
     on = true; dir = o.dir || 1; arena = o.arena || null; clock = 0;
     M.seen = 0; M.matched = 0; M.lostFor = 0; M.steady = 0;
-    tunnelWas = false;
+    tunnelWas = false; nearWas = false;
   }
   function stop() {
     removeZero(); removePhantoms(); removeDrones();

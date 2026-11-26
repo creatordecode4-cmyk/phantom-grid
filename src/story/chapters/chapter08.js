@@ -64,6 +64,8 @@ const DASH = [
 const plus = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 // the faint green of the pilot key in the car
 const KEY_LIGHT_CAR = { do: 'light', at: { cabin: 'run', at: 'dash', p: plus(AT_KEY, [0, 0.08, -0.05]) }, color: 0x46ff9c, power: 0.32, range: 1.1 };
+// the faint warm glow of the dash lamps (the end: the key is dark, the radio is dead)
+const DASH_GLOW = { do: 'light', at: { cabin: 'run', at: 'dash', p: plus(AT_DECK, [0.02, 0.13, -0.12]) }, color: 0xffc58a, power: 0.4, range: 1.0 };
 // Zero's glow on Nate's car while it rides beside him
 const ZERO_LIGHT = { do: 'light', at: { of: 'zero', p: [0, 1.0, 0] }, color: 0xa8d8ff, power: 24, range: 9 };
 // (the cars of the run are moved back along the road at a cut when they are this far north: the long talk stays on
@@ -241,21 +243,24 @@ export default {
         ...onLoad([
           NIGHT,
           { do: 'world', traffic: 8, people: 0, indoors: false, now: true },
-          ...RUN_CAR([LANE[1], 60], { speed: 120 }),
+          ...RUN_CAR([LANE[1], 540], { speed: 120 }),
           ...DASH,
           { do: 'player', inCar: 'run' },
           { do: 'allow', enter: ['run'], move: true, drive: true },
           { do: 'run', start: true },
-          { do: 'run', autoRewind: { at: 1385, to: 60 } },
           { do: 'run', zero: 'lead', speed: 140 },
           { do: 'wanted', stars: 0 },
         ]),
+        // (this mission stays on the dark stretch north of the city: z 540 .. 1385. Near the city the wide shots
+        //  look back at all its towers - too many draw calls for a phone)
+        { do: 'run', autoRewind: { at: 1385, to: 540 } },
       ],
       steps: [
         {
           do: 'cutscene', shots: [
             // Zero drops back beside him: its glow on his door, the rain lit around it
-            { seconds: 5.5, cam: C.wide, do: [BACK, CRUISE(118), { do: 'run', zero: 'cruise' }, ZERO_LIGHT],
+            // (the cut puts the two cars at z 540, wherever the last mission left them)
+            { seconds: 5.5, cam: C.wide, do: [{ do: 'run', rewind: 540 }, CRUISE(118), { do: 'run', zero: 'cruise' }, ZERO_LIGHT],
               lines: [{ at: 3.0, who: 'wren', text: 'c8.wren.beside' }] },
             { seconds: 4.8, pov: true, cam: C.povZero, do: [{ do: 'player', look: { of: 'zero', p: [0, 0.9, 0] }, mood: 'afraid' }] },
             { seconds: 5.0, cam: C.between, do: [{ do: 'player', look: null }],
@@ -264,9 +269,10 @@ export default {
         },
         { do: 'run', cruise: null },
         { do: 'run', zero: 'beside', speed: 118 },
-        { do: 'music', radio: 0.25 },
+        // (only wind, the tyres and the two engines while Lena works: the radio stays silent until the link is made)
+        { do: 'music', radio: 0 },
         { do: 'propSet', id: 'dial', call: { setSignal: 0.35 } },
-        { do: 'checkpoint', id: 1, setup: [{ do: 'run', zero: 'beside', speed: 118 }, ZERO_LIGHT, { do: 'music', radio: 0.25 }] },
+        { do: 'checkpoint', id: 1, setup: [{ do: 'run', zero: 'beside', speed: 118 }, ZERO_LIGHT, { do: 'music', radio: 0 }] },
         // the gentle hack: long nodes, no clock, no penalty - the link only grows while the two cars are steady
         { do: 'hack', steady: true, title: 'c8.hack.title', hint: 'c8.hack.steady', wobble: 'c8.hack.wobble', nodes: 6, seconds: 20,
           text: 'c8.obj.side', tip: 'c8.tip.side', tipSeconds: 8,
@@ -468,8 +474,8 @@ export default {
         { event: 'run:caught', fail: 'c8.fail.caught' },
         // out of the far mouth of the tunnel: Zero is between him and them - they give up
         { event: 'run:tunnelOut', do: [{ do: 'run', phantoms: 'giveUp' }, { do: 'wanted', stars: 0 }, { do: 'music', tension: 0.3 }] },
-        // in the tunnel Zero makes its move
-        { event: 'run:tunnelIn', do: [{ do: 'run', zero: 'block' }, { do: 'say', who: 'wren', text: 'c8.wren.tunnel' }] },
+        // at the tunnel Zero makes its move (it starts 150 m before the mouth: the touch then comes at or in the tunnel)
+        { event: 'run:tunnelNear', do: [{ do: 'run', zero: 'block' }, { do: 'say', who: 'wren', text: 'c8.wren.tunnel' }] },
         { event: 'run:blocked', do: [{ do: 'slowmo', scale: 0.45, seconds: 1.1 }, { do: 'say', who: 'lena', kind: 'radio', text: 'c8.lena.blocked' }] },
         // the radio left on: pieces of his voice in the static, now and then
         { flag: 'radio_off', is: false, hold: 9, repeat: true, do: [{ do: 'say', who: 'theo', kind: 'signal', texts: ['c8.theo.bits1', 'c8.theo.bits2', 'c8.theo.bits3', 'c8.theo.bits4'], seconds: 2.0 }] },
@@ -506,6 +512,8 @@ export default {
         { do: 'run', autoRewind: null },
       ],
       steps: [
+        // (a new, quiet scene: no line from the chase is left on the screen)
+        { do: 'hush' },
         { do: 'run', phantoms: 'stop' },
         { do: 'run', drones: 0 },
         { do: 'wanted', stars: 0 },
@@ -514,8 +522,11 @@ export default {
         {
           do: 'cutscene', shots: [
             // he pulls over just out of the tunnel, by the wall, in the rain
+            // (at the cut the run is put just past the tunnel mouth at 62 km/h, however fast he came out: the car then
+            //  stops in front of these cameras, not far up the road)
             { seconds: 5.0, cam: { from: [LANE[0] + 3.5, 10.4, 1395], to: [LANE[0] + 3.0, 10.2, 1388], look: { of: 'run', p: [0, 0.8, 0] }, fov: 44 },
-              do: [{ do: 'run', cruise: { x: LANE[2] + 0.8, speed: 30 } }, { do: 'run', zero: 'cruise' }, KEY_LIGHT_CAR, { do: 'music', silence: 1.2 }],
+              do: [{ do: 'run', rewind: 1345 }, { do: 'vehicleSet', id: 'run', speed: 62 },
+                { do: 'run', cruise: { x: LANE[2] + 0.8, speed: 30 } }, { do: 'run', zero: 'cruise' }, KEY_LIGHT_CAR, { do: 'music', silence: 1.2 }],
               lines: [{ at: 2.4, do: [{ do: 'run', cruise: null }, { do: 'autoDrive', brake: 0.7 }] }] },
             // Zero turns away: its glow goes back into the orange of the tunnel
             { seconds: 7.5, cam: { from: { of: 'run', p: [0.2, 1.9, -4.5] }, look: [LANE[0], 9.0, 1300], fov: 40 },
@@ -525,8 +536,9 @@ export default {
               lines: [{ at: 0.6, do: [{ do: 'sound', name: 'breath' }] }, { at: 2.6, do: [{ do: 'sound', name: 'breath' }] }] },
             { seconds: 3.4, cam: C.dial },
             // the mixtape: into the dash. He does not press play.
+            // (the only light left in the car: the faint warm glow of the dash lamps, enough to see the tape and the deck)
             { seconds: 5.0, cam: { from: { cabin: 'run', at: 'mid', p: [0.02, -0.22, 0.36] }, to: { cabin: 'run', at: 'mid', p: [0.02, -0.23, 0.42] }, look: { cabin: 'run', at: 'dash', p: AT_DECK }, fov: 34, near: 0.03 },
-              do: [{ do: 'prop', id: 'tape', kind: 'tape', in: 'run', at: { cabinAt: 'dash', p: plus(AT_DECK, [-0.034, 0.003, -0.075]) }, rot: [Math.PI / 2, 0, 0], replace: true }],
+              do: [DASH_GLOW, { do: 'prop', id: 'tape', kind: 'tape', in: 'run', at: { cabinAt: 'dash', p: plus(AT_DECK, [-0.034, 0.003, -0.075]) }, rot: [Math.PI / 2, 0, 0], replace: true }],
               lines: [
                 { at: 1.3, do: [{ do: 'prop', id: 'tape', kind: 'tape', in: 'run', at: { cabinAt: 'dash', p: plus(AT_DECK, [-0.034, 0.003, -0.045]) }, rot: [Math.PI / 2, 0, 0], replace: true }] },
                 { at: 2.2, do: [{ do: 'remove', ids: ['tape'] }, { do: 'prop', id: 'deck', kind: 'deck', in: 'run', at: { cabinAt: 'dash', p: AT_DECK }, replace: true }, { do: 'sound', name: 'clunk' }] },

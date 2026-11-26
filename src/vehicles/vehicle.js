@@ -44,15 +44,22 @@ export function makeBeamTexture() {
   const g = cv.getContext('2d');
   g.fillStyle = '#000';
   g.fillRect(0, 0, 64, 128);
-  // two lamps: two overlapping pools that start at the bottom edge (the nose of the car)
+  // two lamps: two overlapping pools that start at the bottom edge (the nose of the car). The light of each pool fades
+  // to nothing AT its edge (the gradient is squeezed into the same long ellipse), so there is no hard line on the road
+  // - before, the sides were cut off half bright and the light looked like a white sheet lying on the road
+  g.globalCompositeOperation = 'lighter';
   for (const cx of [22, 42]) {
-    const grad = g.createRadialGradient(cx, 120, 2, cx, 70, 78);
+    g.save();
+    g.translate(cx, 66);
+    g.scale(26 / 64, 1);
+    const grad = g.createRadialGradient(0, 50, 2, 0, 0, 64);
     grad.addColorStop(0, 'rgba(255,250,235,1)');
-    grad.addColorStop(0.35, 'rgba(255,250,235,0.5)');
+    grad.addColorStop(0.3, 'rgba(255,250,235,0.62)');
+    grad.addColorStop(0.7, 'rgba(255,250,235,0.22)');
     grad.addColorStop(1, 'rgba(255,250,235,0)');
-    g.globalCompositeOperation = 'lighter';
     g.fillStyle = grad;
-    g.beginPath(); g.ellipse(cx, 66, 26, 64, 0, 0, 7); g.fill();
+    g.beginPath(); g.arc(0, 0, 64, 0, 7); g.fill();
+    g.restore();
   }
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -1047,7 +1054,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     }
     if (v.beam) {
       v.beam.visible = lampOn > 0.02 && (driven || !!v.beamOn);     // (beamOn: a computer car with its light on the road - Zero facing Nate)
-      v.beamMat.opacity = lampOn * (v.hiBeam ? 1.25 : 0.9);
+      v.beamMat.opacity = lampOn * (v.hiBeam ? 1.25 : 0.9) * (v.beamK ?? 1);   // (beamK: a softer light for one car - Zero)
       v.beam.scale.set(v.hiBeam ? 1.25 : 1, 1, v.hiBeam ? 1.6 : 1);
       v.beam.position.z = v.info.frontZ + (v.hiBeam ? 14.5 : 9.3);
     }

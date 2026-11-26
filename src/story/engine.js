@@ -29,7 +29,7 @@
 //     cutscene, card, lines, choice, read, fade, wait, end
 //   STEPS THAT CHANGE THE WORLD AT ONCE
 //     time, world, clear, spawn, actor, prop, remove, player, allow, vehicleSet, actorSet, drive, music,
-//     sound, say, tip, flag, light, wanted, mirror, cam, quiet, cine, fire, checkpoint, chapter,
+//     sound, say, tip, flag, light, wanted, mirror, cam, quiet, hush, cine, fire, checkpoint, chapter,
 //     police (the real wanted system of src/ai/wanted.js), news (the news line on the screen), video (the
 //     look of a recording), tarp (the cloth over Theo's car), shutter (Mace's door), fill (light on faces)
 //   CHAPTER 2 STEPS THAT WAIT: paint (the paint shop: a color, hold to spray, a new number plate)
@@ -557,6 +557,8 @@ export function createStory(G) {
     if (s.lights && s.do === 'vehicleSet') v.lights = s.lights;
     if (s.place) { const p = pt(s.place); v.x = p[0]; v.z = p[2]; v.y = p[1]; if (s.face !== undefined) v.heading = angle(s.face); v.vx = v.vz = 0; v.forward = 0; }
     if (s.stop) { v.vx = v.vz = 0; v.forward = 0; }
+    // (speed, km/h: the car rolls on at this speed along its heading - used at a cut, so the jump is not seen)
+    if (s.speed !== undefined && s.do === 'vehicleSet') { v.forward = s.speed / KMH; v.vx = Math.sin(v.heading) * v.forward; v.vz = Math.cos(v.heading) * v.forward; }
     if (s.dead !== undefined) v.dead = !!s.dead;               // a wreck: the engine is silent
     if (s.door !== undefined) v.doorOpen = s.door;             // the driver's door stands open (0..1)
     if (s.curbSide !== undefined) v.curbSide = !!s.curbSide;   // the driver gets out on the sidewalk side
@@ -975,6 +977,8 @@ export function createStory(G) {
   // across the top of the screen, -1 left .. 1 right; look: a place the mirror is turned to), { off: true } ends it
   STEP.rearView = (s) => { if (world.rearView) world.rearView.set(s.off ? null : car(s.car), { x: s.x, look: s.look ? pt(s.look) : null }); };
   STEP.quiet = (s) => { quietOn = !!s.on; ui.quiet(quietOn); };
+  // HUSH: the line on the screen goes away and nobody is still talking (a new scene starts in silence)
+  STEP.hush = () => { ui.clearSubs(); quietTalk(); return null; };
   STEP.cine = (s) => { if (s.on === false) leaveCine(); else { cine = true; ui.cine(true); } };
   STEP.cam = (s) => {
     if ('widen' in s) fovWant = s.widen;

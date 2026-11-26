@@ -4,8 +4,10 @@ An open-world 3D web game set in **Port Meridian**, a fictional American coastal
 A realistic city of the future: sculpted glass towers, hanging gardens, sky bridges,
 electric cars and a maglev line. No cartoon look, no neon-toy look.
 
-The story now runs from the Prologue to **Chapter 6, "Old Debts"** (version 10.0, the quietest chapter: one garage, one
-night, Theo's car rebuilt part by part - see "Chapter 6: OLD DEBTS" below). Since version 10.1 people speak with the **whole body**:
+The story now runs from the Prologue to **Chapter 8, "Talk to Zero"** (version 11.0: a night highway in the rain, two
+cars side by side, a voice from the radio - see "Chapter 8: TALK TO ZERO" below; Chapter 7 is not written yet, the
+story steps over it). Chapter 6, "Old Debts" (version 10.0) is the quietest chapter: one garage, one night, Theo's car
+rebuilt part by part. Since version 10.1 people speak with the **whole body**:
 the hands, the chest, the shoulders, the head and the weight move with the words (see "Body language" below).
 
 This is **Phase 4, "Prologue + Chapter 1 playable"**: the story starts. A title screen, a save game,
@@ -99,6 +101,7 @@ Add these to the end of the address, for example `.../index.html?quality=low&tim
 | `nohud=1` | hide all buttons (for screenshots) |
 | `story=0` | skip the title screen: straight into free roam (the options above then work as before) |
 | `story=prologue.1` / `story=chapter01.4` | skip the title screen: straight into that mission of the story (see the mission list below) |
+| `flags=a,b:c` | with `story=`: set saved flags for a test before the mission starts - a name alone is `true`, `name:word` sets a word (`true`, `false` and numbers are read as such). Example: `?story=chapter08.0&flags=dante_captured,juno_fate:spared` |
 
 ---
 
@@ -2014,6 +2017,123 @@ and a sad mood frame by frame; standing, sitting, working, with arms crossed; Na
 scenes, with no errors: the Chapter 6 confrontation (Mace's hands stay on the bench, only his head and shoulders
 speak - the scene stays quiet), the start of Chapter 2 (Nate at the wheel) and the first two missions of Chapter 5.
 
+## Chapter 8: TALK TO ZERO (version 11.0)
+
+The next night, after Chapter 7. Emotional, intimate, eerie: Ironhill Highway at night in the rain, two cars side by
+side, a voice from the radio. Short plain lines, long silences. The camera stays on the two cars in the rain.
+
+**Chapter 7 is not written yet.** The story engine steps over a chapter that does not exist: the end of Chapter 6 now
+leads to Chapter 8 (and it will lead to Chapter 7 as soon as `src/story/chapters/chapter07.js` is added - nothing else
+has to change). Chapter 8 reads the Chapter 7 flags `dante_captured` and `juno_fate` when they are there; without them
+Dante's chair and Juno's bike are left out. To see those two moments now, use the address option `flags=` (see
+"Address options").
+
+### The missions, and how to start each one
+
+Start any of them from the title screen (**MISSIONS**) or with the address option.
+
+| # | Mission | What happens | Address option |
+|---|---|---|---|
+| 8.0 | **THE PILOT KEY** | Lena's safehouse, short. Rain on the window; the news plays on the TV with the sound almost off (Vance's face, a LIVE band, a ticker about KVI's night patrols). Lena sits at her work table and sets up the pilot key on her laptop - it glows green. "Zero will answer only if it sees a car at full speed." - "It needs to see you first." If Dante was captured (Chapter 7), Nate looks at Dante's empty chair and nobody says anything. If Juno was spared, Lena: "Juno left her bike downstairs. She said she'll come back for it." | `?story=chapter08.0` (with the two Chapter 7 moments: `?story=chapter08.0&flags=dante_captured,juno_fate:spared`) |
+| 8.1 | **BE SEEN** | Ironhill Highway, night, rain (the race road of the prologue, going on north out of the city). Drive over 150 km/h for 30 seconds - the seconds add up, a short slow-down does not reset them. On the way, out of the dark behind: a soft cold glow in the mirror, no siren, no sound but the engines - Zero (the proximity system of Chapter 4). It passes close on the left and leads. Then stay with it for 15 seconds and do not lose it (fall back and the objective says "catch up with its glow"; Zero waits a little). | `?story=chapter08.1` |
+| 8.2 | **SIDE BY SIDE** | Zero slows and comes up beside Nate's car: its glow on his door, his headlights and the rain lit by it. Hold the two cars side by side - level, one lane apart, the same speed - for 20 seconds of steady driving while Lena links the pilot key: the hack game in a gentle form (long nodes, no clock, no penalty, a big STEADY hint). Only wind, tyres and the two engines. | `?story=chapter08.2` |
+| 8.3 | **TALK** | The radio connects (close-ups of the dial and the green key). WREN's locked part opens: for two sentences her voice is more like Theo's - "I kept the part of him that remembers being a person." - then she is plain and calm again. A five-second memory without words: Solberg's hidden file, a tiny memory card glowing in a small case. Then the voice: **THEO**, late and broken like a bad signal, with a soft digital hiss. The mixtape first: "Track seven is empty." - "I never recorded it. I was going to, that night." Four seconds of silence. He calls Nate "driver"; the camera stays on Nate's face and on the dark car; then "...Nate." again, and Nate breathes out. The half truth: "I was running that night. They had found me. I was not racing. I was running." **Two replies** (*Why didn't you tell me? / Were you scared? / I am sorry / Say nothing*; saying nothing is always there, it is chosen when no button is pressed in 10 seconds, and it makes Theo's next line come later). **The question:** ask "Did I do it? Did my speed kill you?" - a long pause - "No. You drove the way I taught you. The road did what roads do." - or keep it to yourself. "They found me in the tunnel..." - the signal breaks into static, and behind them come the Phantoms of KVI: police cars with flashing lights, drones over the road, three stars. **Leave the dead radio on, or switch it off.** The story drives both cars in this mission. | `?story=chapter08.3` |
+| 8.4 | **RUN** | Escape the Phantoms (three stars) through the Ironhill tunnel. Three Phantom cars in all, at most two at once. Zero rides between Nate and them; inside the tunnel it drops back and takes one out with a silent move - the Phantom spins into the barrier, a moment of slow motion. With the radio left on, pieces of Theo's voice come through the static. Out of the far end of the tunnel the Phantoms give up. (Slow right down with a Phantom on you and they box you in: the mission starts again from its checkpoint.) | `?story=chapter08.4` |
+| 8.5 | **DRIVER** | Nate pulls over by the wall just out of the tunnel, in the rain, breathing hard. Zero's glow turns away, back into the orange of the tunnel; the radio is dead and the key's light fades. He puts the mixtape in the dash and does not press play. To nobody: "Driver." Then he laughs once, sadly - it was Theo's joke. One more line: "Okay. Okay, brother." (his last reply was *I am sorry* or silence) or "You still owe me a track." (it was *Why* or *Were you scared*). A slow fade; the engine ticks as it cools. | `?story=chapter08.5` (the other last line: `?story=chapter08.5&flags=theo_reply_b:why`) |
+
+### Chapter 8 choices and flags
+
+| Flag | Set when |
+|---|---|
+| `pilot_key_ready` | `true`, at the end of 8.0 |
+| `wren_fragment_unlocked` | `true`, after the memory of Solberg's file (WREN's locked part is open) |
+| `theo_running_confirmed` | `true`, when Theo says he was running, not racing |
+| `theo_reply_a`, `theo_reply_b` | the two replies: `'why'`, `'scared'`, `'sorry'` or `'silence'` |
+| `asked_crash_question` | `true` (he asked) or `false` (he kept it to himself) |
+| `radio_off` | `true` (switched off when the Phantoms came) or `false` (left on) |
+| `nate_partial_peace` | `true` when `theo_reply_b` was *I am sorry* or silence, `false` when it was *Why* or *Were you scared* - both reach the same ending, only Nate's last line differs |
+
+Uses from earlier chapters: `dante_captured` and `juno_fate` (Chapter 7 - see above), `theo_car` (Chapter 6: after
+*forgive* or *stay silent* Nate drives **Theo's car**; after *leave* he drives Mace's old street car, a bronze sedan),
+`wren_muted` (Chapter 6: WREN kept quiet "until Chapter 8" - she speaks again from here).
+
+### The Ironhill tunnel and the road north (`src/city/tunnel.js`, `highway` in `src/city/layout.js`)
+
+The raised highway now goes on north out of the city, over the dark plain, through the **Ironhill tunnel** (320 m,
+from z 1000 to 1320) to a closed end at z 1480 (concrete barriers with red stripes, a chevron board). The tunnel has
+concrete walls with a pale band, ribs every 8 m, two rows of orange lamps, jet fans, green guide lights, EXIT signs, SOS
+boxes and lane signals over each mouth. Its light costs no lamps: the orange light pools are worked out in the shared
+city shader, so the tunnel adds no lights and no extra draw calls. Inside there is no rain, the road is dry, the air is
+a warm haze; people and cars in it get an orange fill light. The older chapters drive the highway as before (their end
+at z 760 is kept; the prologue's grid is south of the tunnel).
+
+### The night run (`src/story/nightRun.js`)
+
+One system runs the road in Chapter 8: **Zero** as a companion (it appears from the dark, follows, leads, rides side by
+side, keeps between Nate and the police, blocks one of them, turns away), **the Phantoms** (police cars with flashing
+lights: a number in all, at most two at once; they hunt, press and give up), **drones** over the road, the **meters**
+(seconds over 150 km/h, seconds with Zero in reach, how steady the two cars are side by side), and the story driving
+Nate's car in film scenes. The road north is about 1.5 km and the talk is long, so at a cut between two shots
+everything of the run - both cars, the Phantoms, the drones, the camera - is moved back along the road together: the
+picture is the same dark rainy road, and a scene never runs out of highway. While you drive, the same happens near the
+road's end with a short dip to black. Zero's glow is soft and calm (a cold blue halo and a pool of light on the road
+that slowly breathes, the rain lit around it), never a flashing light; its headlights on the road are dimmed, and off
+while it rides close behind you.
+
+### The gentle link (`steady` in `src/story/hack.js`)
+
+The hack game of Chapter 3 in a gentle form: six long nodes, no clock, no penalty, nothing to tap. One big word tells
+you what to do: **STEADY** (the link grows) or **STAY BESIDE ZERO** (it waits). It only grows while the two cars are
+side by side.
+
+### The radio (`src/ui/storyUI.js`, `index.html`)
+
+Theo's lines are **signal** subtitles: a small radio dot and the speaker name THEO in warm amber, which stands out
+against the cold blue rain, and words that arrive a little late and broken - some come in as static (`░▒·`) and then
+settle. WREN's two sentences in Theo's voice are in italics, her name in pale gold. The replies are four big round
+buttons near the top of the screen, away from the steering buttons, with a slow bar for the time left (silence is the
+last button, in italics); the subtitles stay at the bottom, clear of the buttons. Close-ups: the
+pilot key glowing green on the console (a faint green light in the car), the radio's dial (its needle and its small
+light go with the signal), the mixtape in the dash.
+
+### Sound (made in code)
+
+Rain on the windscreen, the two engines in step, wind and tyres; the radio hiss and Theo's voice with a soft digital
+delay (made in code, without words - the words are in the subtitles); in the big scene only the rain and the voice
+and one low slow pad, which fades out at the silence; static when the signal breaks; a tense pulse for the Phantom
+chase, sirens, drones; at the end silence, the faint tick of the engine cooling, his breath and one laugh. In the
+safehouse: rain on the glass, the TV very low.
+
+### Mobile UX
+
+Big radio reply buttons, placed away from the steering controls; the link is one big word, nothing to aim at; HOLD TO
+SKIP in every film scene; subtitles with the speaker's name in a colour that is easy to read in rain (the size can be
+raised up to XL in SETTINGS → SUBTITLES). In 8.1, 8.2 and 8.4 you only drive.
+
+### Performance (measured in the test robot's software renderer at MEDIUM)
+
+Only the highway and the tunnel are active: traffic is limited to 8 cars, people to 0, at most two Phantoms at once and
+two drones. The safehouse is a set of its own (the city is not drawn while it is shown). The long film scenes stay on
+the dark stretch north of the city (z 540 to 1385), where few buildings are in view. Measured draw calls:
+PERF_TABLE
+The limit asked for was 250.
+
+### What was built for it
+
+`src/city/tunnel.js` (the tunnel and the road's end), the tunnel light in `src/city/materials.js` (orange light pools in
+the shared shader), the dry road and the haze inside (`src/main.js`, `src/world/lighting.js`), `src/story/nightRun.js`
+(Zero, the Phantoms, drones, meters, the story driving his car, moving the run back along the road),
+`src/story/safehouseSet.js` (Lena's room: the work table, the laptop, the sofa, the TV, Dante's chair, a rainy window, a
+small corner for the memory), `src/story/propsNight.js` (the pilot key, the radio dial, the memory card in its case, the
+TV with the news), the steps `safehouse`, `run`, `runGoal` and `memory` in the story engine (and a radio layout for
+choices, a car's `speed` at a cut, the arena `ironhill`, the `flags=` address option, a story that steps over a chapter
+that is not written), the steady link in `src/story/hack.js`, the signal and WREN subtitles in `src/ui/storyUI.js`, the
+memory look in `src/world/postfx.js` (a soft cold grade with more grain), rain lit by Zero's glow in
+`src/world/weather.js`, the radio voice, static and the new sounds in `src/audio/music.js` and `src/audio/sound.js`, and
+`src/story/chapters/chapter08.js` (only data). One change for every car: the light of the headlights on the road now
+fades out softly at its edges (`makeBeamTexture` in `src/vehicles/vehicle.js`) - before, its sides were a hard line and
+in a film shot from the side it looked like a white sheet lying on the road.
+
 ## Known limits
 
 - Traffic cars drive on lanes: when hit they are shoved along the lane and a little to the side, stop and
@@ -2088,4 +2208,11 @@ speak - the scene stays quiet), the start of Chapter 2 (Nate at the wheel) and t
   plain beat where a person might do something else. The fingers move together (curl and spread), so there is no
   pointing index finger and no counting on fingers. The hands are not checked against things near the body: in a
   tight scene a hand can come close to a table or a wall.
+- CHAPTER 8 / TALK TO ZERO: played to the end only by a test robot in a software renderer (it drives along a lane,
+  holds the cars side by side and runs from the Phantoms); keeping up with Zero, the side-by-side hold, the chase and
+  every sound (Theo's voice with its delay, the static, the pad, the engine ticks) still need a real phone. Chapter 7 is
+  not written: its flags are only set by the `flags=` address option for now. Theo's voice is a made sound without
+  words (the words are in the subtitles). In the talk the story drives both cars - you do not steer while Theo speaks.
+  The cars do not really stop at a cut: the road is moved back under them (you do not see it). Theo's car has no floor
+  inside, so in a very low shot inside the cabin the road could show through.
 - Shop names, signs and adverts are invented. No real brands are used.
