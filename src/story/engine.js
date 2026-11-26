@@ -343,9 +343,18 @@ export function createStory(G) {
         quietTalk(); lineMoods(l); if (kind === 'wren') sound.wren();
         if (!aloud) return;
         if (a) { a.talking = 1; if (a.anim) a.anim.say(text, seconds); } else if (who === 'nate') { player.talk = 1; player.say(text, seconds); }
+        // the people near the one who speaks listen (a small nod now and then); not for a voice in the ear or a radio
+        if (kind !== 'wren' && kind !== 'radio' && (a || who === 'nate')) hear(a, who, seconds);
       },
       onDone: () => { if (a) a.talking = 0; else if (who === 'nate') player.talk = 0; },
     });
+  }
+
+  // who is near the speaker (7 m) listens while the line is said (proceduralAnim.js: small nods, the weight shifts)
+  function hear(speaker, who, seconds) {
+    const sx = speaker ? speaker.x : player.position.x, sz = speaker ? speaker.z : player.position.z;
+    for (const b of actors.list) if (b !== speaker && b.anim && b.anim.listen && !b.hidden && Math.hypot(b.x - sx, b.z - sz) < 7) b.anim.listen(seconds);
+    if (who !== 'nate' && player.listen && Math.hypot(player.position.x - sx, player.position.z - sz) < 7) player.listen(seconds);
   }
 
   // ------------------------------------------------------------------ things the story owns

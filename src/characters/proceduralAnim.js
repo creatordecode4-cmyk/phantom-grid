@@ -100,6 +100,8 @@ export const WALK_STYLE_NAMES = Object.keys(WALK_STYLES);
 const walkStyle = (name) => ({ ...WALK_BASE, ...(WALK_STYLES[name] || {}) });
 
 import { createFaceAnimator } from './faceAnim.js';
+import { buildSpeech } from './speech.js';
+import { planGestures, samplePlan, makeSample, HAND_POSES } from './gesture.js';
 
 export function createAnimator(THREE, rig, opts = {}) {
   const V = () => new THREE.Vector3(), Q = () => new THREE.Quaternion();
@@ -146,6 +148,8 @@ export function createAnimator(THREE, rig, opts = {}) {
   // ---------------------------------------------------------------- arms (angles)
   // flex: arm forward (+) / back (-), side: away from the body, twist, elbow: bend. All in degrees.
   const aDir = V(), aHinge = V(), fDir = V();
+  // (the arm as these angles put it, remembered for this frame: a gesture can start from it, see armResolver)
+  const fkUp = [V(), V()], fkFore = [V(), V()], fkOn = [false, false];
   function armAngles(q, flex, side, twist, elbow, wrist = 0) {
     const { tag, s } = SIDES[q];
     flex = lim('shoulderForward', flex) * DEG; side = lim('shoulderSide', side) * DEG; elbow = lim('elbow', elbow) * DEG;
@@ -155,6 +159,7 @@ export function createAnimator(THREE, rig, opts = {}) {
     setTarget('upperArm_' + tag, aDir, aHinge);
     fDir.copy(aDir).applyAxisAngle(aHinge, elbow);
     setTarget('foreArm_' + tag, fDir, aHinge);
+    fkUp[q].copy(aDir); fkFore[q].copy(fDir); fkOn[q] = true;
     // the wrist bends toward the palm (the hand's own z axis)
     setDelta('hand_' + tag, 0, 0, -s * lim('wrist', wrist) * DEG);
   }
@@ -224,14 +229,22 @@ export function createAnimator(THREE, rig, opts = {}) {
   resolvers.thigh_L = legResolver(0); resolvers.thigh_R = legResolver(1);
 
   // ---------------------------------------------------------------- hands on something (IK), used when driving
-  const hand = [{ on: false, p: V(), dir: V(), pole: V(), hasPole: false }, { on: false, p: V(), dir: V(), pole: V(), hasPole: false }];
-  const upD = V(), foD = V(), hingeA = V(), poleA = V();
+  // (mix: 1 = the hand goes to p; less = only that part of the way from where the arm hangs - a gesture coming up)
+  const hand = [{ on: false, p: V(), dir: V(), pole: V(), hasPole: false, mix: 1 }, { on: false, p: V(), dir: V(), pole: V(), hasPole: false, mix: 1 }];
+  const upD = V(), foD = V(), hingeA = V(), poleA = V(), mixGoal = V();
   function armResolver(q) {
     const { tag, s } = SIDES[q];
     return (shoulder) => {
       if (!hand[q].on) return;
       if (hand[q].hasPole) poleA.copy(hand[q].pole); else poleA.set(s * 0.55, -0.8, -0.25);   // elbows point down and a little out
-      twoBone(shoulder, hand[q].p, upperLen, foreLen + 0.03 * k, poleA, LIMITS.elbow[1], upD, foD);
+      let goal = hand[q].p;
+      if (hand[q].mix < 1 && fkOn[q]) {
+        // the hand of the hanging arm (the same angles give the same arm), and on from it toward the gesture
+        mixGoal.copy(shoulder).addScaledVector(fkUp[q], upperLen).addScaledVector(fkFore[q], foreLen + 0.03 * k).lerp(hand[q].p, hand[q].mix);
+        poleA.lerpVectors(fkUp[q], poleA, hand[q].mix);
+        goal = mixGoal;
+      }
+      twoBone(shoulder, goal, upperLen, foreLen + 0.03 * k, poleA, LIMITS.elbow[1], upD, foD);
       hingeA.crossVectors(upD, foD);
       if (hingeA.lengthSq() < 1e-6) hingeA.set(-1, 0, 0);
       setTarget('upperArm_' + tag, upD, hingeA);
@@ -239,6 +252,22 @@ export function createAnimator(THREE, rig, opts = {}) {
     };
   }
   resolvers.upperArm_L = armResolver(0); resolvers.upperArm_R = armResolver(1);
+  // A HAND TURNED TO A DIRECTION OF THE BODY (the palm flat on the chest for "I"), mixed by a weight with how it
+  // follows the forearm. (Turning the hand bone alone cannot do this one: the forearm comes up at many angles.)
+  const handAimOn = [false, false], handAimW = [0, 0], handAimF = [V(), V()], handAimP = [V(), V()];
+  const haA = Q(), haB = Q(), haH = V();
+  function handResolver(q) {
+    const { tag, s } = SIDES[q], name = 'hand_' + tag, par = R[name] && R[name].parent;
+    return () => {
+      if (!handAimOn[q] || !par) return;
+      haA.copy(world[par]).multiply(R[name].quaternion);
+      if (hasDelta[name]) haA.multiply(delta[name]);
+      haH.copy(handAimP[q]).multiplyScalar(s);            // (the palm is on the +x side of a left hand, the -x side of a right one)
+      aim(haB, handAimF[q], haH);
+      target[name].slerpQuaternions(haA, haB, handAimW[q]); hasTarget[name] = true;
+    };
+  }
+  resolvers.hand_L = handResolver(0); resolvers.hand_R = handResolver(1);
 
   // ---------------------------------------------------------------- write the pose into the bones
   const hipsPos = V(), bodyQ = Q();     // where the hips are and how the whole body is turned (character space)
@@ -293,7 +322,8 @@ export function createAnimator(THREE, rig, opts = {}) {
       }
     }
     for (const n of names) { hasTarget[n] = false; hasDelta[n] = false; }
-    hand[0].on = hand[1].on = false; hand[0].hasPole = hand[1].hasPole = false;
+    hand[0].on = hand[1].on = false; hand[0].hasPole = hand[1].hasPole = false; hand[0].mix = hand[1].mix = 1; fkOn[0] = fkOn[1] = false;
+    handAimOn[0] = handAimOn[1] = false;
     foot[0].lying = foot[1].lying = false; foot[0].loose = foot[1].loose = false;
   }
   function startBlend(seconds = 0.2) {
@@ -445,8 +475,10 @@ export function createAnimator(THREE, rig, opts = {}) {
     // ---- idle: breathing and shifting the weight ----
     const breathe = Math.sin(t * 1.45) * (1 - m * 0.6), idle = 1 - m;
     sway = Math.sin(t * 0.43) * 0.6 + Math.sin(t * 0.171 + 1.3) * 0.4;
-    const shift = sway * 0.022 * k * idle;
-    bodyQ.setFromEuler(euler.set(leanF, hipYaw, hipRoll + sway * 1.6 * DEG * idle, 'YXZ'));
+    // (speaking or listening: the weight goes onto one foot - the hips over it, that hip a little higher)
+    const gShift = gBody.shift * idle, gRoll = gShift * 1.8 * DEG;
+    const shift = sway * 0.022 * k * idle + gShift * 0.03 * k;
+    bodyQ.setFromEuler(euler.set(leanF, hipYaw, hipRoll + sway * 1.6 * DEG * idle + gRoll, 'YXZ'));
     // ---- hips height: as high as the legs allow (so the body sinks when the feet are far apart) ----
     const lateralSway = Math.sin(ph - 0.38) * lerp(0.018 * G.sway, 0.008, r) * k * m;          // over the standing foot
     // (a little up at each step, when the standing leg is straight under the body - more for a bouncy walk)
@@ -472,8 +504,8 @@ export function createAnimator(THREE, rig, opts = {}) {
     const spineBend = (v) => lim('spine', v / DEG) * DEG;
     // (the style: chest out or a round back; the shoulders rocking side to side at each step)
     const chestOut = G.chest * DEG * wk, rock = Math.sin(ph - 0.38) * G.roll * DEG * m * wk;
-    setDelta('spine', spineBend(-leanF * 0.25 + breathe * 0.2 * DEG), spineBend(counter * 0.3), spineBend(-hipRoll * 0.5 - sway * 0.9 * DEG * idle));
-    setDelta('spine1', spineBend(-leanF * 0.2 - breathe * 0.7 * DEG - chestOut * 0.45), spineBend(counter * 0.35), spineBend(-hipRoll * 0.4 - sway * 0.5 * DEG * idle - rock * 0.4));
+    setDelta('spine', spineBend(-leanF * 0.25 + breathe * 0.2 * DEG), spineBend(counter * 0.3), spineBend(-hipRoll * 0.5 - sway * 0.9 * DEG * idle - gRoll * 0.6));
+    setDelta('spine1', spineBend(-leanF * 0.2 - breathe * 0.7 * DEG - chestOut * 0.45), spineBend(counter * 0.35), spineBend(-hipRoll * 0.4 - sway * 0.5 * DEG * idle - rock * 0.4 - gRoll * 0.4));
     setDelta('chest', spineBend(-breathe * 0.9 * DEG - chestOut * 0.55), spineBend(counter * 0.35), spineBend(-hipRoll * 0.1 - rock * 0.6));
     // ---- head: stays level and looks where the body goes; when idle it looks around slowly ----
     look.next -= dt;
@@ -580,6 +612,123 @@ export function createAnimator(THREE, rig, opts = {}) {
   let workAt = null;          // where the hands work (character space), for the poses of handsPose below - or null
   const face = createFaceAnimator(THREE, rig);
   let asleep = false, awake = 'neutral';
+
+  // ---------------------------------------------------------------- BODY LANGUAGE while speaking (gesture.js)
+  // A line that is said is also a plan for the body: on its words the hands come up and move (a beat, a palm held
+  // out, both hands apart, a hand on the chest, a flat hand swept out for "no", a shrug), the chest leans in and
+  // turns a little toward the hand that moves, the shoulders rise, the head nods, shakes or tilts, and the weight
+  // goes from one foot to the other. All of it moves toward the plan softly and goes back to rest after the line.
+  // (PALM_UP: which way the hand bone turns to bring the palm up - found by looking at the pictures)
+  const PALM_UP = -1;
+  const gSeed = Math.floor(Math.random() * 1e9);            // (two people say the same line a little differently)
+  let gPlan = null, gT = 0, gHold = null;
+  const gOut = makeSample();
+  const gHand = [0, 1].map(() => ({ x: HAND_POSES.low.x, y: HAND_POSES.low.y, z: HAND_POSES.low.z, turn: 0, bend: 0, curl: 28, spread: 0, w: 0, px: 0, py: 0, pz: 0, aimW: 0, aim: null }));
+  const gBody = { lean: 0, twist: 0, chest: 0, shrug: 0, nod: 0, shake: 0, tilt: 0, shift: 0 };
+  // LISTENING (someone near is talking, see listen()): a small nod now and then, the weight on one foot
+  let listenT = 0, listenNext = 0.8, listenNodT = 9, listenSide = 1;
+  // how far in front of the hips the front of this body is at a height (y above the hips, both in k units): measured
+  // once from the model itself, so a hand laid on the chest is ON it for a big man and for a thin woman alike
+  const frontAt = {};
+  function bodyFront(y) {
+    const key = Math.round(y * 100);
+    if (frontAt[key] !== undefined) return frontAt[key];
+    const g = rig.mesh && rig.mesh.geometry && rig.mesh.geometry.attributes.position;
+    let front = -1e9;
+    if (g) {
+      const hy = hipsRest.y + y * k, jump = Math.max(1, Math.floor(g.count / 12000));
+      for (let i = 0; i < g.count; i += jump) {
+        const x = g.getX(i), yy = g.getY(i), z = g.getZ(i);
+        if (Math.abs(x) < 0.09 * k && Math.abs(yy - hy) < 0.035 * k && z > front) front = z;
+      }
+    }
+    return (frontAt[key] = front > -1e8 ? (front - hipsRest.z) / k : 0.13);
+  }
+  function gestureStep(dt) {
+    let size = 0.8, speed = 1;
+    if (gPlan) {
+      if (talk > 0.01) gT += dt;                             // (in step with the mouth: faceAnim.js counts the same way)
+      samplePlan(gPlan, gT, gOut, talk <= 0.01);
+      size = gPlan.size; speed = gPlan.speed;
+      // (the line is over and everything is back at rest: the plan is done)
+      if (talk <= 0.01 && gHand[0].w < 0.003 && gHand[1].w < 0.003 && Math.abs(gBody.lean) + Math.abs(gBody.shrug) + Math.abs(gBody.twist) < 0.05) gPlan = null;
+    } else {
+      for (const H of gOut.hands) { H.w = 0; H.kind = 'low'; H.push[0] = H.push[1] = H.push[2] = 0; }
+      gOut.lean = gOut.twist = gOut.chest = gOut.shrug = gOut.nod = gOut.shake = gOut.tilt = 0;
+    }
+    // (tests: one gesture held still)
+    if (gHold) for (let q = 0; q < 2; q++) { const H = gOut.hands[q]; if (gHold.hand === q || gHold.hand === 2) { H.kind = gHold.kind; H.w = 1; } }
+    // ---- the hands go toward the pose of their gesture (a quiet mood makes a smaller gesture) ----
+    const reach = 0.55 + 0.45 * Math.min(1, size), rate = 1 - Math.exp(-9 * speed * dt), wRate = 1 - Math.exp(-5.5 * dt);
+    for (let q = 0; q < 2; q++) {
+      const H = gOut.hands[q], P = HAND_POSES[H.kind] || HAND_POSES.low, L = HAND_POSES.low, G = gHand[q];
+      // (only "waiting" with the hand up is smaller for a quiet mood; a real gesture comes up all the way)
+      G.w += (H.w * (H.kind === 'low' ? Math.min(1, size * 1.25) : 1) - G.w) * wRate;
+      const pz = P.onChest ? bodyFront(P.y) + P.z : P.z;
+      G.x += (L.x + (P.x - L.x) * reach - G.x) * rate; G.y += (L.y + (P.y - L.y) * reach - G.y) * rate; G.z += (L.z + (pz - L.z) * reach - G.z) * rate;
+      G.turn += (P.turn - G.turn) * rate; G.bend += (P.bend - G.bend) * rate; G.curl += (P.curl - G.curl) * rate; G.spread += (P.spread - G.spread) * rate;
+      G.px = H.push[0]; G.py = H.push[1]; G.pz = H.push[2];
+      // (a hand turned to the body - "I" - goes into that turn and out of it softly)
+      if (P.aim) G.aim = P.aim;
+      G.aimW += ((P.aim ? 1 : 0) - G.aimW) * rate;
+    }
+    // ---- the body ----
+    const bRate = 1 - Math.exp(-8 * dt);
+    gBody.lean += (gOut.lean - gBody.lean) * bRate; gBody.twist += (gOut.twist - gBody.twist) * bRate; gBody.chest += (gOut.chest - gBody.chest) * bRate;
+    gBody.shrug += (gOut.shrug - gBody.shrug) * bRate; gBody.tilt += (gOut.tilt - gBody.tilt) * bRate;
+    // (a nod and a shake are quick curves; still smoothed a little, so a line cut short never makes the head jump)
+    let nodWant = gOut.nod;
+    // the weight moves slowly from foot to foot (and back to the middle a while after the line)
+    gBody.shift += ((gPlan ? gOut.shift : 0) - gBody.shift) * (1 - Math.exp(-(gPlan ? 1.8 : 0.6) * dt));
+    // ---- listening: now and then a small nod; the weight on one foot ----
+    if (listenT > 0 && !gPlan) {
+      listenT -= dt; listenNext -= dt; listenNodT += dt;
+      if (listenNext <= 0) { listenNext = 1.7 + Math.random() * 2.2; listenNodT = 0; if (Math.random() < 0.35) listenSide = -listenSide; }
+      if (listenNodT < 0.55) nodWant += 3 * Math.sin((Math.PI * listenNodT) / 0.55);
+      gBody.shift += (listenSide * 0.35 - gBody.shift) * (1 - Math.exp(-0.8 * dt));
+    }
+    const qRate = 1 - Math.exp(-25 * dt);
+    gBody.nod += (nodWant - gBody.nod) * qRate; gBody.shake += (gOut.shake - gBody.shake) * qRate;
+  }
+  // the arms of the gesture, standing. scale: less while walking (then the arms swing)
+  function gestureArms(scale) {
+    for (let q = 0; q < 2; q++) {
+      const G = gHand[q], w = G.w * scale;
+      if (w < 0.004) continue;
+      const { s } = SIDES[q];
+      handAt(q, s * (G.x + G.px) * k, hipsPos.y + (G.y + G.py) * k, hipsPos.z + (G.z + G.pz) * k, s * 0.6, -0.75, -0.3);
+      hand[q].mix = Math.min(1, w);                           // (part of the way from where the arm hangs)
+      gestureHand(q, w);
+    }
+  }
+  // the hand itself: turned (the palm up to offer, down for "no", toward the chest for "I"), the wrist bent back a
+  // little for an open hand, the fingers as the gesture wants them
+  function gestureHand(q, w) {
+    const { s, tag } = SIDES[q], G = gHand[q];
+    setDelta('hand_' + tag, 0, PALM_UP * s * G.turn * w * DEG, -s * (8 * (1 - w) - G.bend * w) * DEG);
+    fingers(q, 28 + (G.curl - 28) * w, 14 + (G.curl * 0.6 - 14) * w, G.spread * w);
+    if (G.aim && G.aimW * w > 0.01) {
+      handAimOn[q] = true; handAimW[q] = Math.min(1, G.aimW * w);
+      handAimF[q].set(s * G.aim.f[0], G.aim.f[1], G.aim.f[2]).normalize();
+      handAimP[q].set(s * G.aim.p[0], G.aim.p[1], G.aim.p[2]).normalize();
+    }
+  }
+  // (turns added to what the pose already did with a bone)
+  const gq = Q();
+  function addDelta(name, x, y = 0, z = 0) {
+    if (!hasDelta[name]) { setDelta(name, x, y, z); return; }
+    delta[name].multiply(gq.setFromEuler(euler.set(x, y, z, 'YXZ')));
+  }
+  // the rest of the body: the chest leans and turns, the shoulders rise, the head nods, shakes and tilts
+  function bodyLanguage() {
+    const b = gBody;
+    if (Math.abs(b.lean) + Math.abs(b.twist) + Math.abs(b.chest) + Math.abs(b.shrug) + Math.abs(b.nod) + Math.abs(b.shake) + Math.abs(b.tilt) < 0.02) return;
+    addDelta('spine1', b.lean * 0.45 * DEG, b.twist * 0.45 * DEG, 0);
+    addDelta('chest', (b.lean * 0.35 - b.chest) * DEG, b.twist * 0.55 * DEG, 0);
+    for (let q = 0; q < 2; q++) addDelta('clavicle_' + SIDES[q].tag, 0, 0, SIDES[q].s * b.shrug * DEG);
+    addDelta('neck', b.nod * 0.4 * DEG, b.shake * 0.45 * DEG, b.tilt * 0.4 * DEG);
+    addDelta('head', b.nod * 0.6 * DEG, b.shake * 0.55 * DEG, b.tilt * 0.6 * DEG);
+  }
   // put a hand at a place (character space); the elbow points along (px, py, pz). The arm is then solved like
   // a real one, so a hand that should rest ON something really is there - it does not hang in the air.
   function handAt(q, x, y, z, px, py, pz) { const A = hand[q]; A.on = true; A.hasPole = true; A.p.set(x, y, z); A.pole.set(px, py, pz); }
@@ -644,10 +793,7 @@ export function createAnimator(THREE, rig, opts = {}) {
       armAngles(1, 76, 6, -10, 36, 0); armAngles(0, 68, -6, 18, 60, 0);
       for (let q = 0; q < 2; q++) fingers(q, 62);
       setDelta('spine1', 4 * DEG, -14 * DEG, 0); setDelta('chest', 4 * DEG, -10 * DEG, 0); setDelta('neck', 8 * DEG, 16 * DEG, -6 * DEG); setDelta('head', 4 * DEG, 8 * DEG, -8 * DEG);
-    } else if (talkNow > 0.02) {
-      // speaking: one hand comes up a little and moves with the words
-      armAngles(1, 12 + 20 * talkNow + beat * 5 * talkNow, 10, -8 * talkNow, 12 + 60 * talkNow + beat * 9 * talkNow, 12 * talkNow);
-    }
+    } else gestureArms(1 - st.moving * 0.85);                  // speaking: the hands move with the words (gesture.js)
   }
   // ---------------------------------------------------------------- hands at work (Chapter 6)
   // The hands go to a place (workAt, set by the story: a part of the car, the bench, the roof); without one they work
@@ -729,6 +875,14 @@ export function createAnimator(THREE, rig, opts = {}) {
       if (edge) handAt(q, s * 0.075 * k, seatY + 0.05 * k, thighLen * 0.8, s, 0.15, -0.5);
       else handAt(q, s * hipW * 1.12, seatY + 0.105 * k, thighLen * 0.5, s * 0.7, -0.6, -0.4);
       fingers(q, 35);
+      // speaking, sitting: the forearm lifts from the leg and moves with the words (smaller than standing)
+      const G = gHand[q], w = G.w * 0.8;
+      if (w > 0.004) {
+        hand[q].p.x += s * (G.x - 0.16 + G.px) * 0.6 * k * w;
+        hand[q].p.y += (0.1 + (G.y - 0.05) * 0.5 + G.py * 0.7) * k * w;
+        hand[q].p.z += (0.04 + (G.z - 0.2) * 0.5 + G.pz * 0.7) * k * w;
+        gestureHand(q, w);
+      }
     }
   }
   // LYING DOWN: 'lie' = asleep, curled up on one side. 'fallen' = on the back, where somebody fell.
@@ -963,13 +1117,16 @@ export function createAnimator(THREE, rig, opts = {}) {
       if (swim) SW.k = smooth((Math.abs(speed) - 0.15) / 0.7);
       else { for (const S of step) { S.first = true; S.planted = true; S.t = 1; S.gait = false; } st.drop = 0; }
     }
+    gestureStep(dt);
     if (mode === 'drive') drivingPose(dt);
     else if (mode === 'armsForward' || mode === 'deepBend') testPose(mode);
     else if (swimming) swimPose(dt, speed);
     else if (pose === 'sit' || pose === 'sitEdge') sittingPose(dt);
     else if (pose === 'lie') sleepPose();
     else if (pose === 'fallen') fallenPose();
-    else { locomotion(dt, speed, 0); bodyAndArms(dt, speed); if (pose !== 'idle' || talk > 0 || talkNow > 0.02) standingPose(dt); }
+    else { locomotion(dt, speed, 0); bodyAndArms(dt, speed); if (pose !== 'idle' || talk > 0 || talkNow > 0.02 || gHand[0].w > 0.004 || gHand[1].w > 0.004) standingPose(dt); }
+    // the body language of speaking and listening (standing, sitting, driving - not lying, not swimming)
+    if (!swimming && pose !== 'lie' && pose !== 'fallen' && mode !== 'armsForward' && mode !== 'deepBend') bodyLanguage();
     // a hand that holds something by its handle (a case): the fingers close around it
     for (let q = 0; q < 2; q++) if (grip[q] > 0 && mode !== 'drive') fingers(q, grip[q], grip[q] * 0.75);
     apply();
@@ -1005,8 +1162,19 @@ export function createAnimator(THREE, rig, opts = {}) {
     },
     get walkStyle() { return styleName; },
     set talk(v) { talk = v; },
-    // the words being said (a subtitle line) and how long the line stays: the mouth says them (speech.js)
-    say(text, seconds) { if (face) face.say(text, seconds); },
+    // the words being said (a subtitle line) and how long the line stays: the mouth says them (speech.js), and the
+    // body moves with them (gesture.js) - in the mood of the face
+    say(text, seconds) {
+      if (face) face.say(text, seconds);
+      const sp = buildSpeech(text, seconds);
+      gPlan = sp.words && sp.words.length ? planGestures(sp, face ? (asleep ? 'asleep' : face.name) : 'neutral', gSeed) : null;
+      gT = 0; listenT = 0;
+    },
+    // someone near says something for "seconds": this one listens (a small nod now and then, the weight shifts)
+    listen(seconds) { if (!gPlan) listenT = Math.max(listenT, seconds || 0); },
+    // (for tests: the gestures planned for the line being said; one gesture held still - { kind, hand: 0 | 1 | 2 } or null)
+    get gestures() { return gPlan ? gPlan.strokes : null; },
+    set holdGesture(g) { gHold = g || null; },
     // the expression of the face: a name from FACES in faceAnim.js ('smile', 'sad', 'angry' ...). seconds: how softly it changes.
     setFace(name, seconds = 0.35) { if (!face) return; if (asleep) awake = name; else face.set(name, seconds); },
     set face(name) { this.setFace(name); },

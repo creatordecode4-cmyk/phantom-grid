@@ -27,8 +27,9 @@
 //
 // The row also marks STRESS (the first word of a sentence, long words, words
 // before "!", words in capitals) and QUESTIONS: there the head nods a little,
-// the eyebrows go up, a hand beats with the word (proceduralAnim.js), and the
-// eyes blink at the end of a sentence (faceAnim.js).
+// the eyebrows go up, and the eyes blink at the end of a sentence (faceAnim.js).
+// It also gives the time of every WORD and every SENTENCE: the body moves with
+// them (gesture.js plans the hands, the shoulders, the head and the weight).
 // ---------------------------------------------------------------------------
 
 // the mouth for each sound: jaw (millimeters open at the lips), wide (+1 wide .. -1 round), press (1 = lips pressed)
@@ -97,13 +98,16 @@ function wordSounds(w) {
 }
 
 // text: the line as it is shown. seconds: how long it stays on screen.
-// Returns { len (seconds of speaking), seg: [{ t0, t1, v (a VISEMES name) }], marks: [{ t, kind: 'stress' | 'question' | 'end' }] }
+// Returns { len (seconds of speaking), seg: [{ t0, t1, v (a VISEMES name) }], marks: [{ t, kind: 'stress' | 'question' | 'end' }],
+//           words: [{ t0, t1, w (lower case, with its apostrophe), stressed, s (its sentence) }],
+//           sentences: [{ t0, t1, end: '.' | '?' | '!' | '-' }] }
 export function buildSpeech(text, seconds) {
-  const seg = [], marks = [];
+  const seg = [], marks = [], words = [], sentences = [{ t0: 0, t1: 0, end: '' }];
   let t = 0;
   const add = (v, len) => { seg.push({ t0: t, t1: t + len, v }); t += len; };
   // words and the marks between them, in order
-  const tokens = String(text || '').replace(/[0-9]/g, (d) => ' ' + DIGITS[d] + ' ').match(/[A-Za-z']+|[.!?]+|[,;:]|…|—|-{2,}/g) || [];
+  // (a curly apostrophe is the same as a straight one: "don’t" is one word)
+  const tokens = String(text || '').replace(/[’‘]/g, "'").replace(/[0-9]/g, (d) => ' ' + DIGITS[d] + ' ').match(/[A-Za-z']+|[.!?]+|[,;:]|…|—|-{2,}/g) || [];
   let sentenceStart = true;
   for (let k = 0; k < tokens.length; k++) {
     const tok = tokens[k];
@@ -112,6 +116,8 @@ export function buildSpeech(text, seconds) {
       const q = tok.includes('?');
       if (q) marks.push({ t: Math.max(0, t - 0.25), kind: 'question' });
       marks.push({ t, kind: 'end' });
+      const S = sentences[sentences.length - 1];
+      if (!S.end) { S.end = q ? '?' : tok.includes('!') ? '!' : /^[.…]+$/.test(tok) ? '.' : '-'; S.t1 = t; }
       add('rest', tok === '—' || /^-+$/.test(tok) ? 0.2 : 0.34);
       sentenceStart = true;
       continue;
@@ -120,6 +126,9 @@ export function buildSpeech(text, seconds) {
     const word = tok.toLowerCase().replace(/'/g, '');
     const sounds = wordSounds(word);
     if (!sounds.length) continue;
+    // (a word after the end of a sentence starts the next one)
+    if (sentences[sentences.length - 1].end) sentences.push({ t0: t, t1: t, end: '' });
+    const wordAt = t;
     // stressed: the first word of a sentence, a long word, a word in capitals, the word before "!"
     const next = tokens[k + 1] || '';
     const stressed = sentenceStart || word.length >= 7 || (tok.length > 1 && tok === tok.toUpperCase()) || next.includes('!');
@@ -133,15 +142,19 @@ export function buildSpeech(text, seconds) {
     // (between words the mouth does not close: in fluent speech one word runs into the next. The last sound of the
     //  word only lasts a little longer)
     seg[seg.length - 1].t1 += 0.035; t += 0.035;
+    words.push({ t0: wordAt, t1: t, w: tok.toLowerCase(), stressed, s: sentences.length - 1 });
   }
+  { const S = sentences[sentences.length - 1]; if (!S.end) { S.end = '.'; S.t1 = t; } }
   // the end: the mouth closes
-  if (!seg.length) return { len: 0, seg: [], marks: [] };
+  if (!seg.length) return { len: 0, seg: [], marks: [], words: [], sentences: [] };
   // stretch or squeeze to the time of the line: about the natural length, but never longer than the line stays
   const natural = t, want = seconds > 0 ? Math.min(seconds * 0.92, Math.max(natural, seconds * 0.55)) : natural;
   const k = want / natural;
   for (const s of seg) { s.t0 *= k; s.t1 *= k; }
   for (const m of marks) m.t *= k;
-  return { len: want, seg, marks };
+  for (const w of words) { w.t0 *= k; w.t1 *= k; }
+  for (const S of sentences) { S.t0 *= k; S.t1 *= k; }
+  return { len: want, seg, marks, words, sentences };
 }
 
 // The mouth at time t of a speech: fills "out" with { jaw, wide, press }. The shapes flow into each other: in the

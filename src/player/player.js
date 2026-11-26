@@ -506,6 +506,8 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     set talk(v) { if (mover) mover.talk = v; },
     // the words of a line Nate says, and how long it stays: his mouth says them (speech.js)
     say(text, seconds) { if (mover) mover.say(text, seconds); },
+    // someone near is talking for "seconds": Nate listens (small nods now and then, the weight shifts)
+    listen(seconds) { if (mover && mover.listen) mover.listen(seconds); },
     set look(v) { if (mover) mover.look = v; },
     set workAt(v) { workAt = v || null; },
     get workAt() { return workAt; },
