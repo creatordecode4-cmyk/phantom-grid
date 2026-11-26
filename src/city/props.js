@@ -825,7 +825,11 @@ export function buildProps(ctx) {
   {
     const H = L.highway;
     let side = 1;
-    for (let z = H.rampBottomZ + 22; z < Math.min(H.northEndZ - 20, B.maxZ + 400); z += 34) {
+    // (Chapter 8: on along the new road to its closed end - but not under the roof of the Ironhill tunnel, which has
+    //  its own lamps)
+    const T = H.tunnel;
+    for (let z = H.rampBottomZ + 22; z < H.northEndZ - 20; z += 34) {
+      if (T && z > T.z0 - 6 && z < T.z1 + 6) continue;
       const x = side > 0 ? H.maxX - 0.75 : H.minX + 0.75;
       addStreetLight(1, x, H.heightAt(z), z, side > 0 ? -Math.PI / 2 : Math.PI / 2, { h: 8.9, noCollide: true });
       side = -side;

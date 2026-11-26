@@ -294,7 +294,8 @@ export function createLighting(scene, renderer, city, materials) {
   let postActive = true;       // false = we draw straight to the screen (fog color needs tone mapping)
   let nightMode = false;
   let interior = null;          // inside a house (see the end of update)
-  let zone = null;              // The Sunk (Chapter 3): { k: 0..1 how deep in its mist, tunnel: 0..1 } (null = none)
+  let zone = null;              // The Sunk (Chapter 3): { k: 0..1 how deep in its mist, tunnel: 0..1 } (null = none);
+                                //   the Ironhill tunnel (Chapter 8) adds tint (its haze color) and dens (how thick)
   let lampLevel = 0;           // 0..1, lamps warming up
   let winLate = 1;
   let envDirty = true, envTimer = 0, envSunEl = 99, envSunAz = 99, envRain = -1, envLum = 1;
@@ -541,9 +542,10 @@ export function createLighting(scene, renderer, city, materials) {
       // (the old quarter has few lights: at night its mist is darker than the glowing haze over the city)
       const dim = lerp(0.92, 0.42, night);
       const mistC = [fogHDR[0] * dim * 0.97 + 0.003, fogHDR[1] * dim + 0.005, fogHDR[2] * dim * 0.99 + 0.005];
-      const deep = [0.004 + 0.01 * day, 0.018 + 0.03 * day, 0.02 + 0.032 * day];
+      // (a zone can bring its own haze: the Ironhill tunnel of Chapter 8 - tint: its color, dens: how thick)
+      const deep = zone.tint || [0.004 + 0.01 * day, 0.018 + 0.03 * day, 0.02 + 0.032 * day];
       fogC = [0, 1, 2].map((i) => lerp(lerp(fogHDR[i], mistC[i], k), deep[i], tn));
-      fogK = lerp(1, 2.3, k) * lerp(1, 9, tn);
+      fogK = lerp(1, 2.3, k) * lerp(1, zone.dens || 9, tn);
     }
     if (postActive) scene.fog.color.setRGB(fogC[0], fogC[1], fogC[2]);
     else {

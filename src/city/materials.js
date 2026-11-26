@@ -49,7 +49,35 @@ export const shared = {
   uPgSunkRect: { value: new THREE.Vector4(0, 0, 1, 1) },
   // up to three boats on the canals: x, z, speed (m/s), heading - for their waves and wake
   uPgBoats: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+  // THE IRONHILL TUNNEL (Chapter 8, src/city/tunnel.js): under its roof the sky gives no light; rows of orange lamps
+  // light the road, the walls and the cars. uPgTun: minX, maxX, minZ, maxZ of the inside. uPgTunL: road height,
+  // ceiling height, meters from lamp to lamp, z of the first lamp. uPgTunX: x of the two rows of lamps, how bright,
+  // on (0 = the camera is far away: nothing is worked out). setTunnelLight() fills them.
+  uPgTun: { value: new THREE.Vector4(1e9, -1e9, 1e9, -1e9) },
+  uPgTunL: { value: new THREE.Vector4(0, 0, 8, 0) },
+  uPgTunX: { value: new THREE.Vector4(0, 0, 0, 0) },
+  uPgTunC: { value: new THREE.Color(1.0, 0.5, 0.15) },
 };
+
+// the tunnel of Chapter 8: where it is and its lamps (see uPgTun above). t: { minX, maxX, minZ, maxZ, floor, ceil,
+// every, first, rows: [x, x], power, color: [r, g, b] }
+export function setTunnelLight(t) {
+  shared.uPgTun.value.set(t.minX, t.maxX, t.minZ, t.maxZ);
+  shared.uPgTunL.value.set(t.floor, t.ceil, t.every, t.first);
+  shared.uPgTunX.value.set(t.rows[0], t.rows[1], t.power, 0);
+  if (t.color) shared.uPgTunC.value.setRGB(t.color[0], t.color[1], t.color[2]);
+}
+// (on: the camera is near enough to see into it; off: the shaders skip the tunnel work)
+export function tunnelLightOn(on) { shared.uPgTunX.value.w = on ? 1 : 0; }
+// how much of the lamps' light falls on a place in the tunnel, 0..1 (main.js: the light on the faces in a car
+// goes brighter and darker as the car passes under the lamps)
+export function tunnelLampAt(x, y, z) {
+  const T = shared.uPgTun.value, L = shared.uPgTunL.value;
+  if (x < T.x - 1 || x > T.y + 1 || z < T.z - 6 || z > T.w + 6 || y < L.x - 3 || y > L.y) return 0;
+  const inside = Math.min(1, (z - T.z + 6) / 10, (T.w + 6 - z) / 10);
+  const f = (((z - L.w) / L.z) % 1 + 1) % 1, d = Math.min(f, 1 - f) * L.z;          // meters to the nearest lamp
+  return Math.max(0, inside) * (0.45 + 0.55 * Math.exp(-d * d / 6));
+}
 
 // ---------------------------------------------------------------------------
 // Facades are divided into "cells": one window bay wide, one floor high.
@@ -352,8 +380,46 @@ uniform vec3 uPgPlayer;
 uniform float uPgShoreZ;
 uniform vec3 uPgSunDir;
 uniform vec3 uPgSunCol;
+uniform vec4 uPgTun;
+uniform vec4 uPgTunL;
+uniform vec4 uPgTunX;
+uniform vec3 uPgTunC;
 varying vec3 vPgWorld;
 varying vec3 vPgNormal;
+// ---- THE IRONHILL TUNNEL (Chapter 8) ----
+// how far a place is inside the tunnel: 0 outside .. 1 inside (soft for a few meters at each mouth)
+float pgTunInside( vec3 p ) {
+	float k = smoothstep( uPgTun.x - 0.7, uPgTun.x + 0.1, p.x ) * ( 1.0 - smoothstep( uPgTun.y - 0.1, uPgTun.y + 0.7, p.x ) );
+	k *= smoothstep( uPgTun.z - 5.0, uPgTun.z + 4.0, p.z ) * ( 1.0 - smoothstep( uPgTun.w - 4.0, uPgTun.w + 5.0, p.z ) );
+	return k * step( uPgTunL.x - 3.0, p.y ) * step( p.y, uPgTunL.y + 0.05 );
+}
+// the light of the lamps on a surface (n: its normal, v: toward the camera, rough / shine: how it reflects):
+// two rows of lamps under the ceiling, one every uPgTunL.z meters; each one shines mostly down, like a real fitting
+//   (out: diff = the light that lights the color of the surface, spec = the shine of the lamps in it)
+void pgTunLight( vec3 p, vec3 n, vec3 v, float rough, out vec3 diff, out vec3 spec ) {
+	float S = uPgTunL.z, k0 = floor( ( p.z - uPgTunL.w ) / S );
+	float d = 0.0, s = 0.0, r1 = clamp( rough, 0.04, 1.0 );
+	float sp = mix( 300.0, 6.0, r1 );
+	for ( int r = 0; r < 2; r ++ ) {
+		float lx = r == 0 ? uPgTunX.x : uPgTunX.y;
+		for ( int j = - 1; j < 3; j ++ ) {
+			vec3 L = vec3( lx, uPgTunL.y - 0.12, uPgTunL.w + ( k0 + float( j ) ) * S ) - p;
+			float d2 = max( dot( L, L ), 0.05 );
+			vec3 l = L * inversesqrt( d2 );
+			float down = max( l.y, 0.0 );
+			down *= down;
+			float a = down * down / ( 1.0 + d2 * 0.2 );
+			d += max( dot( n, l ), 0.0 ) * a;
+			s += pow( max( dot( n, normalize( l + v ) ), 0.0 ), sp ) * a;
+		}
+	}
+	vec3 c = uPgTunC * uPgTunX.z;
+	// (and a little light thrown back up from the lit road: the ceiling and the upper walls are not black)
+	d += 0.012 + 0.03 * max( - n.y, 0.0 );
+	diff = c * d;
+	// (a smooth surface shows a small bright copy of each lamp; a rough one only a faint sheen)
+	spec = c * s * ( 1.0 - r1 ) * ( 1.0 - r1 ) * 5.0;
+}
 #ifdef PG_USE_DATA
 	#if defined( PG_SHOP ) || defined( PG_WINMOD )
 		flat varying vec4 vPgData;
@@ -720,6 +786,8 @@ const PG_FRAGMENT_COLOR = /* glsl */ `
 		#endif
 		float flatness = smoothstep( 0.75, 0.97, vPgNormal.y );
 		float wet = uPgWet;
+		// (the road under the roof of the Ironhill tunnel stays dry: no puddles in there)
+		if ( uPgTunX.w > 0.5 ) wet *= 1.0 - pgTunInside( vPgWorld );
 		#ifdef PG_BEACH
 			// sand near the water line is always wet
 			float shore = 1.0 - smoothstep( 1.0, 13.0 + 5.0 * n2.r, vPgWorld.z - uPgShoreZ );
@@ -1290,10 +1358,29 @@ const PG_FRAGMENT_AO = /* glsl */ `
 		reflectedLight.directDiffuse *= mix( 1.0, mix( 0.88, 1.0, pgB ), pgUp );
 	}
 #endif
+	// THE IRONHILL TUNNEL: its roof keeps out the light of the sky and the moon (its own lamps come in the glow below)
+	if ( uPgTunX.w > 0.5 ) {
+		float pgTk = pgTunInside( vPgWorld );
+		reflectedLight.indirectDiffuse *= 1.0 - 0.86 * pgTk;
+		reflectedLight.indirectSpecular *= 1.0 - 0.8 * pgTk;
+		reflectedLight.directDiffuse *= 1.0 - 0.6 * pgTk;
+		reflectedLight.directSpecular *= 1.0 - 0.6 * pgTk;
+	}
 `;
 
 const PG_FRAGMENT_EMISSIVE = /* glsl */ `
 	totalEmissiveRadiance += pgEmit * step( 0.001, uPgWinLight + uPgNight ) + pgEmitA;
+	// THE IRONHILL TUNNEL: the orange lamps on the road, the walls and the cars (a shine on paint and wet asphalt)
+	if ( uPgTunX.w > 0.5 ) {
+		float pgTk = pgTunInside( vPgWorld );
+		if ( pgTk > 0.001 ) {
+			vec3 pgTn = normalize( vPgNormal );
+			vec3 pgTv = normalize( cameraPosition - vPgWorld );
+			vec3 pgTd, pgTs;
+			pgTunLight( vPgWorld, pgTn, pgTv, roughnessFactor, pgTd, pgTs );
+			totalEmissiveRadiance += pgTk * ( pgTd * diffuseColor.rgb + pgTs * mix( vec3( 0.5 ), diffuseColor.rgb, metalnessFactor ) );
+		}
+	}
 #ifdef PG_CANAL
 	totalEmissiveRadiance += pgCanalGlow;
 #endif

@@ -114,9 +114,14 @@ export const LAYOUT = {
     width: 26,
     height: 8,          // road surface height
     pillarSpacing: 40,
-    northEndZ: 950,
+    // (Chapter 8: the road goes on north past the old end at z 950, through THE IRONHILL TUNNEL, to a closed
+    //  end in front of the hills. The chapters before only use the part south of z 760.)
+    northEndZ: 1480,
     rampTopZ: -236,     // south of here the road slopes down ...
     rampBottomZ: -376,  // ... and reaches the ground at Neon Mile
+    // THE IRONHILL TUNNEL (Chapter 8): a covered stretch of the raised road, with orange lamps under its roof
+    // (src/city/tunnel.js). z0 / z1: its two mouths. clear: the height from the road to the ceiling.
+    tunnel: { z0: 1000, z1: 1320, clear: 6.4, lampEvery: 8, rowOffset: 6.3 },
   },
 
   // ----- Raised light-rail line (near-future touch) ------------------------------

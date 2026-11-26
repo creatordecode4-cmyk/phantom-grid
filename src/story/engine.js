@@ -150,7 +150,12 @@ export function createStory(G) {
   // ------------------------------------------------------------------ places
   const H = layout.highway;
   // the raised highway is not part of the city's ground: cars on it drive in this "arena"
-  const ARENAS = { highway: { minX: H.minX + 0.45, maxX: H.maxX - 0.45, minZ: H.rampBottomZ - 4, maxZ: 760, ground: (x, z) => H.heightAt(z) } };
+  // (ironhill: the same road all the way north, through the Ironhill tunnel to its closed end - Chapter 8. The older
+  //  chapters keep "highway", whose invisible end at z 760 they were made with.)
+  const ARENAS = {
+    highway: { minX: H.minX + 0.45, maxX: H.maxX - 0.45, minZ: H.rampBottomZ - 4, maxZ: 760, ground: (x, z) => H.heightAt(z) },
+    ironhill: { minX: H.minX + 0.45, maxX: H.maxX - 0.45, minZ: H.rampBottomZ - 4, maxZ: H.northEndZ - 9.5, ground: (x, z) => H.heightAt(z) },
+  };
   function groundAt(x, z) {
     const g = city.groundHeight(x, z);
     return x > H.minX && x < H.maxX && z > H.rampBottomZ ? Math.max(g, H.heightAt(z)) : g;

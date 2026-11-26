@@ -21,7 +21,8 @@ import * as THREE from 'three';
 import { CONFIG, urlOption } from './config.js';
 import { clamp, smoothstep, DEG } from './utils/math.js';
 import { buildLayout } from './city/layout.js';
-import { createMaterials, installGlobalShaderPatches, shared } from './city/materials.js';
+import { createMaterials, installGlobalShaderPatches, shared, setTunnelLight, tunnelLightOn, tunnelLampAt } from './city/materials.js';
+import { tunnelInfo } from './city/tunnel.js';
 import { buildCity } from './city/cityBuilder.js';
 import { createLighting } from './world/lighting.js';
 import { createWeather } from './world/weather.js';
@@ -156,6 +157,19 @@ async function boot() {
   if (SK) for (const b of SK.spots) { SHELTERS.push(b); police.addSpot({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ }); }
   // RUSTWATER DOCKS (Chapter 5): Rask's building and the covered market keep the rain out too
   if (city.docks) for (const b of city.docks.spots) { SHELTERS.push(b); police.addSpot({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ }); }
+  // THE IRONHILL TUNNEL (Chapter 8, src/city/tunnel.js): its lamps light the road, the walls and the cars in the city
+  // shaders; no rain falls under its roof; its air is a warm dark haze
+  const TUN = layout.highway.tunnel ? tunnelInfo(layout.highway) : null;
+  const TUN_ROOF = TUN ? { minX: TUN.minX, maxX: TUN.maxX, minZ: TUN.minZ, maxZ: TUN.maxZ, top: TUN.ceil } : null;
+  if (TUN) setTunnelLight({ ...TUN, power: 11, color: [1.0, 0.5, 0.15] });
+  // (how close the camera is to the tunnel: 0 far away .. 1 inside; 'deep': how far inside, for the haze)
+  const tunnelNear = (p) => {
+    if (!TUN) return { near: false, deep: 0 };
+    const dx = Math.max(TUN.minX - p.x, 0, p.x - TUN.maxX), dz = Math.max(TUN.minZ - p.z, 0, p.z - TUN.maxZ);
+    const inside = dx < 0.5 && p.y > TUN.floor - 2 && p.y < TUN.ceil;
+    const fromMouth = Math.min(p.z - TUN.minZ, TUN.maxZ - p.z);
+    return { near: dx < 120 && dz < 420, close: dx < 60 && dz < 180, deep: inside ? clamp((fromMouth + 6) / 40, 0, 1) : 0 };
+  };
   const sunkBoats = [], sunkWalker = { x: 0, z: 0, vx: 0, vz: 0, heading: 0 };
   let lenaCam = false;           // the camera is in "room" mode in Lena's flat
   let marketHush = 0;            // 0..1: the Tidewalkers at the market have gone quiet (Nate is close)
@@ -475,6 +489,13 @@ async function boot() {
     else if (races.cameraActive) races.applyCamera(dt);   // (the replay after the finish line)
     else if (driving && vehicles.active) rig.updateChase(dt, vehicles.active, vehicles.shake, view);
     else rig.update(dt, player);
+    // test tool: PG.freeCam = { pos: [x, y, z], look: [x, y, z] } puts the camera anywhere (before the rain, the
+    // tunnel light and the haze look at where the camera is)
+    const fc = window.PG && window.PG.freeCam;
+    if (fc) {
+      camera.position.set(fc.pos[0], fc.pos[1], fc.pos[2]);
+      camera.lookAt(fc.look[0], fc.look[1], fc.look[2]);
+    }
     // a wall pushed the camera right up to the player: the character fades out instead of being cut open
     if (!film && vehicles.state === 'none' && !player.staged) {
       const cp = camera.position, pp = player.position;
@@ -512,7 +533,11 @@ async function boot() {
       const cp = camera.position;
       let roof = null;
       for (const b of SHELTERS) if (cp.x > b.minX - 0.5 && cp.x < b.maxX + 0.5 && cp.z > b.minZ - 0.5 && cp.z < b.maxZ + 0.5 && cp.y < b.top + 0.5) roof = b;
+      // (the Ironhill tunnel: its roof keeps the rain out whenever the camera is near enough to look into it)
+      const tn = tunnelNear(cp);
+      if (!roof && tn.close) roof = TUN_ROOF;
       weather.setShelter(roof);
+      tunnelLightOn(tn.near);
     }
     if (!(driving && vehicles.active && vehicles.active.siren)) {
       let nearSiren = false;
@@ -613,18 +638,15 @@ async function boot() {
       camera.position.set(TITLE.x, 2.5 + Math.sin(time * 0.07) * 0.2, cz);
       camera.lookAt(TITLE.lookX, 2.9, cz - 1.5);
     }
-    // test tool: PG.freeCam = { pos: [x, y, z], look: [x, y, z] } puts the camera anywhere
-    const fc = window.PG && window.PG.freeCam;
-    if (fc) {
-      camera.position.set(fc.pos[0], fc.pos[1], fc.pos[2]);
-      camera.lookAt(fc.look[0], fc.look[1], fc.look[2]);
-    }
     shared.uPgPlayer.value.copy(player.position);
     // ---- THE SUNK: its water and mist, the steady rain there, the teal dark of the tunnel ----
     // (not while the garage set of Chapter 6 is shown: the canals are not in that picture)
     const citySleeps = !!(world.garageSet && world.garageSet.active);
     if (citySleeps) lighting.zone = null;
-    else if (SK) {
+    else if (TUN && tunnelNear(camera.position).deep > 0) {
+      // inside the Ironhill tunnel: a warm, dark haze (the orange of its lamps in the air)
+      lighting.zone = { k: 0, tunnel: tunnelNear(camera.position).deep, tint: [0.05, 0.026, 0.009], dens: 3.2 };
+    } else if (SK) {
       const cp = camera.position;
       lighting.zone = inside ? null : SK.fogAt(cp.x, cp.y, cp.z);
       weather.setZoneRain(!inside && SK.inZone(px, pz, 40));
@@ -649,7 +671,11 @@ async function boot() {
       // (how much real light there is: all of it with the sun high, little with a low sun, none at night)
       const bright = smoothstep(4, 30, li.elevation === undefined ? 90 : li.elevation);
       const want = P.fillDay + (P.fillNight - P.fillDay) * (1 - bright);
-      setCharacterFill(typeof test === 'number' ? test : want / Math.max(li.exposure || 1, 0.25));
+      const fill = typeof test === 'number' ? test : want / Math.max(li.exposure || 1, 0.25);
+      // (in the Ironhill tunnel the light on the faces is the lamps' orange, brighter under each lamp as the car goes)
+      const lamp = TUN ? tunnelLampAt(camera.position.x, camera.position.y, camera.position.z) : 0;
+      if (lamp > 0) setCharacterFill(fill * (0.5 + 1.3 * lamp), 1.0, 0.62 + 0.3 * (1 - lamp), 0.34 + 0.5 * (1 - lamp));
+      else setCharacterFill(fill);
     }
     // (in a film scene the near detail - props, the docks' crews and machines - is around the CAMERA, which may be
     //  far from where the player stands: nothing pops in or is missing in the shot)

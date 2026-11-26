@@ -8,6 +8,7 @@
 //   * rows of scenery buildings that close the view at the edges
 // ---------------------------------------------------------------------------
 
+import { buildTunnel, buildRoadEnd } from './tunnel.js';
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { RNG } from '../utils/math.js';
@@ -241,7 +242,8 @@ function buildHighway(ctx) {
   // ---- lane markings: double yellow in the middle, dashed lane lines, solid edge lines ----
   {
     const mk = ctx.mb.marking, white = [0.95, 0.95, 0.93], yellow = [0.92, 0.7, 0.18], cx = H.centerX;
-    const zN = Math.min(zEnd, L.bounds.maxZ + 420);
+    // (all the way to the closed end of the road, Chapter 8 - through the Ironhill tunnel)
+    const zN = zEnd - 9;
     addMark(mk, cx, zTop, cx, zN, 0.36, MARK.double, 6, yellow, 0.85, deck + 0.022);
     for (const o of [-4.2, 4.2, -8.4, 8.4]) addMark(mk, cx + o, zTop, cx + o, zN, 0.13, MARK.dashed, 12, white, 0.8, deck + 0.022);
     for (const o of [-12.1, 12.1]) addMark(mk, cx + o, zTop, cx + o, zN, 0.14, MARK.solid, 6, white, 0.7, deck + 0.022);
@@ -258,6 +260,10 @@ function buildHighway(ctx) {
       for (const o of [-12.1, 12.1]) slope(cx + o, za, zb, 0.14, MARK.solid, 6, white, 0.7);
     }
   }
+
+  // ---- THE IRONHILL TUNNEL (Chapter 8) and the closed end of the road (src/city/tunnel.js) ----
+  buildTunnel(ctx, tile);
+  buildRoadEnd(ctx, tile);
 
   // ---- wall along the east edge of the play area (under the highway) ----
   con(0.85);
