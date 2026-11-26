@@ -1004,6 +1004,49 @@ export function analyzeCharacter(positions, index, opts = {}) {
 //   opts:   { height (meters), onProgress(fraction, text) }
 // Returns the rig: { root, mesh, bones (by name), skeleton, rest, def, report }.
 // ===========================================================================
+// SMOOTH SHADING. The models' own normals are cut in many places (each piece of the picture keeps its own, and many
+// edges of the low-poly face are hard): close up, a face and a neck look made of flat pieces with lines between them -
+// a line across a neck looks like a cut. Here every point gets the normal of the surface round its spot: the faces that
+// meet there (also across the seams of the picture, welded by position), weighted by their size - but only the faces
+// that turn less than maxDeg from the point's own normal, so a real fold (a collar, the edge of a sleeve) stays sharp.
+// P: positions, N: normals (changed in place), I: the triangles.
+export function smoothNormals(P, N, I, maxDeg = 60) {
+  const n = P.length / 3, spot = new Int32Array(n), ids = new Map();
+  let spots = 0;
+  for (let v = 0; v < n; v++) {
+    const k = `${Math.round(P[v * 3] * 1e4)},${Math.round(P[v * 3 + 1] * 1e4)},${Math.round(P[v * 3 + 2] * 1e4)}`;
+    let s = ids.get(k);
+    if (s === undefined) { s = spots++; ids.set(k, s); }
+    spot[v] = s;
+  }
+  // the faces round each spot (a compact list: start[s] .. start[s + 1])
+  const T = I.length / 3, fn = new Float32Array(T * 3), start = new Int32Array(spots + 1), list = new Int32Array(I.length);
+  for (let t = 0; t < T; t++) {
+    const a = I[t * 3], b = I[t * 3 + 1], c = I[t * 3 + 2];
+    const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2];
+    const vx = P[c * 3] - P[a * 3], vy = P[c * 3 + 1] - P[a * 3 + 1], vz = P[c * 3 + 2] - P[a * 3 + 2];
+    fn[t * 3] = uy * vz - uz * vy; fn[t * 3 + 1] = uz * vx - ux * vz; fn[t * 3 + 2] = ux * vy - uy * vx;     // (length = 2 x area)
+    start[spot[a] + 1]++; start[spot[b] + 1]++; start[spot[c] + 1]++;
+  }
+  for (let s = 0; s < spots; s++) start[s + 1] += start[s];
+  const fill = start.slice(0, spots);
+  for (let t = 0; t < T; t++) for (let j = 0; j < 3; j++) list[fill[spot[I[t * 3 + j]]]++] = t;
+  const cosMax = Math.cos((maxDeg * Math.PI) / 180);
+  for (let v = 0; v < n; v++) {
+    const nx = N[v * 3], ny = N[v * 3 + 1], nz = N[v * 3 + 2];
+    let sx = 0, sy = 0, sz = 0;
+    for (let q = start[spot[v]]; q < start[spot[v] + 1]; q++) {
+      const t = list[q], fx = fn[t * 3], fy = fn[t * 3 + 1], fz = fn[t * 3 + 2], fl = Math.hypot(fx, fy, fz);
+      if (fl < 1e-14) continue;
+      if ((fx * nx + fy * ny + fz * nz) / fl < cosMax) continue;          // (across a real fold: not this face)
+      sx += fx; sy += fy; sz += fz;
+    }
+    const l = Math.hypot(sx, sy, sz);
+    if (l < 1e-14) continue;
+    N[v * 3] = sx / l; N[v * 3 + 1] = sy / l; N[v * 3 + 2] = sz / l;
+  }
+}
+
 export async function autoRig(THREE, model, opts = {}) {
   const progress = opts.onProgress || (() => {});
   const wait = () => new Promise((r) => setTimeout(r, 0));     // lets the loading bar repaint
@@ -1041,6 +1084,7 @@ export async function autoRig(THREE, model, opts = {}) {
     const nr = g0.attributes.normal, arr = new Float32Array(count * 3), nm = new THREE.Matrix3().getNormalMatrix(src.matrixWorld);
     for (let i = 0; i < count; i++) { v.fromBufferAttribute(nr, i).applyMatrix3(nm).normalize(); arr[i * 3] = A.flip ? -v.x : v.x; arr[i * 3 + 1] = v.y; arr[i * 3 + 2] = A.flip ? -v.z : v.z; }
     geo.setAttribute('normal', new THREE.BufferAttribute(arr, 3));
+    if (opts.smooth !== false) smoothNormals(geo.attributes.position.array, arr, geo.index.array, 60);
   } else geo.computeVertexNormals();
   // ---- the face: where the nose, the eyes, the mouth and the eyebrows are (faceClean.js) ----
   const material = Array.isArray(src.material) ? src.material[0] : src.material;

@@ -449,14 +449,15 @@ export default {
             // Rask has come in without a sound. He puts his hand flat on the crate and looks at his watch.
             { seconds: 6.4, cam: { from: [-843.2, 1.8, -342.2], look: [-836.5, 1.3, -340.6], fov: 38 },
               do: [{ do: 'actor', id: 'rask', model: 'Viktor_Rask', name: 'name.rask', at: D.raskIn, face: 270, pose: 'idle', fixed: true, look: null, mood: 'sad' },
-                { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_L', p: [0, -0.04, 0], wrist: true },
+                { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_L', p: [0, 0.004, 0], wrist: true, band: 1.4 },
                 { do: 'actorSet', id: 'rask', walk: D.raskCrates, speed: 1.0, then: 90 }] },
             { seconds: 5.0, cam: { from: [-840.0, 1.7, -343.6], look: [-836.6, 1.15, -340.7], fov: 40 },
               do: [{ do: 'actorSet', id: 'rask', at: D.raskCrates, face: 90, pose: 'hold', look: D.label }] },
-            // the watch on his wrist: stopped. Hold it. Nothing is said.
-            { seconds: 7.5, cam: { from: { of: 'rask', p: [0.5, 1.78, -0.3] }, look: { of: 'rask', p: [0.18, 1.02, 0.36] }, fov: 26, near: NEAR },
-              do: [{ do: 'actorSet', id: 'rask', look: { of: 'rask', p: [0.25, 0.95, 0.35] } }] },
-            { seconds: 6.5, cam: { from: { of: 'rask', p: [-0.35, 1.7, 1.25] }, look: { of: 'rask', p: [0, 1.62, 0] }, fov: 28 } },
+            // the watch on his wrist: stopped. Hold it. Nothing is said. (He looks at it: the back of the wrist turned up.)
+            { seconds: 7.5, cam: { from: { of: 'rask', p: [0.34, 1.64, -0.06] }, look: { of: 'rask', p: [0.02, 1.22, 0.2] }, fov: 24, near: NEAR },
+              do: [{ do: 'actorSet', id: 'rask', pose: 'watch', look: { of: 'rask', p: [0.02, 1.2, 0.32] } }] },
+            { seconds: 6.5, cam: { from: { of: 'rask', p: [-0.35, 1.7, 1.25] }, look: { of: 'rask', p: [0, 1.62, 0] }, fov: 28 },
+              do: [{ do: 'actorSet', id: 'rask', pose: 'hold', look: null }] },
             // then, quietly
             { seconds: 6.2, cam: { from: { of: 'rask', p: [-0.35, 1.7, 1.25] }, look: { of: 'rask', p: [0, 1.62, 0] }, fov: 26 },
               lines: [{ at: 1.4, who: 'rask', text: 'c5.rask.mila', seconds: 4.2, mood: 'sad' }] },
@@ -482,7 +483,7 @@ export default {
         { do: 'world', traffic: 6, people: 0 },
         { do: 'docks', crew: true },
         RASK([-838, -357.4], 180, { look: 'player' }),
-        { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_L', p: [0, -0.04, 0], wrist: true },
+        { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_L', p: [0, 0.004, 0], wrist: true, band: 1.4 },
         { do: 'actor', id: 'tea', extra: TEA, name: 'name.tea', at: D.teaWoman, face: 0, pose: 'crossed', fixed: true, look: 'player', mood: 'neutral' },
         { do: 'prop', id: 'tin', kind: 'tin', at: [-530.3, 0.9, -352.3], face: 15 },
         { do: 'player', at: [-838, -359.6], face: 0 },

@@ -98,6 +98,8 @@ export const CONFIG = {
       label: 'LOW',
       spectators: 0.5,      // races: half of the crowd
       pixelRatio: { scale: 0, min: 0.75, max: 0.75, dynMax: 1.25 },  // dynMax: how sharp it may get when the phone keeps up
+      // film scenes: the people are close to the camera - more pixels, finer edges, less sharpening (main.js)
+      film: { pixelRatio: 0.95, msaa: 0, sharpen: 0 },
       post: false,          // no bloom, no color grade (render straight to screen)
       vignette: false,
       grain: false,
@@ -124,6 +126,7 @@ export const CONFIG = {
     medium: {
       label: 'MEDIUM',
       pixelRatio: { scale: 0.5, min: 1.0, max: 1.3, dynMax: 2.0 },
+      film: { pixelRatio: 1.65, msaa: 4, sharpen: 0.3 },
       post: true,           // bloom + film-like color grade
       sharpen: 0.55,        // the picture is drawn smaller than the screen: sharpened back (postfx.js)
       vignette: false,
@@ -148,6 +151,7 @@ export const CONFIG = {
     high: {
       label: 'HIGH',
       pixelRatio: { scale: 0.75, min: 1.25, max: 2.0, dynMax: 2.4 },
+      film: { pixelRatio: 2.3, msaa: 4, sharpen: 0.2 },
       post: true,
       sharpen: 0.35,
       vignette: true,       // subtle dark corners

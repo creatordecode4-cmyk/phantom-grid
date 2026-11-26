@@ -552,7 +552,7 @@ export default {
             // KVI's Phantom list. One line is red.
             { seconds: 5.6, cam: { from: { of: 'harrow', p: [0.04, 1.7, 0.04] }, to: { of: 'harrow', p: [0.03, 1.64, 0.1] }, look: { of: 'harrow', p: [-0.07, 1.27, 0.33] }, fov: 30, near: 0.03 } },
             // she understands
-            { seconds: 5.4, cam: { from: { of: 'harrow', p: [0.16, 1.6, 0.72] }, to: { of: 'harrow', p: [0.15, 1.6, 0.66] }, look: { of: 'harrow', p: [0, 1.6, 0] }, fov: 24 },
+            { seconds: 5.4, cam: { from: { of: 'harrow', p: [0.2, 1.62, 1.0] }, to: { of: 'harrow', p: [0.19, 1.62, 0.93] }, look: { of: 'harrow', p: [0, 1.6, 0] }, fov: 26 },
               do: [{ do: 'actorSet', id: 'harrow', mood: 'sad' }],
               lines: [{ at: 2.6, who: 'harrow', text: 'c9.harrow.list', seconds: 2.4, mood: 'sad' }] },
             // the order
@@ -576,7 +576,7 @@ export default {
             { seconds: 3.4, if: GIRL_LET_GO, cam: OVER_NATE,
               do: [GIRL, { do: 'actorSet', id: 'harrow', look: { of: 'girl', p: [0, 0.9, 0] } }] },
             { seconds: 4.0, if: GIRL_LET_GO, cam: { from: { of: 'girl', p: [-1.4, 0.95, 4.2] }, to: { of: 'girl', p: [-1.5, 0.95, 3.8] }, look: { of: 'girl', p: [0, 0.85, 0] }, fov: 30 } },
-            { seconds: 3.6, if: GIRL_LET_GO, cam: { from: { of: 'harrow', p: [0.16, 1.6, 0.72] }, look: { of: 'harrow', p: [0, 1.6, 0] }, fov: 24 },
+            { seconds: 3.6, if: GIRL_LET_GO, cam: { from: { of: 'harrow', p: [0.2, 1.62, 0.98] }, look: { of: 'harrow', p: [0, 1.6, 0] }, fov: 26 },
               do: [{ do: 'actorSet', id: 'harrow', mood: 'smile' }],
               end: [{ do: 'remove', ids: ['girl'] }] },
             // she looks back at Nate

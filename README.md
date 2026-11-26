@@ -6,7 +6,9 @@ electric cars and a maglev line. No cartoon look, no neon-toy look.
 
 The story now runs from the Prologue to **Chapter 9, "Harrow's Line"** (version 12.0: a prison convoy ambushed on
 Ironhill Highway, a trap, a captain who finds her own name on a list, and an old man with a stopped watch - see
-"Chapter 9: HARROW'S LINE" below). Chapter 8, "Talk to Zero" (version 11.0) is a night highway in the rain, two cars
+"Chapter 9: HARROW'S LINE" below). Version 12.1 makes the people close up better in every chapter: smooth faces and
+necks, clean edges, a sharper picture in film scenes, subtitles out of the faces, Rask's whole watch (see "Characters
+close up" below). Chapter 8, "Talk to Zero" (version 11.0) is a night highway in the rain, two cars
 side by side, a voice from the radio; Chapter 7 is not written yet, the story steps over it. Chapter 6, "Old Debts" (version 10.0) is the quietest chapter: one garage, one night, Theo's car
 rebuilt part by part. Since version 10.1 people speak with the **whole body**:
 the hands, the chest, the shoulders, the head and the weight move with the words (see "Body language" below).
@@ -2268,8 +2270,44 @@ voice and Mila's voice (`src/audio/music.js`), the gate motor, the heavy door, t
 or with the other hand on a desk) and the deeper lean over a desk in `src/characters/proceduralAnim.js`, a trim colour for jackets (`src/story/actors.js`: the Chrome Wolves jacket), and
 `src/story/chapters/chapter09.js` (only data).
 
+## Characters close up: faces, necks, the watch (version 12.1)
+
+Seen on a phone in the film scenes: in some lines a neck looked cut, edges of collars and clothes looked torn, the
+picture was poor, and Rask's stopped watch was only half there. Every character was looked at close up, the way a
+phone with a sharp screen shows them (front, side, the head turned, talking), and the causes were fixed for all of them:
+
+- **Smooth shading** (`smoothNormals` in `src/characters/autoRig.js`). The models' own normals are cut in many places,
+  so a face looked made of flat pieces with hard lines between them - one of those lines runs across the neck, like a
+  cut. Measured on the head and neck: the normals were on average 9 - 17 degrees off the smooth surface (Captain
+  Harrow: more than a quarter of the points over 20 degrees); now every point takes the normal of the surface round its
+  spot (also across the seams of the picture), and only real folds (a collar, the edge of a sleeve, over 60 degrees)
+  stay sharp. After it: 2 - 9 degrees, the rest are those folds.
+- **No saw-tooth edges** (`src/characters/characterDetail.js`). The picture of each character is sharpened when it is
+  loaded; on a strong edge - a dark collar against the skin - that drew a bright and a dark rim along the small
+  picture's steps, which looked like a tear. Strong edges now get only a quarter of the sharpening.
+- **No line round the neck** (`src/characters/characterLook.js`). The head's matt skin now fades out over 10 cm down
+  the neck (it switched in 3 cm before, a line where the shine changed); the skin's small bumps are at 40 % on the
+  head and the neck.
+- **A film look** (`main.js`, `quality.film` in `src/config.js`). While a film scene runs the picture gets more pixels
+  (MEDIUM 1.65, HIGH 2.3, LOW 0.95 per screen point - never more than the phone has), finer edges (4 samples of MSAA on
+  MEDIUM and HIGH) and softer sharpening; it is set behind the scene's first cut and put back when the scene ends. A
+  stretched, sharpened picture was the main reason for jagged collars and outlines. It costs more in film scenes
+  (about 1.6 times the pixels on MEDIUM). Test tool: `PG.setFilmLook(true)`.
+- **Subtitles out of the faces** (`index.html`). In a film scene the words now sit down in the black bar: above it
+  they covered the mouth and the chin of a face in a close-up. They stay clear of HOLD TO SKIP; on an upright phone
+  they sit above that button, still in the bar.
+- **Close-ups at a distance the models can carry.** A face has about 150 x 150 points of its model's picture; the two
+  tightest shots (Harrow in Chapter 9) filled the whole screen with it. They are a normal close-up now; no other film
+  shot in the game is that tight (checked with a script over all chapters).
+- **The watch, whole.** In Chapter 5 it sat 4 cm up Rask's arm, inside his sleeve. Now it sits at the cuff with a
+  band wide enough to go over it (`band` of the `stopWatch` prop), and in the close-up "the watch on his wrist" Rask
+  looks at it (a new pose, `watch`: the forearm across the chest, the back of the wrist turned up), so the whole dial
+  with its hands at 4:12 is seen. In Chapter 9 it is on his wrist in the planning scene and in his office.
+
 ## Known limits
 
+- The character models carry one 1024 x 1024 picture each (a face gets about 150 x 150 of its points): very close
+  up they get soft. The film shots keep at least a head-and-shoulders distance.
 - Traffic cars drive on lanes: when hit they are shoved along the lane and a little to the side, stop and
   honk, but they do not spin away. The parked cars of the city are solid and do not move. Vehicles you
   left behind, police, story and race cars are real: they get pushed and turned.

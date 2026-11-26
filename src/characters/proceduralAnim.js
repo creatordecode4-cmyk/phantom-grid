@@ -738,6 +738,8 @@ export function createAnimator(THREE, rig, opts = {}) {
   // up, fwd: a little higher / further forward (when the body leans over a desk)
   // (the numbers were found by measuring Rask in Chapter 9: the earpiece ends up about 1 cm from his ear)
   const phoneDir = V().set(0, 0.85, 1).normalize(), phonePalm = V().set(-1, 0, 0);
+  // (the watch pose: the left hand's fingers point to the right and a little forward, its palm down)
+  const watchDir = V().set(-0.8, -0.1, 0.6).normalize(), watchPalm = V().set(0, -1, 0);
   function phoneHand(up = 0, fwd = 0) {
     handAt(1, -0.115 * k, hipsPos.y + (0.625 + up) * k, hipsPos.z + (0.17 + fwd) * k, -0.45, -0.85, 0.2);
     // (the palm is on the -x side of a right hand's own frame: x = -1 turns it in, toward the face)
@@ -781,6 +783,16 @@ export function createAnimator(THREE, rig, opts = {}) {
       for (let q = 0; q < 2; q++) { const { s } = SIDES[q]; handAt(q, s * (hipW + 0.075 * k), hipsPos.y + 0.075 * k, hipsPos.z - 0.035 * k, s, -0.05, -0.7); setDelta('hand_' + SIDES[q].tag, 0, 0, -s * 25 * DEG); fingers(q, 40); }
     }
     else if (pose === 'hold') { for (let q = 0; q < 2; q++) { armAngles(q, 24, 3, -36, 70 + talkNow * beat * 4, 6); fingers(q, 62); } }
+    else if (pose === 'watch') {
+      // looking at the watch on the left wrist: the forearm across in front of the chest, the back of the wrist turned
+      // up (the dial toward the eyes), the head bent over it; the right arm hangs
+      armAngles(1, 4, 9, 8, 12);
+      handAt(0, -0.03 * k, hipsPos.y + 0.37 * k, hipsPos.z + 0.3 * k, 0.75, -0.6, -0.2);
+      // (the palm is on the +x side of a left hand's own frame: x = down turns the palm down, the back of it up)
+      setTarget('hand_L', watchDir, watchPalm);
+      fingers(0, 22, 16);
+      setDelta('neck', 16 * DEG, 0, 0); setDelta('head', 18 * DEG, 0, 0);
+    }
     else if (HANDS_POSES.has(pose)) handsPose(t);
     else if (pose === 'wipe') {
       // wiping the hands on a rag: both hands in front of the belly, rubbing slowly, the head down

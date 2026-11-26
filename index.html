@@ -397,7 +397,11 @@
     /* subtitles: readable in rain (dark plate, soft shadow) */
     #subs { position: absolute; left: 50%; bottom: calc(13vh + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(680px, 90vw); text-align: center; pointer-events: none; }
     body:not(.cine) #subs { bottom: calc(190px + env(safe-area-inset-bottom)); }
-    body.cine #subs { bottom: calc(var(--bar) + 2vh + env(safe-area-inset-bottom)); }
+    /* (in a film scene the words sit down in the black bar: over the picture they covered the mouth and chin of a
+        face in a close-up; a long line only reaches a little way up into the picture) */
+    body.cine #subs { bottom: calc(max(4px, var(--bar) * 0.16) + env(safe-area-inset-bottom)); width: min(680px, calc(100vw - 2 * (176px + env(safe-area-inset-right)))); }
+    /* (an upright phone: the bars are tall - the words go above the HOLD TO SKIP button, still in the bar) */
+    @media (max-aspect-ratio: 1/1) { body.cine #subs { width: min(680px, 92vw); bottom: calc(2.2vh + 56px + env(safe-area-inset-bottom)); } }
     #subs[hidden] { display: none; }
     #subs .plate { display: inline-block; padding: 7px 14px 8px; border-radius: 8px; background: rgba(4, 5, 7, 0.62); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
     #subs-who { font-size: calc(var(--sub) * 0.6); letter-spacing: 0.3em; color: #ffc94a; margin-bottom: 3px; }

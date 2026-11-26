@@ -13,8 +13,9 @@
 //                   (strong at night and indoors, almost nothing in the sun).
 //   2. MATT SKIN    the head never shines like wet plastic: its roughness has
 //                   a floor. That removes the white "tear" streaks on faces.
-//   3. SOFT BUMPS   the small bumps painted into the model are halved on the
-//                   head, so a face is not full of hard little shadows.
+//   3. SOFT BUMPS   the small bumps painted into the model are cut to 40 % on
+//                   the head and the neck, so a face is not full of hard little
+//                   shadows (they fade out down the neck: uPgHeadBand).
 //   4. OPEN MOUTH   the models have no inside of a mouth: the lips are one
 //                   closed skin. When the jaw opens (speaking, surprise), the
 //                   skin where the lips meet is stretched; here it is drawn
@@ -33,7 +34,9 @@
 // ---------------------------------------------------------------------------
 
 // shared by all characters: color x strength of the fill light
-export const characterLight = { uPgCharFill: { value: [0, 0, 0] } };
+// (uPgHeadBand: how far below the chin the head's matt skin fades out into the neck, meters. A short fade drew a
+//  line round the neck where the shine of the skin changed - in a close-up it looked like a cut.)
+export const characterLight = { uPgCharFill: { value: [0, 0, 0] }, uPgHeadBand: { value: 0.1 } };
 
 // Sets the fill light. power: 0 = off; about 0.1 is a clear but soft light at night.
 export function setCharacterFill(power, r = 1, g = 0.96, b = 0.9) {
@@ -55,6 +58,7 @@ export function applyCharacterLook(material, chinY, mouth = null, detail = null)
     if (before) before(shader, renderer);
     shader.uniforms.uPgCharFill = characterLight.uPgCharFill;
     shader.uniforms.uPgChin = chin;
+    shader.uniforms.uPgHeadBand = characterLight.uPgHeadBand;
     if (D) Object.assign(shader.uniforms, D);
     const def = (mouth ? '#define PG_MOUTH\n' : '') + (D ? '#define PG_DETAIL\n' : '');
     if (mouth) {
@@ -65,6 +69,7 @@ export function applyCharacterLook(material, chinY, mouth = null, detail = null)
       .replace('#include <common>', [
         '#include <common>',
         'uniform float uPgChin;',
+        'uniform float uPgHeadBand;',
         'varying float vPgHead;',
         '#ifdef PG_MOUTH',
         'uniform float uPgJaw, uPgHeadBone, uPgOpenRef;',
@@ -78,7 +83,7 @@ export function applyCharacterLook(material, chinY, mouth = null, detail = null)
         '#endif',
       ].join('\n'))
       // (position = the rest pose, before the bones move it)
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvPgHead = smoothstep( uPgChin - 0.03, uPgChin + 0.005, position.y );\n#ifdef PG_DETAIL\n\tvPgPos = position;\n#endif')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvPgHead = smoothstep( uPgChin - uPgHeadBand, uPgChin + 0.005, position.y );\n#ifdef PG_DETAIL\n\tvPgPos = position;\n#endif')
       // how far the lower lip has moved away from where the head would carry it = how open the mouth is
       .replace('#include <skinning_vertex>', [
         '#include <skinning_vertex>',
@@ -109,7 +114,7 @@ export function applyCharacterLook(material, chinY, mouth = null, detail = null)
         '#endif',
       ].join('\n'))
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n\troughnessFactor = max( roughnessFactor, 0.64 * vPgHead );')
-      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n\tnormal = normalize( mix( normal, nonPerturbedNormal, 0.5 * vPgHead ) );\n' + DETAIL_SURFACE)
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n\tnormal = normalize( mix( normal, nonPerturbedNormal, 0.6 * vPgHead ) );\n' + DETAIL_SURFACE)
       .replace('#include <emissivemap_fragment>', [
         '#include <emissivemap_fragment>',
         '\t{',

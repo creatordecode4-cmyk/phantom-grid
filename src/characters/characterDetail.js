@@ -183,15 +183,18 @@ function sharpenInside(px, W, H, inside, amount) {
   }
   // (differences under 1.5 of 255 are compression noise: left alone; the change is limited, no harsh halos.
   //  Next to the edge of a piece - where the two sides of a seam meet on the model - it sharpens less, so seams
-  //  do not stand out)
+  //  do not stand out. A STRONG edge - a dark collar against the skin, the edge of a shirt - is sharp already: there
+  //  the small picture's steps of single points would come out as a saw-tooth rim, bright on one side and dark on the
+  //  other, that looks like a cut on the neck in a close-up. So strong edges get only a quarter of it.)
   const T = 1.5, LIM = 28;
   for (let i = 0; i < N; i++) {
     if (!inside[i] || !(wt[i] > 0)) continue;
     let d = Y[i] - sum[i] / wt[i];
     d = d > T ? d - T : d < -T ? d + T : 0;
     if (d === 0) continue;
-    const full = wt[i] / 16;
-    let c = amount * d * full * full;
+    const full = wt[i] / 16, ad = d < 0 ? -d : d;
+    const soft = ad <= 12 ? 1 : ad >= 40 ? 0.25 : 1 - 0.75 * ((ad - 12) / 28);
+    let c = amount * d * full * full * soft;
     c = c > LIM ? LIM : c < -LIM ? -LIM : c;
     const o = i * 4;
     const r = px[o] + c, g = px[o + 1] + c, b = px[o + 2] + c;

@@ -298,13 +298,20 @@ async function boot() {
   // frame rate drops (never below 80 % of the normal setting). Address option dynres=0 switches it off (tests).
   let resK = 1;
   const dynRes = urlOption('dynres') !== '0';
+  // FILM SCENES: the people are close to the camera, and a picture drawn small, stretched to the screen and then
+  // sharpened shows saw-tooth edges on collars, hair and outlines. So while a film scene runs the picture gets more
+  // pixels and finer edges (quality.film: more MSAA samples) and less sharpening. Set when the scene starts (behind
+  // its first cut) and put back when it ends.
+  let filmLook = false;
   let resFrames = 0, resTime = 0, resGood = 0, resHold = 0;     // resHold: seconds before the next change is allowed
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     const dpr = window.devicePixelRatio || 1;
     const base = clamp(dpr * quality.pixelRatio.scale, quality.pixelRatio.min, quality.pixelRatio.max);
     const top = Math.max(base, Math.min(quality.pixelRatio.dynMax || base, dpr));
-    const pr = clamp(base * resK, Math.max(0.6, base * 0.8), top);
+    const F = filmLook && quality.film;
+    let pr = clamp(base * resK, Math.max(0.6, base * 0.8), top);
+    if (F) pr = Math.max(pr, Math.min(dpr, F.pixelRatio));
     renderer.setPixelRatio(pr);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
@@ -319,9 +326,18 @@ async function boot() {
     interiors.setViewport(pixelH);
     camera.far = quality.cameraFar;
     camera.updateProjectionMatrix();
-    if (usePost) postfx.resize(w * pr, h * pr, quality.msaa);
+    if (usePost) postfx.resize(w * pr, h * pr, F ? Math.max(quality.msaa, F.msaa) : quality.msaa);
     city.props.setViewport(camera.fov, h * pr);
     minimap.resize();
+  }
+
+  // the post effects of the level (in a film scene: the film's softer sharpening)
+  function postQuality() { postfx.setQuality(filmLook && quality.film ? { ...quality, sharpen: quality.film.sharpen } : quality); }
+  function setFilmLook(on) {
+    if (filmLook === !!on) return;
+    filmLook = !!on;
+    resize();
+    postQuality();
   }
 
   function applyQuality(name) {
@@ -331,7 +347,7 @@ async function boot() {
     materials.setQuality(quality);
     lighting.setQuality(quality);
     lighting.setPostActive(usePost);
-    postfx.setQuality(quality);
+    postQuality();
     weather.setQuality(quality);
     city.setQuality(quality);
     interiors.setQuality(quality);
@@ -1111,6 +1127,8 @@ async function boot() {
       if (++idleFrames % 12 === 0) draw();
       return;
     }
+    // (a film scene starts or ends: its picture settings)
+    if ((!!story && story.cameraActive) !== filmLook) setFilmLook(!filmLook);
     // (slow motion: the world runs slower for a few real seconds; the menus and the subtitles do not)
     let k = 1;
     if (slow.left > 0) { slow.left -= dt; k = slow.scale; }
@@ -1180,7 +1198,8 @@ async function boot() {
     vehicles, missions, gps, sound, hud, minimap, carLib, effects, police, garage, settings,
     story, ui, music, save, actors, drivers, director, storyProps, streetLife, GARAGE, interiors, races, spectators, slow, zero,
     nightRun: world.nightRun, safehouse: world.safehouse, convoy: world.convoy,
-    applyQuality, step, draw, carAction, updateGuides, showTitle, startFree, startStory, openPause,
+    applyQuality, step, draw, carAction, updateGuides, showTitle, startFree, startStory, openPause, setFilmLook,
+    get filmLook() { return filmLook; },
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
     get paused() { return frozen; },
