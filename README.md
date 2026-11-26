@@ -2225,7 +2225,7 @@ weakens the lamps' light on the wet road (`wetReflections` in `src/config.js`). 
 | 9.2 Hit the convoy | 92 - 189 | the chase, with the escorts and Mace's van near the city's edge |
 | 9.3 The trap | 114 - 162 | the shots looking back at the Phantoms |
 | 9.4 Harrow | 106 - 189 | the wide shot of the trap from behind the truck |
-| 9.5 Dante free | 100 - 199 | behind the truck, looking north past all the cars |
+| 9.5 Dante free | 100 - 207 | behind the truck, looking north past all the cars |
 | 9.6 Rask and Mila | 73 - 156 | the office, with the yards in its window |
 | 9.7 Ascend | 29 - 44 | the TV |
 
