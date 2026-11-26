@@ -45,6 +45,9 @@ const KMH = 3.6;
 const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const speedOf = (v) => (v ? Math.hypot(v.vx, v.vz) : 0);
 const STOP_IN = { steer: 0, gas: 0, brake: 1, handbrake: false, nitro: false };
+// (nearly still: only the handbrake holds it - the brake pedal held at a standstill puts a car into reverse, see
+//  physics.js, and a stopped car crept backwards into the one behind it)
+const HOLD_IN = { steer: 0, gas: 0, brake: 0, handbrake: true, nitro: false };
 
 const BASE = 94 / KMH;                  // the convoy's calm speed
 const ALERT = 104 / KMH;                // once it knows it is attacked
@@ -81,9 +84,9 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
     v.braking = v.forward > want + 1.5;
     v.spin += (v.forward * dt) / (v.info.wheelR || 0.33);
   }
-  // a car that has given up: it brakes to a stop where it is (the same physics as every car)
+  // a car that has given up: it brakes to a stop where it is, and stays there (the same physics as every car)
   function stopAI(v) {
-    v.ai = (c, dt, world) => { stepCar(c, STOP_IN, dt, world); c.spin += (c.forward * dt) / (c.info.wheelR || 0.33); c.braking = true; };
+    v.ai = (c, dt, world) => { stepCar(c, c.forward > 0.6 ? STOP_IN : HOLD_IN, dt, world); c.spin += (c.forward * dt) / (c.info.wheelR || 0.33); c.braking = true; };
   }
 
   // ---------------------------------------------------------------- start / stop
