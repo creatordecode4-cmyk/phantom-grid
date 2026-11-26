@@ -7,7 +7,8 @@
 //     truck    the armored prison truck in the middle lane. Dante is inside: hard hits hurt him (its load, see
 //              src/vehicles/cargo.js, kind 'inside')
 //     escorts  two Guard patrol coupes behind the truck, one on each side. They defend it: the one on Nate's side
-//              drops back into his lane in front of him and brakes, and leans into him when he comes alongside
+//              drops back into his lane in front of him and brakes, and leans into him when he comes alongside.
+//              They stay on their own half of the road: on the empty other half a quick driver can get past them
 //     lead     a Guard tech car 34 m ahead of the truck. It does not fight. Nate may spare it, ram it or trap it
 //   One SURVEILLANCE DRONE hangs over the truck with its searchlight.
 //
@@ -135,10 +136,14 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
       if (mine && pAlong < 6 && pAlong > -55) {
         alertNow();
         const gap = along(pc, v);                         // how far the escort is ahead of Nate (- = behind him)
+        // (Nate over the middle line, on the empty half of the road: the escort stays on its own half, in the lane by
+        //  the line. It does not cross over to shut that side, so a quick driver can get past the convoy there - the
+        //  bridge gate hack needs that)
+        const across = (pc.x - cx) * dir > 0.8;
         if (gap < -2.5) {
           // behind him: it goes past him in the next lane over, to get in front of him
           const pLane = clamp(Math.round((Math.abs(pc.x - cx) - 2.1) / 4.15), 0, 2);
-          const passLane = pLane === 1 ? (Math.abs(v.x - laneX(0, dir)) < Math.abs(v.x - laneX(2, dir)) ? 0 : 2) : 1;
+          const passLane = across ? 0 : pLane === 1 ? (Math.abs(v.x - laneX(0, dir)) < Math.abs(v.x - laneX(2, dir)) ? 0 : 2) : 1;
           tx = laneX(passLane, dir);
           want = speedOf(pc) + 6;
           // (Nate right in front of it in its lane: it brakes - it never drives into him from behind)
@@ -147,11 +152,11 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
           // ahead of him: it moves over into his lane to shut it (not at once: a quick driver can still go round it),
           // and it keeps its own place by the truck - it does not run away when he comes up fast, so he can hit it
           if (g.blockX === undefined) g.blockX = v.x;
-          g.blockX += (clamp(pc.x, H.minX + 1.6, H.maxX - 1.6) - g.blockX) * Math.min(1, dt * 1.5);
+          g.blockX += ((across ? laneX(0, dir) : clamp(pc.x, H.minX + 1.6, H.maxX - 1.6)) - g.blockX) * Math.min(1, dt * 1.5);
           tx = g.blockX;
-          // now and then, with him close behind it, a hard brake check
+          // now and then, with him close behind it (in its lanes), a hard brake check
           g.checkT = (g.checkT || 0) - dt;
-          if (gap > 3 && gap < 14 && g.checkT <= 0) { g.checkT = 3.6; g.check = 0.7; }
+          if (!across && gap > 3 && gap < 14 && g.checkT <= 0) { g.checkT = 3.6; g.check = 0.7; }
           if (g.check > 0) { g.check -= dt; want = Math.max(0, want - 7); }
           // alongside him: it leans in for a short side push (it never rams him head on)
           if (gap < 4.5 && Math.abs(pc.x - v.x) < 4.6) {
@@ -252,7 +257,17 @@ export function createConvoy({ scene, vehicles, sound, effects, rig, ui, layout,
     // the closed gate ahead: it stops at the boom
     if (gate.z !== null && gate.state === 'closed') {
       const toGate = (gate.z - v.z) * dir;
-      if (toGate > -2 && toGate < 160) want = Math.min(want, clamp((toGate - 9) * 0.55, 0, want));
+      if (toGate > -2 && toGate < 160) {
+        // (or behind a Guard car that stops at the boom in its lane - the tech car: it does not run into it, Dante
+        //  is not hurt by the trap)
+        let stopAt = 9;
+        for (const g of G) {
+          if (!live(g.v) || Math.abs(g.v.x - v.x) > 2.6) continue;
+          const gt = (gate.z - g.v.z) * dir;
+          if (gt > -2 && gt < toGate) stopAt = Math.max(stopAt, gt + 7.5);
+        }
+        want = Math.min(want, clamp((toGate - stopAt) * 0.55, 0, want));
+      }
     }
     drive(v, clamp(tx, H.minX + 1.6, H.maxX - 1.6), want, dt);
     // stopped: held still for a moment with both escorts out (or at the gate)

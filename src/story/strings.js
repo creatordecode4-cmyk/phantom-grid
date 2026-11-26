@@ -992,7 +992,7 @@ export const STRINGS = {
     'c9.obj.truck': 'STOP THE TRUCK: GET IN FRONT OF IT AND SLOW DOWN',
     'c9.tip.convoy': 'Ram the escorts, spin them by a back corner, or get in front of one and brake. Touch the truck gently: Dante is inside.',
     'c9.tip.truck': 'Get in front of the truck, in its lane, and brake slowly. It will slow with you.',
-    'c9.tip.gate': 'Before the tunnel: get in front of the escorts, then HACK THE GATE. It drops behind you.',
+    'c9.tip.gate': 'Before the tunnel: pass the convoy on the empty side of the road, then HACK THE GATE. It drops behind you.',
     'c9.hud.dante': 'DANTE', 'c9.hud.escort': 'ESCORT', 'c9.hud.lead': 'TECH CAR', 'c9.hud.out': 'OUT',
     'c9.hack.gate': 'HACK THE GATE',
     'c9.hack.title': 'BRIDGE GATE  ·  GUARD LOCK',
