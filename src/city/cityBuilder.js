@@ -370,6 +370,8 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
     setQuality(q) {
       const on = q.buildingDetail !== false;
       props.setDetail(on);
+      // LOW: the lamps' light on the wet road is weaker (fewer bright pixels to draw)
+      props.setReflections(q.wetReflections === undefined ? 1 : q.wetReflections);
       traffic.setQuality(q);
       people.setQuality(q);
       if (meshes.hedge) meshes.hedge.visible = on; // LOW: no plants on the facades

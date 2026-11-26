@@ -44,7 +44,8 @@ export function makeInterior(info) {
   // dashboard, a glowing screen, the middle console and the steering wheel
   const dz = Math.min(s.z + 0.82, zFront - 0.05);
   parts.push(P(box((hw - 0.14) * 2, 0.3 * k, 0.34), [0, s.y + 0.1 + 0.32 * k, dz], trim, 0.7, 0));
-  parts.push(P(box(0.34, 0.14 * k, 0.02), [0, s.y + 0.1 + 0.4 * k, dz - 0.18], [0.25, 0.6, 0.75], 0.2, 0, { glow: 0.5 }));
+  // (a soft glow: in a close-up at night a brighter screen burned out into a white-blue block)
+  parts.push(P(box(0.34, 0.14 * k, 0.02), [0, s.y + 0.1 + 0.4 * k, dz - 0.18], [0.12, 0.3, 0.4], 0.2, 0, { glow: 0.08 }));
   parts.push(P(box(0.2, 0.2, 0.9), [0, s.y + 0.05, s.z + 0.2], trim, 0.7, 0));
   parts.push(P(box(0.05, 0.05, 0.22), [s.x, s.y + 0.1 + 0.4 * k, dz - 0.16], dark, 0.5, 0));
   const g = mergeParts(parts);

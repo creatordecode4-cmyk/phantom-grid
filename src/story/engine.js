@@ -29,7 +29,7 @@
 //     cutscene, card, lines, choice, read, fade, wait, end
 //   STEPS THAT CHANGE THE WORLD AT ONCE
 //     time, world, clear, spawn, actor, prop, remove, player, allow, vehicleSet, actorSet, drive, music,
-//     sound, say, tip, flag, light, wanted, mirror, cam, quiet, hush, cine, fire, checkpoint, chapter,
+//     sound, say, tip, flag, light, wanted, mirror, cam, quiet, hush, cine, fire, forget, checkpoint, chapter,
 //     police (the real wanted system of src/ai/wanted.js), news (the news line on the screen), video (the
 //     look of a recording), tarp (the cloth over Theo's car), shutter (Mace's door), fill (light on faces)
 //   CHAPTER 2 STEPS THAT WAIT: paint (the paint shop: a color, hold to spray, a new number plate)
@@ -63,6 +63,13 @@
 //     A chapter with calm: true has no minimap, no stars, no timer, only a small soft hint; WREN says nothing while
 //     wren_muted is set (until Chapter 8). People and the player take hands: place (their hands go there: work,
 //     spanner, putDown, roof, lean, give).
+//   CHAPTER 8: safehouse ({ set, tv: actor, headline, ticker, tvOn, lamp } - Lena's room of src/story/safehouseSet.js),
+//     run / runGoal (the night run of src/story/nightRun.js: Zero, the Phantoms, the rewind), memory ({ on }).
+//     Places: { safe: [x, y, z] }, { either: { if, then, else } } (one of two places, by a condition).
+//   CHAPTER 9: convoy ({ start: { truck, escorts, lead, gate, support, dir }, autoRewind, stage, halt, drone, stop } - the
+//     Guard prison convoy of src/story/convoy.js, going north (dir 1) or south (dir -1); events 'convoy:<event>'), convoyGoal ({ text, truckText, gateOk } - take
+//     out the escorts and stop the truck, with the convoy panel, the marker and the HACK button at the bridge gate),
+//     hush (the line on the screen goes away). vehicleSet takes speed (km/h, at a cut) and beam (headlights on the road).
 //   HANDS ON THINGS: prop with { on: actor, carry: true } = a box held in front with both hands (a palm on each side,
 //     the arms solved to it, like player carry); a prop in a hand (bone 'hand_R') with grip (degrees, or the maker's
 //     userData.grip, e.g. the case's handle) closes the fingers of that hand around it.
@@ -360,10 +367,13 @@ export function createStory(G) {
         // (Chapter 8: Theo's voice over the broken radio - a murmur of syllables through hiss and a soft delay)
         if (kind === 'signal' && music.radioVoice) music.radioVoice(seconds, text);
         if (kind === 'wrenTheo' && music.radioVoice) music.radioVoice(seconds, text, true);
+        // (Chapter 9: the man on the TV across the room; Mila's voice out of the small machine)
+        if (kind === 'tv' && music.radioVoice) music.radioVoice(seconds, text, 'tv');
+        if (kind === 'machine' && music.radioVoice) music.radioVoice(seconds, text, 'child');
         if (!aloud) return;
         if (a) { a.talking = 1; if (a.anim) a.anim.say(text, seconds); } else if (who === 'nate') { player.talk = 1; player.say(text, seconds); }
         // the people near the one who speaks listen (a small nod now and then); not for a voice in the ear or a radio
-        if (kind !== 'wren' && kind !== 'radio' && kind !== 'signal' && kind !== 'wrenTheo' && (a || who === 'nate')) hear(a, who, seconds);
+        if (kind !== 'wren' && kind !== 'radio' && kind !== 'signal' && kind !== 'wrenTheo' && kind !== 'tv' && kind !== 'machine' && (a || who === 'nate')) hear(a, who, seconds);
       },
       onDone: () => { if (a) a.talking = 0; else if (who === 'nate') player.talk = 0; },
     });
@@ -841,6 +851,8 @@ export function createStory(G) {
     coolTicks: (s) => sound.coolTicks(s.seconds || 18), radioClick: () => sound.radioClick(), tune: () => sound.tuneSweep(),
     breath: () => sound.breath(), laugh: () => sound.laugh(),
     sirenBurst: (s) => { sound.setSiren(true); setTimeout(() => sound.setSiren(false), (s.seconds || 1.4) * 1000); },
+    // Chapter 9: the truck's heavy back door, the core going into its socket, an old phone lifted and dialled
+    heavyDoor: () => sound.heavyDoor(), coreClick: () => sound.coreClick(), phoneLift: () => sound.phoneLift(), phoneDial: () => sound.phoneDial(),
   };
   STEP.sound = (s) => {
     if (SOUNDS[s.name]) SOUNDS[s.name](s);
@@ -864,6 +876,8 @@ export function createStory(G) {
   STEP.say = (s) => { if (s.texts) s = { ...s, text: s.texts[Math.floor(Math.random() * s.texts.length)] }; speak(s, !!s.now); };   // (texts: one of them, at random)
   STEP.flag = (s) => { Object.assign(flags, s.set); };
   STEP.fire = (s) => { fire(s.event); };
+  // forget that something happened (a rule with repeat: true then waits for it to happen again)
+  STEP.forget = (s) => { for (const e of [].concat(s.event || [])) events.delete(e); };
   STEP.light = (s) => { light = s.at ? { at: s.at, color: s.color || 0xffc890, power: s.power || 30, range: s.range || 12 } : null; };
   STEP.wanted = (s) => { police.setScripted({ stars: s.stars || 0 }); };
   // THE REAL GUARD (Chapter 2): { real, known, disguised, stars, search: place, seen, radius, cars, drones, gates,
@@ -1541,9 +1555,14 @@ export function createStory(G) {
     if (!S) return null;
     if (s.set === true) safeShow(true);
     if (s.set === false) { safeShow(false); return null; }
-    if (s.tv !== undefined || s.headline || s.ticker) S.tvFace(s.tv ? actors.get(s.tv) : null, s.headline ? t(s.headline) : undefined, s.ticker ? t(s.ticker) : undefined);
     if ('tvOn' in s) S.tv(!!s.tvOn);
     if (s.lamp !== undefined) S.lamp(s.lamp);
+    if (s.tv !== undefined || s.headline || s.ticker) {
+      const ok = S.tvFace(s.tv ? actors.get(s.tv) : null, s.headline ? t(s.headline) : undefined, s.ticker ? t(s.ticker) : undefined);
+      // (the face is a picture taken of the person's model: while the model is still loading there is nothing to take -
+      //  the step waits, trying again every frame, for up to 8 seconds)
+      if (!ok && s.tv) { let left = 8; return { update(dt) { left -= dt; return S.tvFace(actors.get(s.tv)) || left <= 0; } }; }
+    }
     return null;
   };
 
@@ -1590,6 +1609,70 @@ export function createStory(G) {
       st.text = s.meter === 'matched' && R.meters.lostFor > 2.5 ? t(s.lostText || 'c8.obj.find_zero') : null;
       return v >= s.seconds;
     });
+  };
+  // ---------------------------------------------------------------- Chapter 9: the convoy
+  // THE CONVOY (src/story/convoy.js): a Guard prison convoy going south on Ironhill Highway.
+  //   { start: { truck, escorts: [ids], lead, gate: z of the bridge gate, support: true | condition (Mace's van) } }
+  //   (start.passive: the escorts do not defend until { engage: true }), { styleFlag: name } (how the tech car ended)
+  //   { autoRewind: { at, to } | null } (the dip to black before the ramp), { stage: z } (at a cut: the stopped truck
+  //   is put at z, with Nate and the cars near it), { halt: true } (every car stops where it is), { drone: false },
+  //   { stop: true }. Its events are story events 'convoy:<event>' (out:esc1:ram, escortsDown, stopped:block, ...)
+  STEP.convoy = (s) => {
+    const C = world.convoy;
+    if (!C) return null;
+    if (s.start) {
+      const o = s.start;
+      const sup = o.support === undefined ? false : typeof o.support === 'object' ? test(o.support) : !!o.support;
+      C.start({ truck: car(o.truck), escorts: (o.escorts || []).map((id) => car(id)).filter(Boolean), lead: o.lead ? car(o.lead) : null,
+        dir: o.dir || 1, arena: ARENAS.ironhill, gateZ: o.gate, support: sup, passive: !!o.passive });
+      // (forget what happened to an earlier convoy)
+      for (const e of [...events]) if (e.startsWith('convoy:')) events.delete(e);
+    }
+    if (s.engage) C.engage();
+    if ('autoRewind' in s) C.autoRewind(s.autoRewind);
+    if (s.stage !== undefined) C.stage(s.stage);
+    // (how the ambush was done, into a flag: 'ram' (the tech car rammed), 'hack' (the gate hacked), else 'gentle')
+    if (s.styleFlag) flags[s.styleFlag] = C.style;
+    if (s.halt) C.halt();
+    if (s.drone === false) C.removeDrone();
+    if (s.stop) C.stop();
+    return null;
+  };
+  // THE AMBUSH: take out the two escorts, then stop the truck - waits until the truck stands. The convoy panel shows
+  // how Dante is (the load of the truck) and which escorts are out; the marker is over the car to go for. When Nate
+  // comes toward the bridge gate, a big HACK button: while the fingers draw, his car keeps its lane and speed by itself
+  // and the world runs slower. { text (the escorts), truckText, gateOk: [steps] }
+  STEP.convoyGoal = (s) => {
+    const C = world.convoy;
+    if (!C) return null;
+    const my = gen;
+    let hacking = false;
+    const endHack = () => { hacking = false; choosing = false; C.autopilot(false); };
+    const startHack = () => {
+      if (hacking || !C.gateReady) return;
+      hacking = true; choosing = true; ui.prompt(null);
+      C.autopilot(true);
+      hack.start({
+        title: t('c9.hack.title'), sub: t('c9.hack.sub'), hint: t('c9.hack.hint'), seconds: 12, length: 3, optional: true,
+        labels: { ok: t('c9.hack.ok'), fail: t('c3.hack.fail'), skip: t('c3.hack.skip') },
+      }).then((ok) => {
+        if (my !== gen || !hacking) return;
+        endHack();
+        if (ok) { C.armGate(); fire('convoy:gateHacked'); run(s.gateOk); }
+      });
+    };
+    return goal(s, null, (dt, st) => {
+      const h = C.hud;
+      ui.convoy(h, { dante: t('c9.hud.dante'), escort: t('c9.hud.escort'), lead: t('c9.hud.lead'), out: t('c9.hud.out') });
+      if (h.stopped) return true;
+      const left = h.escorts.filter((e) => e.role === 'escort' && !e.out).length;
+      st.text = left > 0 ? `${t(s.text || 'c9.obj.escorts')}  ${2 - left} / 2` : t(s.truckText || 'c9.obj.truck');
+      st.marker = h.target ? { car: h.target } : null;
+      if (!hacking) { const ready = C.gateReady; ui.prompt(ready ? t('c9.hack.gate') : null, ready ? startHack : null, ready ? 'big' : null); }
+      // (slower while the fingers draw)
+      if (hacking && world.slow) world.slow.set(0.45, 0.3);
+      return false;
+    }, () => { ui.convoy(null); if (hacking) { hack.cancel(); endHack(); } });
   };
   // THEO'S JACKET (Chapter 4, when Nate took it): it lies on the seat next to him, and a small sign on the screen
   STEP.jacket = (s) => { jacketOn = !!s.on; if (world.jacket) world.jacket(jacketOn); };
@@ -1856,6 +1939,13 @@ export function createStory(G) {
       for (const e of world.nightRun.takeEvents()) {
         fire('run:' + e);
         if (e.startsWith('phantom:')) { const id = e.slice(8), v = world.nightRun.phantomCars.find((q) => q.storyId === id); if (v) cars.set(id, v); }
+      }
+    }
+    // ---- the convoy (Chapter 9): who is out, the truck, Mace's van (it gets its story name) ----
+    if (world.convoy && world.convoy.on) {
+      for (const e of world.convoy.takeEvents()) {
+        fire('convoy:' + e);
+        if (e === 'support' && world.convoy.supportCar) cars.set('maceVan', world.convoy.supportCar);
       }
     }
     // ---- the load on a vehicle (Chapter 5): its hits and scrapes, and when it is broken ----

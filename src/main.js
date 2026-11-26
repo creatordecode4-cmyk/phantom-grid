@@ -58,6 +58,7 @@ import { createRaces } from './race/raceManager.js';
 import { createSpectators } from './race/spectators.js';
 import { createZero } from './ai/zero.js';
 import { createNightRun } from './story/nightRun.js';
+import { createConvoy } from './story/convoy.js';
 import { createSafehouse } from './story/safehouseSet.js';
 import { raceLook } from './story/propsRace.js';
 import { createGarageSet } from './story/garageSet.js';
@@ -241,6 +242,8 @@ async function boot() {
   world.zero = zero;
   // THE NIGHT RUN (Chapter 8, src/story/nightRun.js): Zero beside Nate on the highway, the Phantoms of KVI, their drones
   world.nightRun = createNightRun({ scene, vehicles, sound, music, effects, weather, rig, ui, layout, props: storyProps });
+  // THE CONVOY (Chapter 9, src/story/convoy.js): the Guard prison convoy on the highway, Dante in its truck
+  world.convoy = createConvoy({ scene, vehicles, sound, effects, rig, ui, layout, props: storyProps });
   // THEO'S JACKET (Chapter 4, when Nate took it on the roof): from then on Nate wears it, and a small sign of it is
   // on the screen
   const jacket = { on: false, badge: null, base: null, mat: null, forced: false };
@@ -462,6 +465,7 @@ async function boot() {
     races.update(dt, time, input);
     zero.update(dt, { free: gameMode === 'free' && !story.active, car: vehicles.state === 'driving' ? vehicles.active : null });
     world.nightRun.update(dt, time);
+    world.convoy.update(dt, time);
     zeroInMirror();
     updateJacket();
     effects.endFrame(dt);
@@ -1175,7 +1179,7 @@ async function boot() {
     THREE, CONFIG, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
     vehicles, missions, gps, sound, hud, minimap, carLib, effects, police, garage, settings,
     story, ui, music, save, actors, drivers, director, storyProps, streetLife, GARAGE, interiors, races, spectators, slow, zero,
-    nightRun: world.nightRun, safehouse: world.safehouse,
+    nightRun: world.nightRun, safehouse: world.safehouse, convoy: world.convoy,
     applyQuality, step, draw, carAction, updateGuides, showTitle, startFree, startStory, openPause,
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },

@@ -30,6 +30,7 @@ export function createStoryUI() {
     limiter: $('btn-limiter'), wren: $('wren'), mirror: $('mirror'), tape: $('tape'), tapeName: $('tape-name'), tapeBar: $('tape-bar').firstElementChild,
     act: $('btn-act'), tip: $('tip'), reader: $('reader'), badge: $('limit-badge'),
     cargoRow: $('cargo-row'), cargoBar: $('cargo-bar').firstElementChild, cargoNum: $('cargo-num'),
+    convoy: $('convoy'), cvLabel: $('cv-label'), cvBar: $('cv-bar').firstElementChild, cvNum: $('cv-num'), cvCars: $('cv-cars'),
     title: $('title'), pause: $('pause'), settings: $('settings'), select: $('select'), endcard: $('endcard'), failcard: $('failcard'),
     paint: $('paint'), video: $('video'), videoDate: $('video-date'), videoFile: $('video-file'), videoLock: $('video-lock'), bustcard: $('bustcard'),
   };
@@ -79,6 +80,9 @@ export function createStoryUI() {
     // voice more like his ('wrenTheo')
     el.who.classList.toggle('signal', s.kind === 'signal');
     el.who.classList.toggle('wrenTheo', s.kind === 'wrenTheo');
+    el.who.classList.toggle('tv', s.kind === 'tv');                 // the man on the TV (Chapter 9)
+    el.who.classList.toggle('machine', s.kind === 'machine');       // a small machine's voice (Mila, Chapter 9)
+    el.text.classList.toggle('machine', s.kind === 'machine');
     el.subs.classList.toggle('signal', s.kind === 'signal');
     el.text.classList.toggle('thought', s.kind === 'thought');
     el.text.classList.toggle('wrenTheo', s.kind === 'wrenTheo');
@@ -184,7 +188,14 @@ export function createStoryUI() {
   let actCb = null;
   press(el.act, () => { if (actCb) actCb(); });
   // the TALK / TAKE button (label = null hides it)
-  function prompt(label, cb = null) { actCb = label ? cb : null; if (el.act.hidden === !!label) el.act.hidden = !label; if (label && el.act.textContent !== label) el.act.textContent = label; }
+  // (mode 'big': a big button away from the driving controls - the HACK of Chapter 9, pressed while driving)
+  function prompt(label, cb = null, mode = null) {
+    actCb = label ? cb : null;
+    if (el.act.hidden === !!label) el.act.hidden = !label;
+    if (label && el.act.textContent !== label) el.act.textContent = label;
+    const big = !!label && mode === 'big';
+    if (el.act.classList.contains('big') !== big) el.act.classList.toggle('big', big);
+  }
   let tipLeft = 0;
   function tip(text, seconds = 5) { el.tip.hidden = !text; if (text) { el.tip.textContent = text; tipLeft = seconds; } }
   function tape(on, name = '', progress = 0) {
@@ -214,6 +225,30 @@ export function createStoryUI() {
     el.cargoNum.textContent = String(v);
     el.cargoRow.classList.toggle('warn', v < 60 && v >= 30);
     el.cargoRow.classList.toggle('bad', v < 30);
+  }
+
+  // ---- THE CONVOY (Chapter 9): how Dante is (the load of the prison truck) and the Guard cars, out or not ----
+  //   h: { dante: 0..1, escorts: [{ id, role: 'escort' | 'lead', out }], target: id } or null; L: the words
+  const CAR_ICON = '<svg viewBox="0 0 12 22" width="11" height="20" aria-hidden="true"><rect x="1" y="1" width="10" height="20" rx="3.2" fill="currentColor"/>'
+    + '<rect x="2.6" y="5" width="6.8" height="4" rx="1" fill="rgba(0,0,0,0.45)"/><rect x="2.6" y="14" width="6.8" height="3" rx="1" fill="rgba(0,0,0,0.45)"/></svg>';
+  let cvKey = '', cvLast = -1;
+  function convoy(h, L = {}) {
+    if (!h) { if (!el.convoy.hidden) { el.convoy.hidden = true; body.classList.remove('convoy'); } cvKey = ''; cvLast = -1; return; }
+    if (el.convoy.hidden) body.classList.add('convoy');
+    const d = Math.round(h.dante * 100);
+    const key = d + '|' + h.target + '|' + h.escorts.map((e) => e.id + (e.out ? 'x' : 'o')).join(',');
+    if (key === cvKey) return;
+    cvKey = key;
+    if (el.convoy.hidden) el.convoy.hidden = false;
+    // (Dante's bar shakes when the truck is hit)
+    if (cvLast >= 0 && d < cvLast - 1) { el.convoy.classList.remove('hit'); void el.convoy.offsetWidth; el.convoy.classList.add('hit'); }
+    cvLast = d;
+    el.cvLabel.textContent = L.dante || 'DANTE';
+    el.cvBar.style.width = d + '%';
+    el.cvNum.textContent = String(d);
+    el.convoy.classList.toggle('warn', d < 60 && d >= 30);
+    el.convoy.classList.toggle('bad', d < 30);
+    el.cvCars.innerHTML = h.escorts.map((e) => `<span class="cv-car ${e.role}${e.out ? ' out' : ''}${!e.out && e.id === h.target ? ' target' : ''}">${CAR_ICON}<b>${e.out ? (L.out || 'OUT') : e.role === 'lead' ? (L.lead || 'LEAD') : (L.escort || 'ESCORT')}</b></span>`).join('');
   }
 
   // ---- the rear-view mirror: who is behind the player, drawn as lights in the dark ----
@@ -449,7 +484,7 @@ export function createStoryUI() {
   }
   // everything of the story off the screen (leaving the story, restarting a checkpoint)
   function reset() {
-    cine(false); clearSubs(); skip(null); limiter(null); prompt(null); tip(null); tape(false); mirror(false); limitBadge(0, false); cargo(null);
+    cine(false); clearSubs(); skip(null); limiter(null); prompt(null); tip(null); tape(false); mirror(false); limitBadge(0, false); cargo(null); convoy(null);
     card(null); el.choices.hidden = true; el.choices.className = ''; choiceDone = null; el.reader.hidden = true; body.classList.remove('quiet'); body.classList.remove('choosing'); body.classList.remove('choosing-radio'); body.classList.remove('steady-link');
     paint(null); video('off');
   }
@@ -458,7 +493,7 @@ export function createStoryUI() {
     settings, update, reset,
     // change one setting from outside the settings screen (the TILT and SOUND buttons) and remember it
     setSetting(key, value) { settings[key] = value; saveSettings(); applyLook(); },
-    cine, fade, card, say, clearSubs, choice, skip, limiter, prompt, tip, tape, limitBadge, cargo, mirror, drawMirror, reader,
+    cine, fade, card, say, clearSubs, choice, skip, limiter, prompt, tip, tape, limitBadge, cargo, convoy, mirror, drawMirror, reader,
     title, pause, settingsScreen, select, endCard, failCard, hideMenus, paint, paintProgress, video, bustCard,
     quiet(on) { body.classList.toggle('quiet', !!on); },
     // a calm chapter (Chapter 6): no minimap, no stars, no timer; big soft buttons (index.html, body.calm)

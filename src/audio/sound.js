@@ -363,6 +363,31 @@ export function createSound() {
     // the click of a radio switch, and the sweep of its dial being turned
     radioClick() { burst(2800, 3, 0.05, 0.001, 0.02); burst(400, 1, 0.03, 0.002, 0.04, 'lowpass'); },
     tuneSweep() { for (let i = 0; i < 8; i++) setTimeout(() => burst(900 + i * 260 + Math.random() * 200, 3, 0.02, 0.01, 0.08), i * 70); },
+    // ---- Chapter 9 ----
+    // the bridge gate: an electric motor whines up, the boom swings, a heavy clunk when it lands
+    gateMotor() {
+      if (!live()) return;
+      const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(), t = ctx.currentTime;
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(90, t); o.frequency.linearRampToValueAtTime(150, t + 0.9);
+      f.type = 'bandpass'; f.frequency.value = 600; f.Q.value = 2.5;
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.06, t + 0.15); g.gain.linearRampToValueAtTime(0.05, t + 0.9); g.gain.exponentialRampToValueAtTime(0.0008, t + 1.15);
+      o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + 1.2);
+      setTimeout(() => { burst(420, 1.2, 0.2, 0.002, 0.12); burst(1600, 2, 0.06, 0.001, 0.05); }, 1100);
+    },
+    // the back door of the armored truck: a bolt drawn, then the heavy door swings on its hinges
+    heavyDoor() {
+      burst(1900, 4, 0.09, 0.001, 0.04); setTimeout(() => burst(700, 2, 0.08, 0.002, 0.05), 90);
+      setTimeout(() => this.metalCreak(), 260);
+      setTimeout(() => burst(260, 1, 0.16, 0.004, 0.2, 'lowpass'), 1150);
+    },
+    // a small part slid into its socket: a soft click, a rising little hum
+    coreClick() {
+      burst(3100, 4, 0.05, 0.001, 0.02); setTimeout(() => burst(900, 2, 0.03, 0.002, 0.03), 60);
+      if (live()) setTimeout(() => blip('sine', 180, 420, 0.03, 0.9), 220);
+    },
+    // an old phone: the handset lifted off the cradle (a click and the dial tone), the number dialled (soft pulses)
+    phoneLift() { burst(2200, 3, 0.05, 0.001, 0.02); setTimeout(() => blip('sine', 425, 425, 0.018, 0.9), 200); },
+    phoneDial() { for (let i = 0; i < 7; i++) setTimeout(() => burst(1500, 6, 0.03, 0.001, 0.012), i * 110 + (i > 3 ? 160 : 0)); },
     // everything that runs all the time goes quiet (when the player leaves the vehicle)
     quiet() {
       this.setEngine(false); this.setScreech(0); this.setWind(0); this.setRoad(0); this.setScrape(false); this.setSqueal(false); this.setHorn(false); this.setSiren(false); this.setInside(false); this.setSpray(false);

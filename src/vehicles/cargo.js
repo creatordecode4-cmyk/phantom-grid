@@ -3,6 +3,7 @@
 //
 // Two kinds of load:
 //   'crate'    a wooden crate strapped on the back of a van or truck
+//   'inside'   people inside a truck (Chapter 9: Dante in the prison truck) - nothing to see, only the integrity
 //   'trailer'  a flat trailer behind the truck with a 20-foot shipping container on it
 //              (container 77). The trailer swings behind on its hitch like a real one:
 //              in a turn it cuts the corner, and it can hit walls on its own.
@@ -118,7 +119,9 @@ export function createCargo({ scene, city, mats }) {
     const kind = spec.kind || 'crate';
     const load = { kind, integrity: spec.integrity === undefined ? 1 : spec.integrity, heavy: spec.heavy === undefined ? (kind === 'trailer' ? 0.6 : 0.25) : spec.heavy,
       label: spec.label || '', mesh: null, ax: 0, az: 0, heading: v.heading, cool: 0, scrape: 0, broken: false, fragile: spec.fragile === undefined ? 1 : spec.fragile };
-    if (kind === 'trailer') {
+    if (kind === 'inside') {
+      // (Chapter 9: people inside a truck - nothing to see, only how they are: hard hits hurt them)
+    } else if (kind === 'trailer') {
       load.mesh = trailerMesh(load.label || '77', spec.color || [0.12, 0.2, 0.26]);
       scene.add(load.mesh);
       const h = hitch(v);
@@ -199,8 +202,9 @@ export function createCargo({ scene, city, mats }) {
       if (!v.group.parent) { detach(v); continue; }      // (the vehicle was removed)
       const speed = Math.hypot(v.vx || 0, v.vz || 0);
       load.cool -= dt;
-      // hard hits of the vehicle itself (fx.impact is m/s into the obstacle)
-      const imp = (v.fx && v.fx.impact) || 0;
+      // hard hits of the vehicle itself (fx.impact is m/s into the obstacle; a car the computer drives keeps what it
+      // felt from other cars in hitFelt - vehicle.js)
+      const imp = Math.max((v.fx && v.fx.impact) || 0, v.hitFelt || 0);
       if (imp > 2.4 && load.cool <= 0) {
         load.cool = 0.45;
         load.integrity -= (imp - 1.8) * 0.032 * load.fragile;

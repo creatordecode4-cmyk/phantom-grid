@@ -804,6 +804,10 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       // (how hard each one feels it: the shaking and the sound)
       const feltV = s * Math.min(1, (1.5 * wv) / ws), feltQ = s * Math.min(1, (1.5 * wq) / ws);
       onRammed(q, feltQ, hx, hz);
+      // (a car the story drives keeps what it felt this frame: the convoy of Chapter 9 counts the hits on its cars,
+      //  and the load in a truck feels them - src/story/convoy.js, src/vehicles/cargo.js)
+      if (v !== active) { v.hitFelt = Math.max(v.hitFelt || 0, feltV); v.hitBy = q; }
+      if (q !== active) { q.hitFelt = Math.max(q.hitFelt || 0, feltQ); q.hitBy = v; }
       // the police counts a hit the player made (hitting a police car is worse)
       const other = vFault ? q : qFault ? v : null;
       if (other) events.push({ type: other.ai || other.npc ? 'hitCar' : 'hitParked', strength: s, police: other.type.role === 'police' });
@@ -1195,6 +1199,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
 
     // ---- the physics, in fixed steps of 1/60 s ----
     rammed = 0; otherCrashCool -= dt;
+    for (const q of live) if (q.hitFelt) q.hitFelt = 0;      // (what the cars felt is counted again in this frame)
     acc = Math.min(acc + dt, STEP * 5);
     let fxLast = null;
     // a frame can hold 0, 1 or more physics steps: remember the strongest hit and bump of all of them

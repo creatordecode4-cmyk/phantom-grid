@@ -109,7 +109,7 @@ export function createAnimator(THREE, rig, opts = {}) {
   const H = rig.height, k = H / 1.8;
   const X_AXIS = new THREE.Vector3(1, 0, 0), Y_AXIS = new THREE.Vector3(0, 1, 0), Z_AXIS = new THREE.Vector3(0, 0, 1);
   const SIDES = [{ tag: 'L', s: 1 }, { tag: 'R', s: -1 }];
-  const HANDS_POSES = new Set(['work', 'spanner', 'putDown', 'roof', 'lean', 'give']);
+  const HANDS_POSES = new Set(['work', 'spanner', 'putDown', 'roof', 'lean', 'give', 'callDesk']);
   const FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
 
   // ---- numbers of this body ----
@@ -782,11 +782,23 @@ export function createAnimator(THREE, rig, opts = {}) {
     }
     else if (pose === 'carry') carryPose();
     else if (pose === 'flag') { armAngles(0, 6, 9, 8, 12); armAngles(1, 166, 12, 0, 8); fingers(1, 60); }
+    else if (pose === 'wave') {
+      // one hand up high, waving slowly from side to side (a child on a roof, Chapter 9)
+      const w = Math.sin(t * 5.2);
+      armAngles(0, 6, 9, 8, 12); armAngles(1, 148, 26 + w * 12, 0, 34 + w * 26); fingers(1, 6);
+    }
     else if (pose === 'phone') {
       // one hand holds something small in front of the chest, the head is bent over it
       armAngles(0, 4, 9, 8, 12);
       handAt(1, -0.07 * k, hipsPos.y + 0.34 * k, hipsPos.z + 0.29 * k, -0.6, -0.8, -0.25);
       fingers(1, 55); setDelta('neck', 14 * DEG, 0, 0); setDelta('head', 16 * DEG, -6 * DEG, 0);
+    }
+    else if (pose === 'call') {
+      // a phone held at the right ear (the handset of an old desk phone, Chapter 9): the elbow out and down, the
+      // head bent a little toward it
+      armAngles(0, 4, 9, 8, 12);
+      handAt(1, -0.13 * k, hipsPos.y + 0.6 * k, hipsPos.z + 0.05 * k, -0.85, -0.35, 0.3);
+      fingers(1, 62); setDelta('neck', 6 * DEG, 0, -4 * DEG); setDelta('head', 5 * DEG, 0, -6 * DEG);
     }
     else if (pose === 'aim') {
       // both hands forward on a rifle, the body turned a little, the head down on the sight
@@ -798,8 +810,9 @@ export function createAnimator(THREE, rig, opts = {}) {
   // ---------------------------------------------------------------- hands at work (Chapter 6)
   // The hands go to a place (workAt, set by the story: a part of the car, the bench, the roof); without one they work
   // in front of the belly. work: both hands on something; spanner: the right hand turns a spanner in short pulls, the
-  // left one steadies the part; putDown: one hand lays something flat; roof: a flat hand resting on the car's roof;
-  // lean: both hands on the edge of the bench, leaning on them; give: a hand held out (a key in it).
+  // left one steadies the part; putDown: one hand lays something flat; roof: a flat hand resting on the car's roof (or on
+  // a desk: low down, the back bends to it); lean: both hands on the edge of the bench, leaning on them; give: a hand
+  // held out (a key in it); callDesk: the left hand flat on a desk, the right one holding a phone at the ear.
   const wq = V(), wsh = V();
   // (a hand never reaches further than the arm: a point too far is pulled toward the shoulder)
   function reachable(out, q) {
@@ -817,7 +830,8 @@ export function createAnimator(THREE, rig, opts = {}) {
     const wx = W.x, wy = W.y, wz = W.z;
     // (low work: the back bends to it)
     const bend = clamp((hipsPos.y + 0.15 * k - wy) / (0.55 * k), 0, 1);
-    if (pose !== 'roof' && pose !== 'give') { setDelta('spine1', bend * 18 * DEG, 0, 0); setDelta('chest', bend * 9 * DEG, 0, 0); }
+    // (the hand on a car's roof is higher than the hips: no bend; on a desk it bends like the other poses)
+    if (pose !== 'give') { setDelta('spine1', bend * 18 * DEG, 0, 0); setDelta('chest', bend * 9 * DEG, 0, 0); }
     if (pose === 'work') {
       const a = Math.sin(t * 2.1) * 0.012 * k, b = Math.cos(t * 1.7) * 0.01 * k;
       handTo(0, wx + 0.12 * k + a, wy + b, wz - 0.02 * k, 0.8, -0.6, -0.3);
@@ -846,6 +860,11 @@ export function createAnimator(THREE, rig, opts = {}) {
       handTo(1, wx - 0.24 * k, wy + 0.02 * k, wz, -0.9, -0.5, -0.4);
       fingers(0, 24); fingers(1, 26);
       setDelta('spine1', 13 * DEG, 0, 0); setDelta('neck', 10 * DEG, 0, 0); setDelta('head', 12 * DEG, 0, 0);
+    } else if (pose === 'callDesk') {
+      handTo(0, wx, wy + 0.02 * k, wz, 0.9, -0.5, -0.2);
+      handAt(1, -0.13 * k, hipsPos.y + 0.6 * k - bend * 0.06 * k, hipsPos.z + 0.05 * k + bend * 0.1 * k, -0.85, -0.35, 0.3);
+      fingers(0, 10, 12, 8); fingers(1, 62);
+      setDelta('neck', 8 * DEG, 0, -4 * DEG); setDelta('head', 8 * DEG, 0, -6 * DEG);
     } else if (pose === 'give') {
       const gx = workAt ? wx : -0.1 * k, gy = workAt ? wy : hipsPos.y + 0.27 * k, gz = workAt ? wz : hipsPos.z + 0.4 * k;
       handTo(1, gx, gy, gz, -0.55, -0.8, -0.15);

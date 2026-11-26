@@ -31,8 +31,10 @@ const angleDiff = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
 // the shader colors the chest, the back and the arms (from the rest pose of the model, where the auto rig found the
 // shoulders, elbows and wrists), keeps the folds of the model's own picture as light and shadow, and leaves an open
 // front (the shirt shows). j: { color: [r, g, b] as it looks, cuff: 0..1 (where the sleeve ends between shoulder
-// and wrist: below 0.9 the sleeves are short, "a little small"), hem: meters above the hips (a short jacket) }
-// Theo's jacket: a blue bomber with white stripes at the cuffs and the hem.
+// and wrist: below 0.9 the sleeves are short, "a little small"), hem: meters above the hips (a short jacket),
+// trim: [r, g, b] of the stripes at the cuffs and the hem (white when not given) }
+// Theo's jacket: a blue bomber with white stripes at the cuffs and the hem. (Chapter 9: Dante's old Chrome Wolves
+// jacket is charcoal with silver stripes.)
 export function jacketLook(rig, j) {
   const src = rig.mesh.material, A = rig.def, J = A && A.joints;
   if (!src || !J || !J.upperArm_L || !J.hand_L || !A.info) return src;
@@ -43,7 +45,7 @@ export function jacketLook(rig, j) {
   const sides = A.info.sides || [];
   const u = {
     uJkColor: { value: new THREE.Color().setRGB(...(j.color || [0.11, 0.42, 0.78]), THREE.SRGBColorSpace) },
-    uJkTrim: { value: new THREE.Color().setRGB(0.86, 0.87, 0.88, THREE.SRGBColorSpace) },
+    uJkTrim: { value: new THREE.Color().setRGB(...(j.trim || [0.86, 0.87, 0.88]), THREE.SRGBColorSpace) },
     uJkShL: { value: V(J.upperArm_L) }, uJkElL: { value: V(J.foreArm_L) }, uJkWrL: { value: V(J.hand_L) },
     uJkShR: { value: V(J.upperArm_R) }, uJkElR: { value: V(J.foreArm_R) }, uJkWrR: { value: V(J.hand_R) },
     // (the top: the neck, but always under the chin - a beard is not cloth)

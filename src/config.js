@@ -116,6 +116,7 @@ export const CONFIG = {
       fogMultiplier: 1.7,   // thicker fog hides the short draw distance
       cameraFar: 2600,
       rainStreaks: 700,
+      wetReflections: 0.45, // the lamps' light on the wet road: a little more than half as strong
       skyClouds: true,
       water: 'simple',      // The Sunk: canal water without rain rings and boat waves
       sunkMist: false,      // The Sunk: no drifting mist sheets

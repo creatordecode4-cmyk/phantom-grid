@@ -67,6 +67,17 @@ export function createMusic(sound) {
   let docksAmb = null, groanNext = 2, hornNext = 12, beepNext = 6, gullNext = 1, chainNext = 9, plinkNext = 0;
   // THE RADIO LINK (Chapter 8)
   let link = null, linkLevel = 0, linkVoiceUntil = 0, linkNext = 0, linkLeft = 0, linkWren = false, linkCrackle = 0;
+  // the kinds of voice that come through it: Theo over the broken link, WREN in his voice (Chapter 8), the man on a TV
+  // across the room - low, dull, a faint echo off the window glass - and a small machine speaking with a child's voice
+  // (Chapter 9). pitch (Hz), f1/f2: the ranges of the two mouth filters, lost: how often a syllable drops out, open: how
+  // loud a syllable opens, hiss: the noise of the line, lp: how dull, bus: how loud, delay/wet: the echo
+  const VOICES = {
+    theo: { pitch: 104, f1: [330, 420], f2: [900, 1200], lost: 0.14, open: 1, hiss: 0.05, lp: 3000, bus: 0.55, delay: 0.14, wet: 0.42 },
+    wren: { pitch: 124, f1: [330, 420], f2: [900, 1200], lost: 0, open: 0.8, hiss: 0.025, lp: 3000, bus: 0.55, delay: 0.14, wet: 0.42 },
+    tv: { pitch: 112, f1: [300, 380], f2: [850, 1000], lost: 0, open: 0.75, hiss: 0.006, lp: 1700, bus: 0.3, delay: 0.085, wet: 0.3 },
+    child: { pitch: 232, f1: [470, 480], f2: [1500, 1200], lost: 0, open: 0.62, hiss: 0.01, lp: 3800, bus: 0.42, delay: 0.05, wet: 0.16 },
+  };
+  let linkKind = 'theo';
 
   function ready() {
     if (A) return A.ctx.state === 'running';
@@ -181,7 +192,7 @@ export function createMusic(sound) {
       const crack = loopNoise('highpass', 4200, 0.5, bus, 0);
       // heavy static for the moment the signal breaks
       const stat = loopNoise('bandpass', 1500, 0.3, bus, 0);
-      link = { bus, env: env2, f1, f2, o, hiss: lhiss, crack, stat, lp };
+      link = { bus, env: env2, f1, f2, o, hiss: lhiss, crack, stat, lp, dl, wet };
     }
     // ---- calm pad: a warm chord that breathes slowly ----
     {
@@ -316,11 +327,11 @@ export function createMusic(sound) {
     const quiet = now < silentUntil ? 0 : 1;
     // THE RADIO LINK (Chapter 8)
     if (link) {
-      const on = linkLevel > 0.001;
-      glide(link.bus.gain, on ? 0.55 : 0, on ? 0.25 : 0.04);
-      glide(link.hiss.g.gain, linkLevel * (linkWren ? 0.025 : 0.05), 0.2);
+      const on = linkLevel > 0.001, K = VOICES[linkKind] || VOICES.theo;
+      glide(link.bus.gain, on ? K.bus : 0, on ? 0.25 : 0.04);
+      glide(link.hiss.g.gain, linkLevel * K.hiss, 0.2);
       linkCrackle -= dt;
-      if (on && linkCrackle <= 0) { linkCrackle = 0.15 + Math.random() * 0.9; link.crack.g.gain.setTargetAtTime(0.06 * linkLevel * Math.random(), now, 0.01); link.crack.g.gain.setTargetAtTime(0, now + 0.04, 0.02); }
+      if (on && linkCrackle <= 0) { linkCrackle = 0.15 + Math.random() * 0.9; link.crack.g.gain.setTargetAtTime(0.06 * linkLevel * Math.random() * (K.hiss / 0.05), now, 0.01); link.crack.g.gain.setTargetAtTime(0, now + 0.04, 0.02); }
       if (on && now < linkVoiceUntil) runLinkVoice(now);
     }
     // the tape: quieter and duller when you are not in the car with it
@@ -533,18 +544,18 @@ export function createMusic(sound) {
   // THEO'S VOICE over the link: syllables a little ahead of time; a word drops out now and then (the signal), the pitch
   // falls at the end of a sentence. (wren: WREN with his warmth for a moment - smoother, no drop-outs)
   function runLinkVoice(now) {
-    const L = link;
+    const L = link, K = VOICES[linkKind] || VOICES.theo;
     if (linkNext < now) linkNext = now + 0.05;
     while (linkNext < now + 0.3 && linkNext < linkVoiceUntil) {
       const t = linkNext;
       if (linkLeft <= 0) { linkLeft = 4 + Math.floor(Math.random() * 7); linkNext += 0.28 + Math.random() * 0.4; continue; }
       linkLeft--;
-      const len = 0.09 + Math.random() * 0.13, open = (0.5 + Math.random() * 0.5) * (linkWren ? 0.8 : 1);
-      L.f1.frequency.setValueAtTime(330 + Math.random() * 420, t);
-      L.f2.frequency.setValueAtTime(900 + Math.random() * 1200, t);
-      L.o.frequency.setValueAtTime((linkWren ? 124 : 104) + Math.random() * 14 - (linkLeft < 2 ? 10 : 0), t);
+      const len = 0.09 + Math.random() * 0.13, open = (0.5 + Math.random() * 0.5) * K.open;
+      L.f1.frequency.setValueAtTime(K.f1[0] + Math.random() * K.f1[1], t);
+      L.f2.frequency.setValueAtTime(K.f2[0] + Math.random() * K.f2[1], t);
+      L.o.frequency.setValueAtTime(K.pitch + Math.random() * K.pitch * 0.13 - (linkLeft < 2 ? K.pitch * 0.1 : 0), t);
       // (the broken signal: about one syllable in seven is lost in the hiss)
-      const lost = !linkWren && Math.random() < 0.14;
+      const lost = Math.random() < K.lost;
       L.env.gain.setValueAtTime(0.0001, t);
       L.env.gain.linearRampToValueAtTime(lost ? 0.0001 : open, t + len * 0.25);
       L.env.gain.linearRampToValueAtTime(0.0001, t + len);
@@ -619,12 +630,18 @@ export function createMusic(sound) {
     // ---- THE RADIO LINK (Chapter 8) ----
     // level: 0 (off) .. 1 - the hiss of the open link
     setRadioLink(level) { linkLevel = Math.max(0, Math.min(1, level)); },
-    // a line of Theo's over the link (seconds: how long; wren: WREN in his voice, smoother)
-    radioVoice(seconds, text, wren = false) {
+    // a line of Theo's over the link (seconds: how long). kind: true or 'wren' (WREN in his voice, smoother), 'tv' (a
+    // man on a TV across the room, low and dull, with a faint echo off the glass), 'child' (a small machine speaking
+    // with a child's voice)
+    radioVoice(seconds, text, kind = false) {
       if (!ready() || !link) return;
-      linkWren = !!wren;
+      linkKind = kind === true ? 'wren' : VOICES[kind] ? kind : 'theo';
+      linkWren = linkKind !== 'theo';
+      const K = VOICES[linkKind], now = A.ctx.currentTime;
+      link.lp.frequency.setTargetAtTime(K.lp, now, 0.05);
+      link.dl.delayTime.setTargetAtTime(K.delay, now, 0.05);
+      link.wet.gain.setTargetAtTime(K.wet, now, 0.05);
       if (linkLevel < 0.05) linkLevel = 0.35;
-      const now = A.ctx.currentTime;
       linkNext = now + 0.14; linkLeft = 0;
       linkVoiceUntil = now + Math.max(0.6, seconds * 0.9);
     },

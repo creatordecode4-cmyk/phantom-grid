@@ -4,9 +4,10 @@ An open-world 3D web game set in **Port Meridian**, a fictional American coastal
 A realistic city of the future: sculpted glass towers, hanging gardens, sky bridges,
 electric cars and a maglev line. No cartoon look, no neon-toy look.
 
-The story now runs from the Prologue to **Chapter 8, "Talk to Zero"** (version 11.0: a night highway in the rain, two
-cars side by side, a voice from the radio - see "Chapter 8: TALK TO ZERO" below; Chapter 7 is not written yet, the
-story steps over it). Chapter 6, "Old Debts" (version 10.0) is the quietest chapter: one garage, one night, Theo's car
+The story now runs from the Prologue to **Chapter 9, "Harrow's Line"** (version 12.0: a prison convoy ambushed on
+Ironhill Highway, a trap, a captain who finds her own name on a list, and an old man with a stopped watch - see
+"Chapter 9: HARROW'S LINE" below). Chapter 8, "Talk to Zero" (version 11.0) is a night highway in the rain, two cars
+side by side, a voice from the radio; Chapter 7 is not written yet, the story steps over it. Chapter 6, "Old Debts" (version 10.0) is the quietest chapter: one garage, one night, Theo's car
 rebuilt part by part. Since version 10.1 people speak with the **whole body**:
 the hands, the chest, the shoulders, the head and the weight move with the words (see "Body language" below).
 

@@ -414,6 +414,9 @@
     #subs-text .sig-rest { visibility: hidden; }
     /* WREN, for two sentences, in a voice more like Theo's: her blue warmed toward his amber */
     #subs-who.wrenTheo { color: #e8cf9a; text-shadow: 0 0 8px rgba(143, 216, 255, 0.35); }
+    #subs-who.tv { color: #c9d6e3; opacity: 0.9; }
+    #subs-who.machine { color: #ffd6a8; text-shadow: 0 0 9px rgba(255, 196, 140, 0.45); }
+    #subs-text.machine { color: #fff1e0; font-style: italic; }
     #subs-text.wrenTheo { font-style: italic; color: #fff2de; }
     #wren.warm { border-color: rgba(255, 200, 120, 0.85); }
     #wren.warm::after { background: rgba(255, 205, 140, 0.9); }
@@ -492,6 +495,29 @@
     body.cine #btn-act { right: calc(26px + env(safe-area-inset-right)); bottom: calc(var(--bar) + 13vh + env(safe-area-inset-bottom)); }
     #tip { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); padding: 9px 16px; border-radius: 10px; background: rgba(8, 10, 12, 0.72); border: 1px solid rgba(255, 201, 74, 0.6); font-size: 12px; letter-spacing: 0.16em; text-align: center; pointer-events: none; max-width: 84vw; line-height: 1.6; }
     #tip[hidden] { display: none; }
+    /* the convoy panel (Chapter 9): how Dante is, and the Guard cars - out or not, the one to go for in amber */
+    #convoy { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 66px); transform: translateX(-50%); display: flex; align-items: center; gap: 12px;
+      padding: 6px 12px; border-radius: 10px; background: rgba(8, 10, 12, 0.62); border: 1px solid rgba(255, 255, 255, 0.12); pointer-events: none;
+      font-size: 9px; letter-spacing: 0.18em; color: #e8edf2; }
+    #convoy[hidden] { display: none; }
+    #cv-dante { display: flex; align-items: center; gap: 6px; }
+    #cv-bar { width: 84px; height: 5px; margin: 0; }
+    #cv-bar i { background: #6fe39a; transition: width 0.25s; }
+    #convoy.warn #cv-bar i { background: #ffc94a; }
+    #convoy.bad #cv-bar i { background: #ff5a3c; }
+    #convoy.hit { animation: limhit 0.4s steps(2) 2; }
+    #cv-num { min-width: 20px; opacity: 0.85; }
+    #cv-cars { display: flex; gap: 9px; }
+    .cv-car { display: flex; flex-direction: column; align-items: center; gap: 2px; color: #dfe7ee; font-size: 7px; letter-spacing: 0.12em; }
+    .cv-car b { font-weight: 500; }
+    .cv-car.lead svg { color: #9fb3c8; }
+    .cv-car.target svg { color: #ffc94a; filter: drop-shadow(0 0 4px rgba(255, 201, 74, 0.8)); }
+    .cv-car.out { opacity: 0.4; }
+    .cv-car.out svg { color: #7d848b; }
+    body.convoy #tip { top: calc(env(safe-area-inset-top) + 132px); }
+    /* a big button pressed while driving (the HACK of Chapter 9): high on the right, away from the pedals and the wheel */
+    #btn-act.big { width: 112px; height: 112px; font-size: 13px; letter-spacing: 0.14em; background: rgba(79, 224, 180, 0.94); color: #04140f; box-shadow: 0 0 22px rgba(79, 224, 180, 0.55); }
+    body.driving #btn-act.big { right: calc(22px + env(safe-area-inset-right)); bottom: auto; top: calc(128px + env(safe-area-inset-top)); }
     /* (Chapter 8: while Lena's link panel is at the top, the tip goes under it) */
     body.steady-link #tip { top: calc(env(safe-area-inset-top) + 172px); }
     /* things you can read: Theo's phone, the race ticket */
@@ -717,6 +743,7 @@
     <div id="wren"></div>
     <canvas id="mirror" width="432" height="100" hidden></canvas>
     <div id="tip" hidden></div>
+    <div id="convoy" hidden><div id="cv-dante"><span id="cv-label">DANTE</span><div class="dash-bar" id="cv-bar"><i></i></div><span id="cv-num">100</span></div><div id="cv-cars"></div></div>
     <button class="btn round" id="btn-act" hidden></button>
     <div id="subs" hidden><div class="plate"><div id="subs-who"></div><div id="subs-text"></div></div></div>
     <div id="choices" hidden></div>

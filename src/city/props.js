@@ -207,6 +207,8 @@ function makeWetStreaks(lampGlow, lamps, groundAt) {
   uniforms.uPgNight = shared.uPgNight;
   uniforms.uPgWet = shared.uPgWet;
   uniforms.uPgTime = shared.uPgTime;
+  // (how strong the streaks are: 1 = full; the LOW quality makes them weaker - see setReflections)
+  uniforms.uWetK = { value: 1 };
   const mat = new THREE.ShaderMaterial({
     uniforms, fog: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
@@ -215,7 +217,7 @@ function makeWetStreaks(lampGlow, lamps, groundAt) {
       attribute vec3 aColor;
       attribute float aGround;
       attribute float aStrength;
-      uniform float uPgNight, uPgWet;
+      uniform float uPgNight, uPgWet, uWetK;
       varying vec2 vUv;
       varying vec3 vCol;
       varying float vLen;
@@ -237,7 +239,7 @@ function makeWetStreaks(lampGlow, lamps, groundAt) {
         gl_Position = projectionMatrix * mvPosition;
         if ( aStrength < 0.001 ) gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );     // (no streak: off the screen)
         float near = 1.0 - smoothstep( 40.0, 95.0, d );
-        vCol = aColor * uPgNight * uPgWet * near * 0.95 * aStrength;
+        vCol = aColor * uPgNight * uPgWet * near * 0.95 * aStrength * uWetK;
         vLen = len;
         #include <fog_vertex>
       }`,
@@ -950,7 +952,7 @@ export function buildProps(ctx) {
     // traffic lamps are brighter at night
     bitMat.color.setScalar(1 + 1.6 * shared.uPgNight.value);
     lampHalo.visible = shared.uPgNight.value > 0.01;
-    wetStreaks.visible = shared.uPgNight.value > 0.01 && shared.uPgWet.value > 0.03;
+    wetStreaks.visible = shared.uPgNight.value > 0.01 && shared.uPgWet.value > 0.03 && !wetStreaks.userData.off;
 
     // drones fly slowly back and forth along their street, bobbing a little
     for (let i = 0; i < drones.length; i++) {
@@ -976,5 +978,11 @@ export function buildProps(ctx) {
   // draw the copies again after something was changed by hand (a parked car was taken)
   const recull = () => cull(cullX > 1e8 ? 0 : cullX, cullZ > 1e8 ? 0 : cullZ, cullMul, true);
 
-  return { sets, lampGlow, lampHalo, wetStreaks, cull, recull, update, setViewport, setDetail };
+  // the light of the lamps on the wet road: k = 1 full, less on LOW quality, 0 = none
+  function setReflections(k) {
+    const u = wetStreaks.material && wetStreaks.material.uniforms;
+    if (u && u.uWetK) u.uWetK.value = k;
+    wetStreaks.userData.off = k <= 0.001;
+  }
+  return { sets, lampGlow, lampHalo, wetStreaks, cull, recull, update, setViewport, setDetail, setReflections };
 }

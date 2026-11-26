@@ -17,6 +17,7 @@ import { raceProps } from './propsRace.js';
 import { docksProps } from './propsDocks.js';
 import { garageProps } from './propsGarage.js';
 import { nightProps } from './propsNight.js';
+import { harrowProps } from './propsHarrow.js';
 
 // a picture with text, drawn in code. lines: [{ text, size, color, y (0..1), font, weight }]
 function textTexture(w, h, bg, lines, border = null) {
@@ -202,6 +203,9 @@ export function createProps() {
   Object.assign(MAKERS, garageProps({ std, box, tex, textTexture, glowTexture }).makers);
   // the things of Chapter 8 (the pilot key, the car's radio dial, Solberg's memory card, a TV with the news): propsNight.js
   Object.assign(MAKERS, nightProps({ std, box, tex, textTexture, glowTexture }).makers);
+  // the things of Chapter 9 (the bridge gate, the roadblock, Mila's core, the old machine, a desk phone, the master
+  // card, Harrow's tablet): propsHarrow.js
+  Object.assign(MAKERS, harrowProps({ std, box, tex, textTexture, glowTexture }).makers);
   // a soft round glow (white in the middle, clear at the edge)
   function glowTexture() {
     const cv = document.createElement('canvas'); cv.width = cv.height = 64;
