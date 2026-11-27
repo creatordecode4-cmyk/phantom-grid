@@ -450,7 +450,7 @@ export default {
         { do: 'player', inCar: 'ride' },
         { do: 'remove', ids: ['pkey'] },
         { do: 'spawn', id: 'phw', kind: 'tech_patrol_car', or: 'sedan', color: [1, 1, 1], at: [LN[1], 92], face: 0, arena: 'ironhill', npc: true, noDetail: true, lights: 'bar', flash: true, type: { label: 'PHANTOM' } },
-        { do: 'spawn', id: 'phb', kind: 'tech_patrol_car', or: 'sedan', color: [0.02, 0.02, 0.025], tint: [0.07, 0.075, 0.085], at: [LN[0], 745], face: 0, arena: 'ironhill', npc: true, noDetail: true, lights: 'bar' },
+        { do: 'spawn', id: 'phb', kind: 'tech_patrol_car', or: 'sedan', color: [0.02, 0.02, 0.025], tint: [0.07, 0.075, 0.085], at: [LN[0], 805], face: 0, arena: 'ironhill', npc: true, noDetail: true, lights: 'bar' },
         { do: 'memory', on: true },
         // (a memory: the faces a little lit, as by the glow of the dashboard)
         { do: 'fill', power: 0.6 },
@@ -460,16 +460,21 @@ export default {
             // from the passenger seat: Nate's hands on the wheel, the wipers, the wet road in the lights; the tape plays
             { seconds: 5.6, fade: 'fromWhite', cam: { from: { cabin: 'ride', at: 'pass', p: [0, 0.02, 0] }, look: { cabin: 'ride', at: 'pass', p: [-0.5, -0.08, 2.4] }, fov: 56, near: NEAR },
               do: [{ do: 'vehicleSet', id: 'ride', speed: 150, beam: 1 }, { do: 'autoDrive', gas: 0.6, brake: 0, steer: 0 }, { do: 'music', tape: 6, fromEnd: 30, hud: false, calm: 0.35 },
-                { do: 'drive', id: 'phw', path: [[LN[1], 92], [LN[1], 1200]], speed: 158 }, { do: 'player', mood: 'smile' }] },
+                { do: 'drive', id: 'phw', mode: 'shadow', gap: 14 }, { do: 'player', mood: 'smile' }] },
             // Nate, young, laughing at the road
             { seconds: 3.4, cam: { from: { cabin: 'ride', at: 'pass', p: [0.05, 0.02, 0.1] }, look: { cabin: 'ride', at: 'eye', p: [0, -0.02, 0] }, fov: 40, near: NEAR } },
-            // the mirror: a white car, lights on, closing in
-            { seconds: 4.2, cam: { from: { cabin: 'ride', at: 'pass', p: [0, 0.02, 0] }, look: { cabin: 'ride', at: 'pass', p: [-0.5, 0.12, 3] }, fov: 40, near: NEAR },
-              do: [{ do: 'rearView', car: 'ride', x: 0.62 }, { do: 'actorSet', id: 'theo', mood: 'afraid' }],
-              lines: [{ at: 1.6, who: 'theo', kind: 'warm', text: 'c10.theo.dont_slow', seconds: 2.4 }] },
-            // and in front: the black one, slowing, across the lane
-            { seconds: 2.6, cam: { from: { cabin: 'ride', at: 'pass', p: [0, 0.02, 0] }, look: { cabin: 'ride', at: 'pass', p: [-0.3, 0.0, 8] }, fov: 46, near: NEAR },
-              do: [{ do: 'rearView', off: true }, { do: 'drive', id: 'phb', path: [[LN[0], 745], [LN[1], 795]], speed: 40 }] },
+            // behind them: the white car, its lights flashing, closing in (seen past the back of their car)
+            { seconds: 2.4, cam: { from: { of: 'ride', p: [2.4, 1.05, -5.5] }, to: { of: 'ride', p: [2.3, 1.1, -6.2] }, look: { of: 'phw', p: [0, 0.9, 0] }, fov: 40 },
+              do: [{ do: 'actorSet', id: 'theo', mood: 'afraid' }] },
+            // Theo's eyes again: Nate. "Don't slow down, Nate." (they are behind us)
+            { seconds: 3.0, cam: { from: { cabin: 'ride', at: 'pass', p: [0.05, 0.02, 0.1] }, look: { cabin: 'ride', at: 'eye', p: [0, -0.02, 0] }, fov: 38, near: NEAR },
+              // (meanwhile, far ahead, the black one starts to swing across into their lane)
+              do: [{ do: 'drive', id: 'phb', path: [[LN[0], 805], [LN[1], 850]], speed: 40 }],
+              lines: [{ at: 0.3, who: 'theo', kind: 'warm', text: 'c10.theo.dont_slow', seconds: 2.4 }] },
+            // and in front: the black one, slowing, across the lane - seen from the roadside ahead, black against
+            // their headlights rushing at it
+            { seconds: 2.6, cam: { from: [-498.6, DECK + 1.5, 872], to: [-498.4, DECK + 1.45, 867], look: [-490, DECK + 0.9, 832], fov: 40 },
+              do: [{ do: 'rearView', off: true }] },
             // white
             { seconds: 1.6, cam: { from: { cabin: 'ride', at: 'pass', p: [0, 0.02, 0] }, look: { cabin: 'ride', at: 'pass', p: [-0.3, -0.1, 4] }, fov: 70, near: NEAR },
               do: [{ do: 'sound', name: 'crash' }, { do: 'fade', to: 'white', seconds: 0.25 }, { do: 'music', stop: true }] },
