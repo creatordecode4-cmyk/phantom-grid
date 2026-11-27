@@ -33,6 +33,11 @@
 // BUSTED: a Guard car stops next to the stopped player for a few seconds. The
 // story then sends the player back to the last checkpoint with a small fine.
 //
+// PHANTOM MODE (Chapter 10): after the key is taken KVI lets every Phantom loose. The cars are then KVI's white
+// Phantoms (tech_patrol_car, "PHANTOM" over them), up to 8 at a time, and up to 3 drones; they come quicker. The story
+// can make some of the cars behind the player give up (lose: a friend blocked a street behind him) and clear a
+// roadblock (a friend opened a checkpoint).
+//
 // ON THE WATER (Chapter 3, The Sunk): where the player is in the canals the
 // Guard comes in BOATS (at most 3) that follow the canal map, and drones (at
 // most 2). A loud boat motor is HEARD; the QUIET motor is not. The story can
@@ -86,6 +91,7 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
   let stealth = false, suspicion = 0, spotted = false, hearOn = true;
   const sentries = [];                // drones on a fixed path that look forward (the story puts them up)
   let gatesOn = true, roadblocksOn = true, patrol = null, startStars = 2, freeRoam = true, ram = true, areaT = 0;
+  let phantom = false, calmT = 0;     // Chapter 10: KVI's Phantoms instead of the Guard; a quiet moment after friends helped
   const units = [];                   // the Guard cars: { v, mode, goal, wait, route, t, check, lastX, lastZ, back, sees }
   const drones = [];                  // { o, x, y, z, vx, vz, goal, sees, heading, leaving }
   const target = { x: 0, z: 0, speed: 0, vx: 0, vz: 0, inCar: false };
@@ -216,10 +222,11 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
       const s = gps.snap(near.x + Math.sin(a) * d, near.z + Math.cos(a) * d);
       if (!s || Math.hypot(s.x - target.x, s.z - target.z) < 70) continue;
       if (s.x < B.minX + 6 || s.x > B.maxX - 6 || s.z < B.minZ + 6 || s.z > B.maxZ - 6) continue;
-      const kind = fallback[nextKind++ % fallback.length];
+      const kind = phantom && CAR_TYPES.tech_patrol_car ? 'tech_patrol_car' : fallback[nextKind++ % fallback.length];
       // (computer drivers never load the detailed model: a Guard car costs only a few draw calls)
       const v = vehicles.spawn(kind, s.x, s.z, Math.atan2(target.x - s.x, target.z - s.z), kinds.length ? [1, 1, 1] : [0.02, 0.02, 0.03], { npc: true, keep: true, noDetail: true });
       if (!v) return null;
+      if (phantom) { v.label = 'PHANTOM'; v.type = { ...v.type, topSpeed: Math.max(v.type.topSpeed, 215) }; }
       const u = { v, mode: 'search', goal: { x: near.x, z: near.z }, wait: 0, route: null, t: 0, check: 1.2, lastX: s.x, lastZ: s.z, back: 0, sees: false, gone: 0, pass: {}, skip: [null, null] };
       v.guard = u;
       v.ai = (car, dt, world) => driveUnit(u, car, dt, world);
@@ -656,15 +663,17 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     if (areaT <= 0 && gps.setAvoidArea) { areaT = 1; gps.setAvoidArea(s > 0 && mode === 'search' ? { x: lastKnown.x, z: lastKnown.z, r: searchR } : null); }
     // ---- how many units: cars (on the streets) or boats (in The Sunk), and drones ----
     water = !!waterOf(who.x, who.z, 25) || (mode === 'patrol' && !!patrol && !!waterOf(patrol.x, patrol.z, 0));
-    const wantCars = water ? 0 : s > 0 ? Math.min(caps.cars, (known ? CARS : CARS_FREE)[s]) : (mode === 'patrol' ? Math.min(caps.cars, patrol.cars || 0) : 0);
+    // (Phantoms: as many as the story allows, at any star level; none for a few seconds after friends helped)
+    calmT = Math.max(0, calmT - dt);
+    const wantCars = water ? 0 : s > 0 ? (phantom ? (calmT > 0 ? 0 : caps.cars) : Math.min(caps.cars, (known ? CARS : CARS_FREE)[s])) : (mode === 'patrol' ? Math.min(caps.cars, patrol.cars || 0) : 0);
     const wantBoats = !water ? 0 : s > 0 ? Math.min(caps.boats, BOATS[s]) : (mode === 'patrol' ? Math.min(caps.boats, patrol.boats || 0) : 0);
-    const wantDrones = s > 0 ? Math.min(caps.drones, (known ? DRONES : DRONES_FREE)[s]) : (mode === 'patrol' ? Math.min(caps.drones, patrol.drones || 0) : 0);
+    const wantDrones = s > 0 ? (phantom ? caps.drones : Math.min(caps.drones, (known ? DRONES : DRONES_FREE)[s])) : (mode === 'patrol' ? Math.min(caps.drones, patrol.drones || 0) : 0);
     let activeCars = 0, activeBoats = 0;
     for (const u of units) if (u.mode !== 'leave') { if (u.kind === 'boat') activeBoats++; else activeCars++; }
     spawnT -= dt;
     const around = s > 0 ? (mode === 'chase' ? target : lastKnown) : patrol;
     if (activeCars < wantCars && spawnT <= 0) {
-      spawnT = s >= 3 ? 2.5 : 4;
+      spawnT = phantom ? 1.4 : s >= 3 ? 2.5 : 4;
       const u = spawnCar(around, mode === 'patrol' ? 60 : 95, mode === 'patrol' ? Math.max(90, patrol.r) : 150);
       if (u) { u.mode = s > 0 ? mode : 'patrol'; u.goal = mode === 'patrol' ? searchPoint(patrol.x, patrol.z, patrol.r) : searchPoint(lastKnown.x, lastKnown.z, searchR); }
     } else if (activeBoats < wantBoats && spawnT <= 0) {
@@ -800,8 +809,9 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     configure(o = {}) {
       if ('known' in o) known = !!o.known;
       if ('disguised' in o) { disguised = !!o.disguised; if (disguised) blown = false; }
-      if ('cars' in o) caps.cars = clamp(o.cars, 0, 4);
-      if ('drones' in o) caps.drones = clamp(o.drones, 0, 2);
+      if ('phantom' in o) phantom = !!o.phantom;
+      if ('cars' in o) caps.cars = clamp(o.cars, 0, phantom ? 8 : 4);
+      if ('drones' in o) caps.drones = clamp(o.drones, 0, phantom ? 3 : 2);
       if ('gates' in o) gatesOn = !!o.gates;
       if ('roadblocks' in o) roadblocksOn = !!o.roadblocks;
       if ('patrol' in o) patrol = o.patrol;
@@ -817,6 +827,7 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     // back to free roam: nobody knows anybody, all units go home
     reset() {
       known = false; disguised = false; blown = false; patrol = null; caps.cars = 4; caps.drones = 2; caps.boats = 3; gatesOn = true; roadblocksOn = true; startStars = 2; freeRoam = true; ram = true;
+      phantom = false; calmT = 0;
       stealth = false; suspicion = 0; spotted = false; hearOn = true; clearSentries();
       if (gps.setAvoidArea) gps.setAvoidArea(null);
       clearAll();
@@ -827,6 +838,22 @@ export function createWanted({ scene, vehicles, gps, layout, city, props, sound 
     setScripted(s) { scripted = s; if (s) { for (const u of units) { u.mode = 'leave'; u.v.siren = false; } level = 0; removeRoadblock(); } },
     set onBusted(fn) { onBusted = fn; },
     set onGate(fn) { onGate = fn; },
+    // CHAPTER 10, friends helping: up to n of the cars give up (those behind the player first - a street was blocked
+    // behind him, a container fell between them); for "calm" seconds no new car comes. Returns how many gave up.
+    lose(n, calm = 8) {
+      const hx = Math.sin(target.heading || 0), hz = Math.cos(target.heading || 0);
+      const list = units.filter((u) => u.mode !== 'leave' && u.kind !== 'boat')
+        .map((u) => ({ u, behind: (u.v.x - target.x) * hx + (u.v.z - target.z) * hz < 0, d: Math.hypot(u.v.x - target.x, u.v.z - target.z) }))
+        .sort((a, b) => (a.behind === b.behind ? a.d - b.d : a.behind ? -1 : 1));
+      let k = 0;
+      for (const q of list.slice(0, n)) { q.u.mode = 'leave'; q.u.v.siren = false; q.u.gone = 0; k++; }
+      calmT = Math.max(calmT, calm);
+      return k;
+    },
+    // a friend opened the checkpoint: the roadblock in front goes, and no new one for "seconds"
+    clearRoadblock(seconds = 40) { removeRoadblock(); roadblocksOn = false; setTimeout(() => { if (phantom) roadblocksOn = true; }, seconds * 1000); },
+    get carCount() { return units.filter((u) => u.mode !== 'leave' && u.kind !== 'boat').length; },
+    get droneCount() { return drones.filter((d) => !d.leaving).length; },
     // sirens that are on right now (the traffic pulls over for them)
     sirens(out) { out.length = 0; for (const v of vehicles.live) if (v.siren) out.push(v); return out; },
     takeMessage() { const m = message; message = ''; return m; },

@@ -210,6 +210,8 @@ export function createStory(G) {
     if (a.flat) return GARAGE.at(a.flat[0], GARAGE.flat.floor + a.flat[1], a.flat[2]);
     // (Chapter 8: a point of Lena's safehouse - src/story/safehouseSet.js: x to the right of the window, y up, z to the door)
     if (a.safe) return world.safehouse ? world.safehouse.at(a.safe[0], a.safe[1], a.safe[2]) : [0, 0, 0];
+    // (Chapter 10: a point of a zone of the KVI tower - src/story/towerSet.js: { tower: 'lobby', p: [x, y, z] })
+    if (a.tower) { const q = a.p || [0, 0, 0]; return world.tower ? world.tower.at(a.tower, q[0], q[1], q[2]) : [0, 0, 0]; }
     if (a.parking) return PARKING.ready ? PARKING.at(a.parking[0], PARKING.curb + a.parking[1], a.parking[2]) : [0, 0, 0];
     if (a.roof) return [a.roof[0], roofAt(a.roof[0], a.roof[1]) + (a.up || 0), a.roof[1]];
     // (one of two places, by a condition: { either: { if, then, else } } - e.g. a spot in the dash that is somewhere
@@ -303,6 +305,8 @@ export function createStory(G) {
     // The docks (Chapter 5): how whole the load still is; the crate in the hands
     if (c.cargoUnder !== undefined) { const l = vehicles.cargo.info(c.cargoOf ? car(c.cargoOf) : vehicles.active); if (!l || !(l.integrity < c.cargoUnder)) return false; }
     if (c.carrying !== undefined && (held === '_carry') !== !!c.carrying) return false;
+    // Chapter 10: how far up the tower's spiral ramp the player's car is (0 at the foot .. 1 at the doors)
+    if (c.rampAt !== undefined && !(world.tower && world.tower.rampK(vehicles.active) >= c.rampAt)) return false;
     return true;
   }
   // rules: conditions with something to do. Returns the text key of a rule that fails the mission (or null).
@@ -400,10 +404,14 @@ export function createStory(G) {
         // (Chapter 9: the man on the TV across the room; Mila's voice out of the small machine)
         if (kind === 'tv' && music.radioVoice) music.radioVoice(seconds, text, 'tv');
         if (kind === 'machine' && music.radioVoice) music.radioVoice(seconds, text, 'child');
+        // (Chapter 10: Theo's voice, warm and clear - a memory, the last track of the tape: no broken signal)
+        if (kind === 'warm' && music.radioVoice) music.radioVoice(seconds, text);
+        // (Lena's voice in the ear: her name lights up in the corner of the screen while she talks)
+        if (kind === 'radio' && ui.link) ui.link(who ? t('name.' + who) : '', seconds);
         if (!aloud) return;
         if (a) { a.talking = 1; if (a.anim) a.anim.say(text, seconds); } else if (who === 'nate') { player.talk = 1; player.say(text, seconds); }
         // the people near the one who speaks listen (a small nod now and then); not for a voice in the ear or a radio
-        if (kind !== 'wren' && kind !== 'radio' && kind !== 'signal' && kind !== 'wrenTheo' && kind !== 'tv' && kind !== 'machine' && (a || who === 'nate')) hear(a, who, seconds);
+        if (kind !== 'wren' && kind !== 'radio' && kind !== 'signal' && kind !== 'wrenTheo' && kind !== 'tv' && kind !== 'machine' && kind !== 'warm' && (a || who === 'nate')) hear(a, who, seconds);
       },
       onDone: () => { if (a) a.talking = 0; else if (who === 'nate') player.talk = 0; },
     });
@@ -550,10 +558,18 @@ export function createStory(G) {
   const STEP = {};
 
   // ---------------------------------------------------------------- the world
+  // (Chapter 10: { to: hour, seconds } - the night turns slowly into the morning; rain: 'ease' - the rain stops by
+  //  itself over some seconds and the streets dry)
   STEP.time = (s) => {
     if (s.hour !== undefined) lighting.setHour(s.hour);
     lighting.setRunning(!!s.run);                           // (the story keeps its hour: the night does not end in the middle of a scene)
-    if (s.rain !== undefined) { weather.setInstant(!!s.rain); hud.setRainButton(!!s.rain); }
+    if (s.rain === 'ease') { weather.setRaining(false); hud.setRainButton(false); }
+    else if (s.rain !== undefined) { weather.setInstant(!!s.rain); hud.setRainButton(!!s.rain); }
+    if (s.to !== undefined) {
+      const from = lighting.hour, span = ((s.to - from + 36) % 24) - 12, sec = s.seconds || 10;
+      let k = 0;
+      bg.push({ update(dt) { k += dt; lighting.setHour(from + span * Math.min(1, k / sec)); return k >= sec; } });
+    }
   };
   // (the numbers the story asked for last: a room shown for a moment - Lena's safehouse - gives them back after)
   const worldCaps = { traffic: Infinity, people: Infinity };
@@ -598,7 +614,10 @@ export function createStory(G) {
     if (s.lockExit !== undefined) v.lockExit = s.lockExit;
     if (s.flash !== undefined) v.siren = !!s.flash;            // Guard lights without the siren
     if (s.lights && s.do === 'vehicleSet') v.lights = s.lights;
-    if (s.place) { const p = pt(s.place); v.x = p[0]; v.z = p[2]; v.y = p[1]; if (s.face !== undefined) v.heading = angle(s.face); v.vx = v.vz = 0; v.forward = 0; }
+    // (arena: the car drives on that arena's own ground from now on - Chapter 10: up onto the highway at a cut; null: the
+    //  city's ground again)
+    if (s.arena !== undefined) { v.arena = s.arena ? ARENAS[s.arena] || (s.arena === 'tower' && world.tower ? world.tower.arena : null) : null; v.rampU = undefined; v.lastGround = null; }
+    if (s.place) { const p = pt(s.place); v.x = p[0]; v.z = p[2]; v.y = p[1]; if (s.face !== undefined) v.heading = angle(s.face); v.vx = v.vz = 0; v.forward = 0; v.group.position.set(v.x, v.y, v.z); v.group.rotation.y = v.heading; v.rx = undefined; }
     if (s.stop) { v.vx = v.vz = 0; v.forward = 0; }
     // (speed, km/h: the car rolls on at this speed along its heading - used at a cut, so the jump is not seen)
     if (s.speed !== undefined && s.do === 'vehicleSet') { v.forward = s.speed / KMH; v.vx = Math.sin(v.heading) * v.forward; v.vz = Math.cos(v.heading) * v.forward; }
@@ -920,11 +939,12 @@ export function createStory(G) {
   STEP.wanted = (s) => { police.setScripted({ stars: s.stars || 0 }); };
   // THE REAL GUARD (Chapter 2): { real, known, disguised, stars, search: place, seen, radius, cars, drones, gates,
   //   roadblocks, ram (false: they chase but do not ram), patrol: { at, r, cars, drones } | null, startStars, announce (the drones speak) }
+  //   Chapter 10: phantom (KVI's white Phantoms, up to 8 cars and 3 drones), lose, calm, clearRoadblock
   const xz = (place) => { const q = pt(place); return [q[0], q[2]]; };
   STEP.police = (s) => {
     if (s.real !== undefined) { realPolice = !!s.real; police.setScripted(realPolice ? null : { stars: 0 }); }
     const o = {};
-    for (const k of ['known', 'disguised', 'cars', 'drones', 'gates', 'roadblocks', 'startStars', 'ram', 'boats', 'stealth', 'hear']) if (k in s) o[k] = s[k];
+    for (const k of ['known', 'disguised', 'cars', 'drones', 'gates', 'roadblocks', 'startStars', 'ram', 'boats', 'stealth', 'hear', 'phantom']) if (k in s) o[k] = s[k];
     if ('patrol' in s) o.patrol = s.patrol ? (() => { const q = xz(s.patrol.at); return { x: q[0], z: q[1], r: s.patrol.r || 120, cars: s.patrol.cars || 0, drones: s.patrol.drones || 0, boats: s.patrol.boats || 0 }; })() : null;
     // (a sentry with an actor: a guard on foot - Chapter 5. His figure walks where the sentry goes, a torch in his hand)
     if ('sentries' in s) o.sentries = (s.sentries || []).map((sp) => (sp.actor ? { ...sp, kind: sp.kind || 'guard', body: guardBody(sp) } : sp));
@@ -932,6 +952,9 @@ export function createStory(G) {
     if (Object.keys(o).length) police.configure(o);
     if (s.stars !== undefined) police.setStars(s.stars, { search: s.search ? xz(s.search) : null, seen: !!s.seen, radius: s.radius });
     if ('announce' in s) { announce = !!s.announce; paNext = clock + (s.announceIn || 12); }
+    // Chapter 10: friends help - { lose: n, calm: seconds } (cars behind give up), { clearRoadblock: seconds }
+    if (s.lose) police.lose(s.lose, s.calm);
+    if (s.clearRoadblock) police.clearRoadblock(s.clearRoadblock);
   };
   // the figure of a guard on foot (a sentry of wanted.js moves it): a crowd character in rain gear with a torch
   const GUARD_CLOTH = { pants: [0.05, 0.05, 0.06], coat: [0.06, 0.08, 0.11], patch: [0.55, 0.6, 0.12], scarf: [0.05, 0.05, 0.06], head: [0.04, 0.04, 0.05] };
@@ -1605,6 +1628,70 @@ export function createStory(G) {
     return null;
   };
 
+  // ---------------------------------------------------------------- Chapter 10: the KVI tower
+  // THE TOWER (src/story/towerSet.js): { show: 'ramp' | 'lobby' | 'atrium' | 'shaft' | 'server' | 'terrace' | 'glass' |
+  //   null, rampCar: car (put it at the foot of the spiral ramp, on the ramp's own ground), ride: m/s (the lift moves),
+  //   view: 'walls' | 'city' (what is round the lift), floor: n (the number in the lift), alarm: true | false,
+  //   door: { name: 'gate' | 'atrium', open } }. While a zone is shown the city sleeps (no traffic, nobody about).
+  let towerOn = null;
+  function towerShow(zone) {
+    const T = world.tower;
+    if (!T || zone === towerOn) return;
+    towerOn = zone;
+    T.show(zone);
+    if (zone) {
+      city.traffic.setCap(0); city.people.setCap(0, true);
+      indoors = zone !== 'terrace' && zone !== 'ramp';
+      rig.setRoom(T.room);
+    } else {
+      city.traffic.setCap(worldCaps.traffic); city.people.setCap(worldCaps.people); indoors = false; rig.setRoom(null);
+    }
+  }
+  STEP.tower = (s) => {
+    const T = world.tower;
+    if (!T) return null;
+    if ('show' in s) towerShow(s.show || null);
+    if (s.rampCar) {
+      const v = car(s.rampCar), q = T.rampStart;
+      if (v) {
+        v.arena = T.arena; v.rampU = undefined;
+        v.x = q.x; v.z = q.z; v.y = q.y; v.heading = q.heading; v.vx = 0; v.vz = 0; v.forward = 0;
+        v.lastGround = null; v.rx = undefined;
+        v.group.position.set(v.x, v.y, v.z); v.group.rotation.y = v.heading;
+      }
+    }
+    if (s.ride !== undefined) T.ride(s.ride);
+    if (s.view) T.view(s.view);
+    if (s.floor !== undefined) T.floor(s.floor);
+    if (s.alarm !== undefined) T.alarm(!!s.alarm);
+    if (s.door) T.door(s.door.name, !!s.door.open);
+    return null;
+  };
+
+  // THE CLOCK OF THE LAST NIGHT (Chapter 10): { seconds: how long until midnight, failText } - the time runs in the top
+  // middle of the screen (red in the last minute); at midnight the mission fails (the checkpoint before it is fair).
+  // A new countdown replaces the old one; { stop: true } takes it away.
+  let countdownTask = null;
+  STEP.countdown = (s) => {
+    if (countdownTask) { countdownTask.dead = true; countdownTask = null; ui.clock(null); }
+    if (s.stop) return null;
+    const task = { left: s.seconds || 300, dead: false };
+    countdownTask = task;
+    const two = (n) => String(n).padStart(2, '0');
+    bg.push({
+      update(dt) {
+        if (task.dead) return true;
+        task.left -= dt;
+        const sec = Math.max(0, Math.ceil(task.left)), all = 24 * 3600 - sec;
+        ui.clock(`${two(Math.floor(all / 3600) % 24)}:${two(Math.floor(all / 60) % 60)}:${two(all % 60)}`, sec <= 60);
+        if (task.left <= 0) { task.dead = true; countdownTask = null; fail(s.failText); return true; }
+        return false;
+      },
+      end() { if (countdownTask === task) countdownTask = null; ui.clock(null); },
+    });
+    return null;
+  };
+
   // ---------------------------------------------------------------- Chapter 8: the night run
   // THE NIGHT RUN (src/story/nightRun.js): Zero beside Nate on the highway, the Phantoms, their drones.
   //   { start: true } (on the "ironhill" arena) | { stop: true }
@@ -1821,7 +1908,7 @@ export function createStory(G) {
   // everything of the story out of the world
   function halt() {
     gen++;
-    runner = null; bg.length = 0; rules = []; events.clear();
+    runner = null; bg.length = 0; rules = []; events.clear(); countdownTask = null;
     failed = false; modal = 0; choosing = false; cine = false; quietOn = false;
     director.stop(); vehicles.forceDriver = null;
     ui.reset(); ui.hideMenus();
@@ -1850,6 +1937,7 @@ export function createStory(G) {
     hack.cancel(); repair.cancel();
     if (garageOn) garageShow(false);
     if (safeOn) safeShow(false);
+    if (towerOn) towerShow(null);
     if (calmOn) { calmOn = false; ui.calm(false); }
     if (city.sunk) city.sunk.setLena('intact');
     city.traffic.setCap(Infinity); city.people.setCap(Infinity); worldCaps.traffic = Infinity; worldCaps.people = Infinity;

@@ -661,6 +661,15 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     }
     // other cars: the traffic, and the real vehicles (police, story cars, race cars, cars at the curb)
     const carHit = v.ghost ? 0 : Math.max(hitTraffic(v), hitCars(v));
+    if (v.arena && v.arena.walls) {
+      // an arena with walls of its own shape (Chapter 10: the spiral ramp of the KVI tower): it pushes the car back
+      // itself and says how hard the hit was
+      const w = v.arena.walls(v);
+      if (w) { impact = Math.max(impact, w.impact || 0); lever += w.lever || 0; }
+      if (impact < 0.05 && carHit < 0.05) return null;
+      hitOut.impact = impact; hitOut.lever = lever; hitOut.car = carHit;
+      return hitOut;
+    }
     if (v.arena) {
       // an arena has its own side walls (the crash walls of the raised highway) and its own way out
       const A = v.arena, r0 = v.radius;
@@ -938,7 +947,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       if (city.groundHeight(x, z) > 0.05) return SURF.walk;
       return weather && weather.amount > 0.3 ? SURF.wet : SURF.road;
     },
-    ground: (x, z) => (cur && cur.arena ? cur.arena.ground(x, z) : city.groundHeight(x, z)),
+    // (an arena's ground may have floors above each other - the spiral ramp: the car's own height picks the floor)
+    ground: (x, z) => (cur && cur.arena ? cur.arena.ground(x, z, cur.y) : city.groundHeight(x, z)),
     collide, collideAir,
     get wet() { return weather ? clamp(weather.amount, 0, 1) : 0; },
     get assist() { return settings ? settings.assist : 'normal'; },

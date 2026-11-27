@@ -61,6 +61,7 @@ import { createZero } from './ai/zero.js';
 import { createNightRun } from './story/nightRun.js';
 import { createConvoy } from './story/convoy.js';
 import { createSafehouse } from './story/safehouseSet.js';
+import { createTower } from './story/towerSet.js';
 import { raceLook } from './story/propsRace.js';
 import { createGarageSet } from './story/garageSet.js';
 import { createRearView } from './story/rearView.js';
@@ -226,11 +227,14 @@ async function boot() {
     scene, renderer, camera, lighting, props: storyProps,
     takeFace: (a) => (a && a.rig && a.rig.bones && a.rig.bones.head ? takePortrait(renderer, scene, { root: a.root, head: a.rig.bones.head, heading: a.heading }, setCharacterFill) : null),
   });
+  // CHAPTER 10: the inside of the KVI tower (src/story/towerSet.js): seven zones, one shown at a time, out at sea
+  world.tower = createTower({ scene, renderer, camera, lighting, props: storyProps, colliders: city.colliders, player, weather });
   // a rear-view mirror for a film shot (Chapter 6, "Leave": the garage door behind the van, getting smaller)
   world.rearView = createRearView({ renderer, scene, camera });
   // (what the set's camera must see besides the room: the player, the story's people and things - a fresh list four
   //  times a second, see garageSet.update)
   const garageCast = () => [player.root, ...actors.list.map((a) => a.root), ...[...story.things.values()].map((o) => o.holder)];
+  const towerCast = () => [...garageCast(), ...vehicles.live.filter((v) => v.storyId).map((v) => v.group), ...police.sentries.flatMap((sn) => [sn.o, sn.spot])];
   // SLOW MOTION (Chapter 4: the half second at the last turn): scale = how fast time goes, for a few real seconds
   const slow = { scale: 1, left: 0, set(scale, seconds) { this.scale = scale; this.left = seconds; } };
   // RACES (src/race): the race of the moment, and the people who watch it
@@ -504,6 +508,8 @@ async function boot() {
     if (world.garageSet && world.garageSet.active) world.garageSet.update(dt, garageCast);
     // Chapter 8: Lena's safehouse (its rain on the window, the TV, the lamp)
     if (world.safehouse && world.safehouse.active) world.safehouse.update(dt, garageCast);
+    // Chapter 10: the KVI tower (its doors, lift, alarm, rain); the cars and the Guard's lights must be in it too
+    if (world.tower && world.tower.zone) { world.tower.follow(vehicles.active); world.tower.update(dt, towerCast); }
     streetLife.update(dt, time, gameMode === 'free' && !inside);
     // ---- the doors of the houses (ENTER / EXIT) ----
     interiors.update(dt, {
@@ -677,7 +683,7 @@ async function boot() {
     shared.uPgPlayer.value.copy(player.position);
     // ---- THE SUNK: its water and mist, the steady rain there, the teal dark of the tunnel ----
     // (not while the garage set of Chapter 6 is shown: the canals are not in that picture)
-    const citySleeps = !!(world.garageSet && world.garageSet.active) || !!(world.safehouse && world.safehouse.active);
+    const citySleeps = !!(world.garageSet && world.garageSet.active) || !!(world.safehouse && world.safehouse.active) || !!(world.tower && world.tower.zone);
     if (citySleeps) lighting.zone = null;
     else if (TUN && tunnelNear(camera.position).deep > 0) {
       // inside the Ironhill tunnel: a warm, dark haze (the orange of its lamps in the air)
@@ -1222,7 +1228,7 @@ async function boot() {
     THREE, CONFIG, renderer, scene, camera, city, layout, lighting, weather, player, rig, controls, materials, shared, postfx,
     vehicles, missions, gps, sound, hud, minimap, carLib, effects, police, garage, settings,
     story, ui, music, save, actors, drivers, director, storyProps, streetLife, GARAGE, interiors, races, spectators, slow, zero,
-    nightRun: world.nightRun, safehouse: world.safehouse, convoy: world.convoy,
+    nightRun: world.nightRun, safehouse: world.safehouse, convoy: world.convoy, tower: world.tower,
     applyQuality, step, draw, carAction, updateGuides, showTitle, startFree, startStory, openPause, setFilmLook,
     get filmLook() { return filmLook; },
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)

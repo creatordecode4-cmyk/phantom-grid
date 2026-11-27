@@ -12,6 +12,8 @@
 //     block    (the chase) a silent move: it comes up beside the nearest Phantom and touches it; the Phantom spins
 //              into the crash wall (no fire, no gore)
 //     away     brakes, turns round and drives back south into the dark, its glow fading
+//     rest     (Chapter 10, the last drive) for the first time it slows down: it lets him go ahead, rolls to a stop in
+//              its own lane, and its headlights and its glow fade until it is dark
 //   Its light is a soft, calm glow (never a flashing police light): a halo around the car, a pale pool on the road,
 //   and the rain drops around it lit (weather.js). Its engine is heard in time with Nate's (sound.rivals).
 //
@@ -189,6 +191,15 @@ export function createNightRun({ scene, vehicles, sound, music, effects, weather
         say('blocked');
       }
       Z.glowWant = 1;
+    } else if (m === 'rest') {
+      // it eases off (it never brakes hard), stops in its lane, and its light goes out slowly
+      const R = Z.rest || (Z.rest = { x: v.x });
+      const sp = Math.max(0, speedOf(v) - 3.2 * dt);
+      drive(v, R.x, sp, dt);
+      if (sp < 0.3) { v.vx = 0; v.vz = 0; v.forward = 0; R.still = (R.still || 0) + dt; }
+      Z.glowWant = R.still ? clamp(1 - R.still / 5, 0, 1) : 1;
+      if (R.still > 2.2) { v.beamK = Math.max(0, (v.beamK || 0.5) - dt * 0.12); v.beamOn = v.beamK > 0.02; }
+      if (R.still > 5.5 && v.lights !== 'off') { v.lights = 'off'; say('zeroDark'); }
     } else if (m === 'away') {
       // it brakes, turns round in a slow arc and goes back into the dark, faster and faster; its glow fades
       const A = Z.away || (Z.away = { h: wrapA(v.heading + Math.PI), u: 0 });
@@ -228,7 +239,7 @@ export function createNightRun({ scene, vehicles, sound, music, effects, weather
       v.forward = sp; v.vx = Math.sin(v.heading) * sp; v.vz = Math.cos(v.heading) * sp;
       Z.glow = 1;
     }
-    Z.mode = mode; Z.t = 0; Z.away = null; Z.blockT = 0; Z.target = null;
+    Z.mode = mode; Z.t = 0; Z.away = null; Z.rest = null; Z.blockT = 0; Z.target = null;
     if (o.speed) Z.base = o.speed / KMH;
     else if (mode === 'lead' || mode === 'beside') Z.base = Math.max(speedOf(pc), mode === 'lead' ? 44 : 33);
     if (o.gap) Z.gap = o.gap;
@@ -239,6 +250,7 @@ export function createNightRun({ scene, vehicles, sound, music, effects, weather
     // (its headlights lie on the road beside his: "beamOn" shows the light of a car nobody drives. The light is soft and
     //  calm (beamK), and it is off while Zero rides close behind him (guard, block): no white flood around his car)
     Z.v.beamOn = mode !== 'away' && mode !== 'appear' && mode !== 'guard' && mode !== 'block';
+    if (mode === 'rest') Z.v.beamOn = true;
     Z.v.beamK = 0.5;
   }
 

@@ -161,7 +161,7 @@ export function createStoryUI() {
     el.choices.className = layout || '';
     body.classList.toggle('choosing-radio', layout === 'radio');
     if (prompt) { const p = document.createElement('div'); p.className = 'prompt'; p.textContent = prompt; el.choices.appendChild(p); }
-    options.slice(0, layout === 'radio' ? 4 : 3).forEach((text, i) => { const b = button(text, ''); press(b, () => pick(i)); el.choices.appendChild(b); });
+    options.slice(0, layout === 'radio' ? 4 : layout === 'final' ? 2 : 3).forEach((text, i) => { const b = button(text, ''); press(b, () => pick(i)); el.choices.appendChild(b); });
     if (seconds > 0) { const bar = document.createElement('div'); bar.className = 'bar'; bar.appendChild(document.createElement('i')); el.choices.appendChild(bar); }
     el.choices.hidden = false;
     body.classList.add('choosing');            // (the subtitle moves up, over the buttons: a question stays readable)
@@ -444,6 +444,22 @@ export function createStoryUI() {
     }
     const back = button(t('ui.back'), 'btn main'); press(back, () => cb(null)); n.lastElementChild.appendChild(back);
   }
+  // CHAPTER 10: the clock of the last night (text like '23:57:12', null hides it; late: in red) and the corner sign of
+  // a voice in the ear (a name for some seconds)
+  function clock(text, late = false) {
+    const c = $('clock');
+    if (!text) { c.hidden = true; return; }
+    if (c.textContent !== text) c.textContent = text;
+    c.classList.toggle('late', !!late);
+    c.hidden = false;
+  }
+  let linkLeft = 0;
+  function link(name, seconds = 3) {
+    const n = $('link');
+    if (!name) { n.hidden = true; linkLeft = 0; return; }
+    n.lastElementChild.textContent = name;
+    n.hidden = false; linkLeft = seconds + 0.4;
+  }
   // THE ENDING GALLERY: items [{ key, label, line, seen }], cb(item) (null = back). An ending not seen yet is a
   // closed card with no name.
   function gallery(items, cb) {
@@ -508,12 +524,13 @@ export function createStoryUI() {
       if (skipT >= 0.9) { const cb = skipCb; skip(null); cb(); }
     }
     if (!el.tip.hidden) { tipLeft -= dt; if (tipLeft <= 0) el.tip.hidden = true; }
+    if (linkLeft > 0) { linkLeft -= dt; if (linkLeft <= 0) $('link').hidden = true; }
   }
   // everything of the story off the screen (leaving the story, restarting a checkpoint)
   function reset() {
     cine(false); clearSubs(); skip(null); limiter(null); prompt(null); tip(null); tape(false); mirror(false); limitBadge(0, false); cargo(null); convoy(null);
     card(null); el.choices.hidden = true; el.choices.className = ''; choiceDone = null; el.reader.hidden = true; body.classList.remove('quiet'); body.classList.remove('choosing'); body.classList.remove('choosing-radio'); body.classList.remove('steady-link');
-    paint(null); video('off');
+    paint(null); video('off'); clock(null); link(null);
   }
 
   return {
@@ -521,7 +538,7 @@ export function createStoryUI() {
     // change one setting from outside the settings screen (the TILT and SOUND buttons) and remember it
     setSetting(key, value) { settings[key] = value; saveSettings(); applyLook(); },
     cine, fade, card, say, clearSubs, choice, skip, limiter, prompt, tip, tape, limitBadge, cargo, convoy, mirror, drawMirror, reader,
-    title, pause, settingsScreen, select, endCard, failCard, hideMenus, paint, paintProgress, video, bustCard, gallery,
+    title, pause, settingsScreen, select, endCard, failCard, hideMenus, paint, paintProgress, video, bustCard, gallery, clock, link,
     quiet(on) { body.classList.toggle('quiet', !!on); },
     // a calm chapter (Chapter 6): no minimap, no stars, no timer; big soft buttons (index.html, body.calm)
     calm(on) { body.classList.toggle('calm', !!on); },
