@@ -4,9 +4,12 @@ An open-world 3D web game set in **Port Meridian**, a fictional American coastal
 A realistic city of the future: sculpted glass towers, hanging gardens, sky bridges,
 electric cars and a maglev line. No cartoon look, no neon-toy look.
 
-The story now runs from the Prologue to **Chapter 9, "Harrow's Line"** (version 12.0: a prison convoy ambushed on
-Ironhill Highway, a trap, a captain who finds her own name on a list, and an old man with a stopped watch - see
-"Chapter 9: HARROW'S LINE" below). Version 12.1 makes the people close up better in every chapter: smooth faces and
+The story is now **complete**: from the Prologue to **Chapter 10, "Phantom Grid"** and its **three endings** (version
+13.0: a table with one thing on it from each friend, a clock to midnight, the KVI tower climbed floor by floor, the
+truth about the crash night, every Phantom in the city let loose, and a quiet glass room where Nate must choose: LET
+GO or KEEP HIM - see "Chapter 10: PHANTOM GRID and the three endings" below; a hidden DEBUG FLAGS screen, three quick
+taps on the game's name, tests every branch). Chapter 9, "Harrow's Line" (version 12.0) is a prison convoy ambushed on
+Ironhill Highway, a trap, a captain who finds her own name on a list, and an old man with a stopped watch. Version 12.1 makes the people close up better in every chapter: smooth faces and
 necks, clean edges, a sharper picture in film scenes, subtitles out of the faces, Rask's whole watch (see "Characters
 close up" below). Version 12.2: the convoy of mission 9.2 plays fair - the bridge-gate hack can be reached by
 driving, a block holds, and the escorts no longer crash into the truck (see "Quality pass" in Chapter 9). Chapter 8, "Talk to Zero" (version 11.0) is a night highway in the rain, two cars
@@ -2332,6 +2335,177 @@ phone with a sharp screen shows them (front, side, the head turned, talking), an
   band wide enough to go over it (`band` of the `stopWatch` prop), and in the close-up "the watch on his wrist" Rask
   looks at it (a new pose, `watch`: the forearm across the chest, the back of the wrist turned up), so the whole dial
   with its hands at 4:12 is seen. In Chapter 9 it is on his wrist in the planning scene and in his office.
+
+## Chapter 10: PHANTOM GRID and the three endings (version 13.0)
+
+The last night. Tense in the assault, intimate and quiet in the truth, very still at the end. Short plain lines,
+nobody gives speeches; silence is used on purpose. Everything the chapters before left behind decides who is at the
+table, what they do tonight, and how it ends.
+
+### The missions, and how to start each one
+
+Start any of them from the title screen (**MISSIONS**), from the hidden **DEBUG FLAGS** screen (three quick taps on
+the game's name: pick GOOD RUN, DARK RUN or SECRET RUN first), or with the address option.
+
+| # | Mission | What happens | Address option |
+|---|---|---|---|
+| 10.0 | **THE TABLE** | First a black card: **Normal** or **Easy** (fewer Phantoms, more time). Lena's room an hour before midnight, rain on the window. Only the friends who are still there by the flags: Lena always; Dante, Rask, Harrow, Mace; Juno when Chapter 7 left her free (she comes in without a word and lays her blank palm on the table). One thing each, in close-ups: Mace's garage key on the table, Lena's old KVI badge face down, Dante straightening his jacket (Theo's blue one or the Chrome Wolves one), Rask's stopped watch off his wrist and into his pocket (nothing said), Harrow's daughter's drawing. Then the plan: Lena takes the Grid; **choice: who takes the streets** (Dante and Rask, or one of them comes with Nate into the tower); **choice: who opens the door** (Harrow's master card or Juno over the roof - only when both are there). Lena gives Nate the pilot key. | `?story=chapter10.0` |
+| 10.1 | **COUNTDOWN** | The city on edge, KVI's news on every screen, a helicopter somewhere over the towers. A clock runs to midnight in the top middle (5:00 on Normal, 7:00 on Easy). KVI's drones patrol the streets: seen by one, Phantoms come. At the Calloway Diagonal the diversion starts (Dante's Wolves or a fire at Rask's docks) and most drones turn away. At the gate of KVI's road at the north end of The Crown: Harrow's card opens it, or Juno does it from a roof, or Lena's hack. | `?story=chapter10.1` |
+| 10.2 | **THE TOWER** | Up the **spiral ramp** inside the tower's base (two turns, driven). The **lobby**: night guards with torches - get past them to the staff gate (Harrow's card opens it, else a hack); a friend who came with Nate calls one guard away. The **atrium**: the hack at the lift door. **The lift, and THE TRUTH**: sixty floors, Nate breathing; white - the crash night (2:36 in the rain, as in the prologue) through Theo's eyes from the passenger seat: the wet road in the lights, Nate at the wheel, the tape playing; a white KVI Phantom closing in behind them, its lights flashing; Theo to Nate: "Don't slow down, Nate." (they are behind us); then, seen from the roadside, the black Phantom swinging across their lane, black against their headlights. White. The lift again, the city far below: Theo's voice, "It was never you." Nate says nothing: he nods (Chapter 8 left him a little peace) or closes his eyes. The **server floor**: two guards (one when Juno was first), the HALO core, the key (a hack); the alarm - "Release all Phantoms." The **sky garden**: rain, the city below, a drone sweeping the terrace (it starts away from Nate: who runs behind its light, as the tip says, reaches the service lift; slower on Easy); the service lift down. | `?story=chapter10.2` |
+| 10.3 | **ALL PHANTOMS** | Every Phantom in the city is let loose: up to **8** white Phantoms and **3** drones (4 and 2 on Easy), roadblocks, rain. The Crown, The Grid, Neon Mile, up the Ironhill ramp. Friends help: Harrow clears a checkpoint ahead, Dante's Wolves close a street behind Nate (three Phantoms give up), Rask drops a container (two more). On the highway two Phantoms follow; **Zero** comes out of the dark, drops between Nate and them, and takes one out with a quiet touch. Lena: the switch is ready, but it only runs from Vance's console. A checkpoint about every minute; caught by a Phantom = back to the last one. | `?story=chapter10.3` |
+| 10.4 | **THE GLASS ROOM** | The top floor: rain on a wall of glass, a long table, Vance alone, calm, in his new body. He practises his handshake once, to nobody ("For your safety."). If Chapter 7's gala happened: "You did not recognise me. That was kind." "Your brother was never slow, Nate. I only made him fast forever." **Choice: ask about the crash, ask about Theo's mind, or say nothing.** "Take the Grid in your own hands. Theo will never die." Lena, in the corner of the screen: her switch wipes her code and frees every Phantom - Zero too, the last of Theo. Only Nate can press it. The world stops: only the rain and a heartbeat, a long silence, then two big plain buttons: **LET GO** and **KEEP HIM** (no timer). | `?story=chapter10.4` |
+
+### The endings (`src/story/endings.js`)
+
+| Ending | What happens | How to see it again |
+|---|---|---|
+| **LET GO** (the true ending) | The switch. In the street the Phantoms' lights go out one by one; the rain eases; the sky over The Crown goes pale. A last drive on Ironhill Highway at dawn - the first sunrise of the game. Zero drives beside Nate, then for the first time slows down: "This time you go ahead." Nate crosses the old finish line alone; behind him Zero stops and goes dark. The tape runs to the end of track 6, then track 7 plays for the first time: "If this is playing, you let me go. Now drive slow, brother." He smiles through tears and slows down. Black. | the Ending gallery; DEBUG FLAGS: LET GO |
+| **KEEP HIM** (the dark ending) | His hand on Vance's console; a cold hum. The rain never stops; the Phantoms drive the streets in rows. Last: Nate in front of a mirror in the glass room, practising Vance's handshake, "For your safety."; a faint, polite, empty voice of Theo: "Good evening, Nate. Where would you like to go?" Black. | the Ending gallery; DEBUG FLAGS: KEEP HIM |
+| **NEW BODY** (the secret ending) | After the true ending's slow drive: Mace's garage at dawn, one second of silence, two knocks. Nate opens the door: a young man in Theo's old blue jacket, unsure: "Excuse me... do I know you?" (when Nate took the jacket in Chapter 4, it lies over the armchair instead and the young man wears his own clothes). Black; after the credits: TO BE CONTINUED. | the Ending gallery; DEBUG FLAGS: NEW BODY (always shows the knock) |
+
+After every ending: one line for each friend (chosen by the flags: who was there, who was lost), the numbers of the
+story (the ending, chapters played, choices made, time), the credits (`src/ui/credits.js` - edit the names freely; no
+recorded music is in the game) and three buttons: **PLAY AGAIN** (a new story from the prologue; the endings seen and
+their rewards stay), **ENDING GALLERY**, **TITLE SCREEN**. The rewards: after LET GO the title screen is in the
+morning; after NEW BODY also "TO BE CONTINUED" under the game's name; after KEEP HIM the tagline reads "FOR YOUR
+SAFETY". CONTINUE on the title goes back to the last choice, so the other ending can be played from there.
+
+### Which flags trigger which ending
+
+| Ending | Needs |
+|---|---|
+| LET GO | the button LET GO (`final_choice` = `'let_go'`) |
+| KEEP HIM | the button KEEP HIM (`final_choice` = `'keep_him'`) |
+| NEW BODY | LET GO, and ALL of: `mace_forgiven` = `true` (Chapter 6, "I forgive you"); `told_lena_theo` = `true` (Chapter 3); `chip_holder` = `'nate'` or `'shared'` (Chapter 3; no chapter sets `'shared'` yet); `juno_fate` = `'spared'` and `juno_left_kvi` = `true` (Chapter 7, not written yet); `side_mila_signal`, `side_static_past`, `side_wolf_pack` = `true` (side stories, not in the game yet) |
+
+So today the secret ending can only be reached with the DEBUG FLAGS screen (SECRET RUN) - on purpose, it is the hook
+for what comes next.
+
+### Who is at the table, and what they do
+
+| Friend | There when | What they do tonight (`ally_help`) |
+|---|---|---|
+| Lena | always | `lena_grid`: the hacks, the cameras, the voice in Nate's ear |
+| Dante | `harrow_switched` (Harrow let him go in Chapter 9), or `dante_captured` is not set | `dante_street`: the diversion at the Diagonal, closes a street in the chase - or `dante_tower`: calls a lobby guard away |
+| Rask | `rask_redeemed` | `rask_street`: the fire at the docks, the container in the chase - or `rask_tower`: the lobby guard "owes him" and takes his break |
+| Harrow | `harrow_switched` | `harrow_door`: her card opens the gate and the staff gate, she clears a checkpoint in the chase |
+| Mace | `mace_forgiven` = `true` or `'neutral'` | `mace_car`: waits at the bottom of the tower with the engine running |
+| Juno | `juno_fate` = `'spared'` and `juno_left_kvi` | `juno_roof`: opens the gate from a roof, has already taken one guard of the server floor |
+
+Chapter 10's own flags: `c10_difficulty` (`'normal'` | `'easy'`), `ally_help` (a list), `nate_innocent_seen`,
+`vance_response` (`'crash'` | `'mind'` | `'silent'`), `final_choice`, and `ending` (the ending seen last).
+
+### Every flag in one list, and the DEBUG FLAGS screen
+
+`src/story/flags.js` lists every flag of the prologue and Chapters 1 - 10 with its type, its default and the chapter
+that sets it (Chapter 7 and the side stories are marked "not written yet"), the three presets (GOOD RUN, DARK RUN,
+SECRET RUN) and the rules for the friends and the secret ending. The engine writes a warning in the console the first
+time a chapter reads a flag that was never set (it reads as "no"), or a name that is not in the list (a typing
+mistake). **Three quick taps on the game's name** on the title screen open the hidden DEBUG FLAGS screen: every flag
+with a button that goes round its values (a text or a list asks with a small box), the presets, SAVE FLAGS, CLEAR ALL,
+and START AT: every mission of every chapter and the three endings, started with these flags.
+
+### The KVI tower (`src/story/towerSet.js`)
+
+Built in code, out at sea like Lena's room, in seven **zones** that are built the first time they are needed and shown
+one at a time (the city is not drawn meanwhile): the **spiral ramp** (a concrete lane round a core, light strips, the
+city through the glass; it is an *arena* of `src/vehicles/vehicle.js` with floors above each other and walls of its
+own shape), the **lobby** (dark stone, columns and planters to hide behind, a wall of white light with the company's
+name, the gates), the **atrium** (balconies all round, light rods hanging over a dark pool), the **lift** (a glass cab;
+the shaft's strips slide past while it moves; near the top the city far below), the **server floor** (rows of racks
+with small lights, the HALO core, red light with the alarm), the **sky garden** (rain, trees in planters, a glass
+rail), the **glass room** (rain running down the window, the long table, the console, and a real mirror that is drawn
+only in its one shot).
+
+### Sound (made in code)
+
+The assault: a tense pulse, the engines, sirens, a helicopter's blades over the city (filtered noise beating at
+11 Hz). The truth: a soft pad and the mixtape. The decision: only the rain and a heartbeat. LET GO: birds at dawn, a
+gust of wind, then the tape - track 6 to its end and track 7 for the first time. KEEP HIM: the rain and a cold low
+hum. NEW BODY: one second of silence, then two knocks on the steel door.
+
+### Mobile UX
+
+LET GO / KEEP HIM are two big plain buttons (96 px high) in the middle of the picture, far from the edges (one above
+the other on an upright phone), with nothing else on the screen and no timer. HOLD TO SKIP in the film scenes (not in
+the truth, the decision and the endings); the subtitle size is in SETTINGS. The clock to midnight sits at the top
+middle (red in the last minute); Lena's voice lights a small "LENA" sign at the right edge while she talks. The last
+screens move on by themselves; a tap goes to the next card, two taps end the credits.
+
+### Performance (measured in the test robot's software renderer at MEDIUM)
+
+The test robot played every mission and ending at MEDIUM and counted the draw calls of every picture it drew (the
+calls of that picture alone, `PG.frameCalls`):
+
+| Mission / ending | Draw calls | Where they are highest |
+|---|---|---|
+| 10.0 The table | 28 - 52 | Lena's room, the roll call |
+| 10.1 Countdown | 50 - 230 | the drive to the Calloway Diagonal, with the drones and the first Phantoms |
+| 10.2 The tower | 17 - 157 | the memory on the highway; inside the tower's zones 17 - 40, the ramp up to 72 |
+| 10.3 All Phantoms | 124 - 225 | The Grid, with 8 Phantoms and 3 drones |
+| 10.4 The glass room | 19 - 25 | the glass room (the mirror is drawn only in its one shot) |
+| LET GO | 24 - 198 | the dawn drive (174 - 198) |
+| KEEP HIM | 21 - 125 | the Phantoms in rows on the Diagonal |
+| NEW BODY | 24 - 236 | Mace's garage at dawn, the shutter open on the street |
+
+The dawn drive was 250 a picture, with spikes to 320, before two changes: no sharp shadows of the sun while it is only
+just up (`{ do: 'world', sunShadow: false }`: the city is not drawn a second time into the shadow map, about 70 draw
+calls), and the far shadow of the whole city is not drawn again while the hour glides (it was, every two seconds).
+
+The limit asked for was 250. The tower's zones cost 17 - 40 draw calls each with Nate in them (one zone in the picture
+at a time; a zone is built once and then only hidden, and at most two are kept). At most 8 Phantoms and 3 drones in the chase (4 and 2 on Easy), with the traffic
+down to 4 cars. Frame times were not measured: the robot's software renderer is far slower than a phone's graphics
+chip, so 60 fps has to be checked on a real phone.
+
+### What was built for it
+
+`src/story/chapters/chapter10.js`, `src/story/endings.js`, `src/story/flags.js`, `src/story/towerSet.js`,
+`src/ui/debugFlags.js`, `src/ui/credits.js`; in the engine the steps `tower`, `countdown`, `finale`, the condition
+`rampAt`, `{ flag, has }`, `{ do: 'flag', add }`, the voice kind `warm`, `vehicleSet arena`, `time` moving toward the
+morning and the rain easing; `wanted.js` phantom mode, `lose` and `clearRoadblock`; Zero's `rest`; the save keeps the
+choices made, the time played and (apart from the story) the endings and rewards; the Ending gallery and the last
+screens in `src/ui/storyUI.js`; new sounds in `src/audio/sound.js`; `lighting.glideHour` (a slow change of the hour);
+`{ do: 'world', sunShadow }` (no sun shadows for a while); `PG.frameCalls` (the draw calls of the last picture alone,
+for the tests).
+
+### How it was tested, and what the tests found
+
+A robot played the chapter in the software renderer (no sound, no real touch screen), with the GOOD RUN flags:
+
+- **10.0 and 10.1** (Normal): every choice, the countdown, the drones, the diversion, Harrow's card at the gate.
+- **10.2** from the ramp to the last lift: up the spiral ramp; the lobby walked past the guards' torches (really
+  sneaking, never put past them); the atrium hack; the lift and the memory; the server floor past both guards, the
+  key, the alarm; the sky garden, running behind the drone; the last lift down.
+- **10.3** with every friend helping: The Crown, The Grid (Harrow's checkpoint, the Wolves' street), Neon Mile (Rask's
+  container), the Ironhill ramp, the highway with Zero (out of the dark, guarding, the block). Never caught.
+- **10.4** to LET GO (all the way to the last screens), and the decision again from its checkpoint to KEEP HIM; LET
+  GO, KEEP HIM and NEW BODY from the Ending gallery to the buttons of the last screen; PLAY AGAIN keeps the endings seen.
+
+What the tests found, and what was changed:
+
+- The lobby: two planters stood 0.6 m from the row of gates - nobody could pass between them. They moved 1.6 m back.
+- The server floor: after the alarm the film camera stayed on Nate's face and he could not walk on. It now lets go.
+- The memory: its crash raised four stars that stayed through the whole tower (the Guard "saw" a memory). A memory
+  is now unseen. It was also too dark to read: now the crash night's hour of the prologue, faces lit like a
+  dashboard, the white Phantom shown closing in from outside, the black one crossing seen from the roadside.
+- The glass room: Nate stood with his back to the console and Vance faced away from him (the story turns people by
+  compass bearings: 90 is east, -x). Both turned; new shots for the decision, the switch and the dark ending.
+- The dawn of LET GO: moving the hour a little every frame drew the sky's reflection map again every frame (about 50
+  draws) and, on MEDIUM and HIGH, the far shadow of the whole city too. The hour now glides
+  (`lighting.glideHour`): the reflections follow when the sun has moved enough, as when time runs by itself.
+- The last screens are black, but the world was still drawn under them: it is not any more.
+- The sky garden: the drone caught a walking player every time. It now flies a little slower (slower still on Easy);
+  who follows its light at once gets through.
+
+### Honest limits
+
+- **Chapter 7 and the three side stories are not written.** Juno only comes, the gala line only plays and the secret
+  ending is only reachable with flags set on the DEBUG FLAGS screen (or the address option `flags`).
+- **The crash night** is seen from the passenger seat: in the prologue Nate drives his own car with Theo beside him, so
+  Theo's eyes are those of the passenger (the request said "he drives").
+- Tested by a robot in a software renderer, without sound: the music, the knocks and the voices were never heard, and
+  60 fps has to be checked on a phone.
+
 
 ## Known limits
 
