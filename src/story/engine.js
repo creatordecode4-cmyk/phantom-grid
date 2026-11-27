@@ -590,6 +590,9 @@ export function createStory(G) {
     //  without it they only go once they are out of sight)
     if ('people' in s) { worldCaps.people = s.people === null ? Infinity : s.people; city.people.setCap(worldCaps.people, !!s.now); }
     if ('indoors' in s) indoors = !!s.indoors;
+    // (sunShadow: false = no shadows of the sun for a while - a scene in a very low sun with a costly car in the middle
+    //  of the picture, like the dawn of LET GO; true = as the graphics level says)
+    if ('sunShadow' in s && lighting.setSunShadow) lighting.setSunShadow(s.sunShadow !== false);
   };
   // take the parked cars away from a place (so the player can stop there)
   STEP.clear = (s) => { const p = pt(s.at), r = s.radius || 9; vehicles.clearParked((rec) => Math.hypot(rec.x - p[0], rec.z - p[2]) < r); };
@@ -1980,6 +1983,7 @@ export function createStory(G) {
     if (city.sunk) city.sunk.setLena('intact');
     city.traffic.setCap(Infinity); city.people.setCap(Infinity); worldCaps.traffic = Infinity; worldCaps.people = Infinity;
     allowDrive = allowMove = true; light = null; mirrorOn = false; tapeShown = false; indoors = false; fovWant = 0; limitedFor = 0; memoryOn = 0;
+    if (lighting.setSunShadow) lighting.setSunShadow(true);
     player.mood = 'neutral';
     objective.text = ''; objective.info = ''; marker = null; beam.visible = false;
     hudState.active = false; hudState.marker = null;

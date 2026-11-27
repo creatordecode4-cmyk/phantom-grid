@@ -155,6 +155,9 @@ export default {
         // THE LAST DRIVE: Ironhill Highway at dawn, the first sunrise of the game. Zero beside him.
         { do: 'fade', to: 'black', seconds: 0.6 },
         { do: 'time', hour: 5.95, rain: false },
+        // (the sun is only just up: no sharp shadows of it in this drive - drawing the city again into the shadow maps
+        //  costs 70 draw calls a picture, with Theo's car, a car of many parts, in the middle of it)
+        { do: 'world', sunShadow: false },
         ...RUN_CAR([LN[1], 300], 0, { arena: 'ironhill' }),
         { do: 'player', inCar: 'run' },
         { do: 'allow', enter: ['run'], move: true, drive: true },
@@ -195,6 +198,7 @@ export default {
         },
         { do: 'autoDrive', off: true },
         { do: 'run', stop: true },
+        { do: 'world', sunShadow: true },
         { do: 'remove', ids: ['line', 'fl1', 'fl2'] },
         // NEW BODY, or the end
         {

@@ -299,6 +299,8 @@ export function createLighting(scene, renderer, city, materials) {
   let lampLevel = 0;           // 0..1, lamps warming up
   let winLate = 1;
   let envDirty = true, envTimer = 0, envSunEl = 99, envSunAz = 99, envRain = -1, envLum = 1;
+  let gliding = false;         // the story moves the hour slowly (glideHour): the far shadow waits for the end
+  let sunShadowOff = false;    // the story can do without the sun's shadows for a while (setSunShadow)
   let farEl = 99, farAz = 99, farDirty = true;
   let lampTimer = 0;
   const sunDir = new THREE.Vector3(0, 1, 0);   // toward the sun
@@ -479,7 +481,7 @@ export function createLighting(scene, renderer, city, materials) {
     shared.uPgSunCol.value.copy(sun.color).multiplyScalar(nightMode ? 0 : sun.intensity);
     info.sunDir = sunDir; info.sunColor = sunCol;
     // (inside a house the rooms have their own lights: no sun, no street lamps, no far shadows)
-    const wantShadows = quality.shadows && !nightMode && !interior;
+    const wantShadows = quality.shadows && !nightMode && !interior && !sunShadowOff;
     if (sun.castShadow !== wantShadows) { sun.castShadow = wantShadows; farDirty = true; }
     const wantFar = wantShadows && quality.farShadows;
     if (farSun.visible !== wantFar) { farSun.visible = wantFar; farDirty = true; }
@@ -601,7 +603,7 @@ export function createLighting(scene, renderer, city, materials) {
 
     // ---- far shadow map: only redrawn when the sun has moved a little ----
     envTimer += dt;
-    if (wantFar && (farDirty || Math.abs(el - farEl) > 0.2 || Math.abs(ang.az - farAz) > 0.35)) {
+    if (wantFar && !gliding && (farDirty || Math.abs(el - farEl) > 0.2 || Math.abs(ang.az - farAz) > 0.35)) {
       // never on the same frame as the reflection map (spreads the work)
       if (!(envDirty && envTimer > 0.8)) updateFarShadow();
     }
@@ -682,11 +684,16 @@ export function createLighting(scene, renderer, city, materials) {
     setPostActive(v) { postActive = v; },
     setRain(v) { rain = v; },
     get hour() { return hour; },
-    setHour(h) { hour = ((h % 24) + 24) % 24; envDirty = true; envSunEl = 99; farDirty = true; },
+    setHour(h) { hour = ((h % 24) + 24) % 24; envDirty = true; envSunEl = 99; farDirty = true; gliding = false; },
     // a slow change of the hour (a dawn in a film scene, a little every frame): the sky moves on, but the reflection
     // map and the far shadow are only drawn again when the sun has moved enough, as when time runs by itself
     // (setHour draws them again at once - every frame, that would cost the whole city once more each frame)
-    glideHour(h) { hour = ((h % 24) + 24) % 24; },
+    // (the far shadow of the whole city is not drawn again at all while the hour glides: setHour at the end does it)
+    glideHour(h) { hour = ((h % 24) + 24) % 24; gliding = true; },
+    // no shadows of the sun for a while (on = false): the city is not drawn a second time into the shadow maps. For a
+    // scene in a very low sun with a costly car in the middle of the picture (the dawn of LET GO). on = true: as the
+    // graphics level says.
+    setSunShadow(on = true) { sunShadowOff = !on; },
     jumpTo(name) { this.setHour(TC.presets[name]); },
     setRunning(v) { running = v; },
     get nightMode() { return nightMode; },
