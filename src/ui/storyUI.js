@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import { t } from '../story/strings.js';
+import { CREDITS, rollCredits } from './credits.js';
 
 // the ways of walking the player can pick in the settings (names from WALK_STYLES in proceduralAnim.js)
 const WALK_CHOICES = ['confident', 'normal', 'swagger', 'posh', 'tough', 'soldier', 'brisk', 'elegant', 'femme', 'old'];
@@ -363,7 +364,7 @@ export function createStoryUI() {
   // 'select' | 'settings' | 'gallery' | 'debug' (three quick taps on the game's name: the hidden DEBUG FLAGS screen)
   function title(info, cb) {
     hideMenus();
-    const n = screen(el.title, `<h1>${t('ui.game')}</h1><div class="sub">${t('ui.tagline')}</div><div class="menu-col"></div>`), col = n.querySelector('.menu-col');
+    const n = screen(el.title, `<h1>${t('ui.game')}</h1><div class="sub">${info.tagline || t('ui.tagline')}</div>${info.under ? `<div class="sub under">${info.under}</div>` : ''}<div class="menu-col"></div>`), col = n.querySelector('.menu-col');
     let taps = 0, tapAt = 0;
     press(n.querySelector('h1'), () => {
       const now = performance.now();
@@ -460,6 +461,68 @@ export function createStoryUI() {
     n.lastElementChild.textContent = name;
     n.hidden = false; linkLeft = seconds + 0.4;
   }
+  // THE LAST SCREENS OF AN ENDING (Chapter 10): data { title (the ending's name), cards: [{ who, text }] (one line for
+  // each friend), stats: [[label, value]], continued (true: "TO BE CONTINUED" after the credits) }, cb(action):
+  // 'again' (play again - the endings and rewards stay) | 'gallery' | 'title'.
+  // Black, very still: one card at a time (a tap goes on), the numbers of the story, the credits rolling up, the
+  // buttons.
+  function finale(data, cb) {
+    hideMenus();
+    const n = el.finale;
+    n.innerHTML = ''; n.hidden = false; n.className = 'screen';
+    const stage = document.createElement('div'); stage.className = 'f-stage'; n.appendChild(stage);
+    let timer = null, next = null;
+    const later = (fn, seconds) => { clearTimeout(timer); next = fn; timer = setTimeout(() => { next = null; fn(); }, seconds * 1000); };
+    // a tap goes to the next card at once
+    n.onpointerdown = (e) => { if (e.target.closest('.btn')) return; if (next) { const f = next; next = null; clearTimeout(timer); f(); } };
+    const card = (who, text) => {
+      stage.innerHTML = '';
+      const c = document.createElement('div'); c.className = 'f-card';
+      if (who) { const w = document.createElement('div'); w.className = 'f-who'; w.textContent = who; c.appendChild(w); }
+      const l = document.createElement('div'); l.className = 'f-line'; l.textContent = text; c.appendChild(l);
+      stage.appendChild(c);
+    };
+    const cards = data.cards || [];
+    let i = 0;
+    const nextCard = () => {
+      if (i >= cards.length) { stats(); return; }
+      const c = cards[i++];
+      card(c.who, c.text);
+      later(nextCard, Math.max(3.6, 1.6 + c.text.length * 0.055));
+    };
+    function stats() {
+      stage.innerHTML = '';
+      const box = document.createElement('div'); box.className = 'f-stats';
+      const h = document.createElement('div'); h.className = 'f-head'; h.textContent = data.title || ''; box.appendChild(h);
+      for (const [label, value] of data.stats || []) {
+        const r = document.createElement('div'); r.className = 'f-row';
+        const a = document.createElement('span'); a.textContent = label; const b = document.createElement('span'); b.textContent = value;
+        r.appendChild(a); r.appendChild(b); box.appendChild(r);
+      }
+      stage.appendChild(box);
+      later(credits, 7);
+    }
+    function credits() {
+      stage.innerHTML = '';
+      const roll = document.createElement('div'); roll.className = 'f-credits'; stage.appendChild(roll);
+      next = null;
+      rollCredits(roll, data.credits || CREDITS, 34, () => (data.continued ? continued() : buttons()));
+    }
+    function continued() {
+      card('', t('end.continued'));
+      later(buttons, 5);
+    }
+    function buttons() {
+      stage.innerHTML = '';
+      const col = document.createElement('div'); col.className = 'menu-col';
+      for (const [label, action, cls] of [[t('end.again'), 'again', 'btn main'], [t('ui.gallery'), 'gallery', 'btn'], [t('ui.title'), 'title', 'btn']]) {
+        const b = button(label, cls); press(b, () => { clearTimeout(timer); n.onpointerdown = null; cb(action); }); col.appendChild(b);
+      }
+      const note = document.createElement('div'); note.className = 'note'; note.textContent = t('end.again_note'); col.appendChild(note);
+      stage.appendChild(col);
+    }
+    nextCard();
+  }
   // THE ENDING GALLERY: items [{ key, label, line, seen }], cb(item) (null = back). An ending not seen yet is a
   // closed card with no name.
   function gallery(items, cb) {
@@ -538,7 +601,7 @@ export function createStoryUI() {
     // change one setting from outside the settings screen (the TILT and SOUND buttons) and remember it
     setSetting(key, value) { settings[key] = value; saveSettings(); applyLook(); },
     cine, fade, card, say, clearSubs, choice, skip, limiter, prompt, tip, tape, limitBadge, cargo, convoy, mirror, drawMirror, reader,
-    title, pause, settingsScreen, select, endCard, failCard, hideMenus, paint, paintProgress, video, bustCard, gallery, clock, link,
+    title, pause, settingsScreen, select, endCard, failCard, hideMenus, paint, paintProgress, video, bustCard, gallery, clock, link, finale,
     quiet(on) { body.classList.toggle('quiet', !!on); },
     // a calm chapter (Chapter 6): no minimap, no stars, no timer; big soft buttons (index.html, body.calm)
     calm(on) { body.classList.toggle('calm', !!on); },

@@ -35,6 +35,7 @@ import { createBuilder, materials as kitMaterials, roomShade } from '../interior
 import { frame, C, bigPlant, plant } from '../interiors/furniture.js';
 import { officeChair } from '../interiors/furniture2.js';
 import { RAIN_VS, RAIN_FS } from './garageSet.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -627,7 +628,10 @@ export function createTower({ scene, renderer, camera, lighting, props = null, c
       cab.lathe('glass', 0.3, 0.8, 0, [[0, 0], [0.035, 0], [0.04, 0.09], [0.038, 0.095], [0, 0.01]], [0.8, 0.85, 0.9], 14);
       cab.lathe('glass', -0.3, 0.8, 0.05, [[0, 0], [0.045, 0], [0.05, 0.2], [0.02, 0.28], [0.02, 0.34], [0, 0.34]], [0.5, 0.35, 0.2], 14);
       cab.solid(-1.25, -0.3, 1.25, 0.3, 0.85);
-      plant(F(-10.8, -D + 0.6), 0, 0, 0, 2.6, { n: 14, tall: 0.5, pot: C('#30343a') });
+      plant(F(-12.0, -D + 0.6), 0, 0, 0, 2.6, { n: 14, tall: 0.5, pot: C('#30343a') });
+      // a tall mirror on the back wall, left of the lift (the last shot of "Keep him"): a thin dark frame
+      const mf = F(-9.6, -D + 0.04);
+      for (const [x, y, w, h] of [[-0.58, 0.2, 0.06, 2.22], [0.58, 0.2, 0.06, 2.22], [0, 0.17, 1.22, 0.06], [0, 2.39, 1.22, 0.06]]) mf.box('metal', x, y, 0.02, w, h, 0.05, C('#1a1c1f'), { r: 0.01 });
       const group = new THREE.Group();
       const built = b.finish(group, mats());
       // the windows: dark glass on the sides, and the big north window with rain running down it
@@ -638,12 +642,15 @@ export function createTower({ scene, renderer, camera, lighting, props = null, c
       rain.position.set(X(0), Y(H / 2), Z(D - 0.02)); rain.rotation.y = Math.PI; rain.renderOrder = 6; group.add(rain);
       const win = new THREE.Mesh(new THREE.PlaneGeometry(2 * W, H), glassM); win.position.set(X(0), Y(H / 2), Z(D)); win.rotation.y = Math.PI; win.renderOrder = 5; group.add(win);
       const ring = cityRing(160, 260, 0, 3); ring.position.set(c[0], c[1] - 6, c[2]); group.add(ring);
+      // the mirror's glass: a real reflection, drawn only while it is used (it costs a second picture of the room)
+      const mirror = new Reflector(new THREE.PlaneGeometry(1.1, 2.18), { textureWidth: 384, textureHeight: 768, color: 0x8a9096 });
+      mirror.position.set(X(-9.6), Y(1.31), Z(-D + 0.03)); mirror.camera.layers.set(INTERIOR_LAYER); mirror.visible = false; group.add(mirror);
       const over = new THREE.PointLight(0xffe7c4, 7, 9, 2); over.position.set(X(0), Y(2.7), Z(1)); group.add(over);
       const cold = new THREE.PointLight(0x7fa2d6, 6, 16, 2); cold.position.set(X(0), Y(3.2), Z(D - 1.5)); group.add(cold);
       const conL = new THREE.PointLight(0x6fb4ff, 1.6, 3, 2); conL.position.set(X(-6.1), Y(1.4), Z(1)); group.add(conL);
       root.add(group);
       return {
-        group, meshes: built.meshes, rainU,
+        group, meshes: built.meshes, rainU, mirror,
         solids: b.colliders.map((q) => [q.x0, q.z0, q.x1, q.z1, q.h]),
         walk: { minX: X(-W + 0.45), maxX: X(W - 0.45), minZ: Z(-D + 0.45), maxZ: Z(D - 0.45) },
         room: { minX: X(-W), maxX: X(W), minZ: Z(-D), maxZ: Z(D), floor: Y(0), top: Y(H - 0.25), dist: 2.8 },
@@ -804,6 +811,7 @@ export function createTower({ scene, renderer, camera, lighting, props = null, c
     view(kind) { if (zones.shaft) zones.shaft.view(kind); },
     floor(n) { if (zones.shaft) zones.shaft.floor(n); },
     alarm(on) { if (zones.server) zones.server.alarm(on); },
+    mirror(on) { if (zones.glass) zones.glass.mirror.visible = !!on; },
     // (for tests: build a zone without showing it)
     build(name) { if (!zones[name] && BUILD[name]) { zones[name] = BUILD[name](); zones[name].group.visible = false; zones[name].group.traverse((m) => m.layers.set(INTERIOR_LAYER)); } return !!zones[name]; },
     ZONES,

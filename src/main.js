@@ -255,7 +255,8 @@ async function boot() {
   world.jacket = (on) => { jacket.forced = on; };
   story = createStory({
     scene, camera, city, layout, vehicles, player, actors, drivers, director, props: storyProps, ui, music, sound, save, police, lighting, weather, hud, rig, carLib, world,
-    onExit: () => showTitle(),
+    // (after an ending: 'again' = play the story again from the start - the endings and rewards stay; 'gallery')
+    onExit: (a) => { if (a === 'again') startStory(() => story.newGame()); else showTitle(a === 'gallery' ? { gallery: true } : {}); },
     // free roam: caught by the Guard - a fine, and the game goes on
     onFreeBusted: () => { const left = save.pay(FINE); hud.toast(`BUSTED  ·  FINE ${FINE} CR  ·  ${left} CR LEFT`, 3200); },
   });
@@ -997,19 +998,25 @@ async function boot() {
     // (cars the player took or spawned in free roam do not stay around for the story)
     if (!on) for (const v of [...vehicles.live]) if (!v.keep && !v.npc && !v.storyId) vehicles.removeVehicle(v);
   }
-  async function showTitle() {
+  async function showTitle(opts = {}) {
     interiors.reset();
     story.stop(); missions.stop();
     gameMode = 'title'; paused = false;
     document.body.classList.add('title');
     setTestWorld(false);
     hud.showBigMap(false); waypoint = null; route = null;
-    // a rainy night in front of Mace's garage
-    lighting.setHour(23); lighting.setRunning(false); weather.setInstant(true); hud.setRainButton(true);
+    // a rainy night in front of Mace's garage - or, after the true ending, the morning (a reward that stays)
+    const dawn = save.hasCosmetic('dawn_title');
+    lighting.setHour(dawn ? 6.35 : 23); lighting.setRunning(false); weather.setInstant(!dawn); hud.setRainButton(!dawn);
     player.place(TITLE.x - 9, TITLE.z, 0); player.setHidden(true);
     const info = await story.saveInfo();
     info.gallery = save.unlocks.endings.length;
-    if (gameMode === 'title') ui.title(info, onTitle);
+    // (the other rewards: the line "TO BE CONTINUED" under the name; KVI's words as the tagline after "Keep him")
+    if (save.hasCosmetic('continued_note')) info.under = t('end.title_continued');
+    if (save.hasCosmetic('kvi_title') && !dawn) info.tagline = t('end.title_kvi');
+    if (gameMode !== 'title') return;
+    ui.title(info, onTitle);
+    if (opts.gallery) openGallery();
   }
   // the Ending gallery: the endings that were seen can be played again (from their start; nothing is saved)
   async function openGallery() {

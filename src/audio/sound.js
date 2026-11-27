@@ -37,6 +37,7 @@ export function createSound() {
   let ctx = null, master = null, out = null, inside = null, noiseBuf = null;
   let engine = null, screech = null, horn = null, wind = null, road = null, siren = null, scrape = null, squeal = null, spray = null;
   let crowdN = null, crowdHi = null;
+  let heli = null;                    // Chapter 10: the helicopter over the city (made the first time it is needed)
   const rivalV = [];
   let muted = false, tone = TONES.smooth, isInside = false;
   let volume = 1;           // 0..1, the volume slider in the settings
@@ -388,6 +389,45 @@ export function createSound() {
     // an old phone: the handset lifted off the cradle (a click and the dial tone), the number dialled (soft pulses)
     phoneLift() { burst(2200, 3, 0.05, 0.001, 0.02); setTimeout(() => blip('sine', 425, 425, 0.018, 0.9), 200); },
     phoneDial() { for (let i = 0; i < 7; i++) setTimeout(() => burst(1500, 6, 0.03, 0.001, 0.012), i * 110 + (i > 3 ? 160 : 0)); },
+    // ---- CHAPTER 10 ----
+    // two knocks on the steel door of the garage (the secret ending): a dull thud with a little ring of metal in it
+    knock(times = 2) {
+      for (let i = 0; i < times; i++) setTimeout(() => { burst(150, 0.9, 0.34, 0.002, 0.22, 'lowpass'); burst(820, 3, 0.07, 0.001, 0.09); burst(2400, 5, 0.02, 0.001, 0.05); }, i * 430);
+    },
+    // birds at dawn (the true ending): small groups of quick chirps, here and there, for some seconds
+    birds(seconds = 7) {
+      if (!live()) return;
+      const n = Math.round(seconds * 1.6);
+      for (let i = 0; i < n; i++) {
+        const at = Math.random() * seconds * 1000, base = 2300 + Math.random() * 1600, k = 1 + Math.floor(Math.random() * 4);
+        for (let j = 0; j < k; j++) setTimeout(() => blip('sine', base * (1 + Math.random() * 0.08), base * (1.18 + Math.random() * 0.25), 0.012 + Math.random() * 0.01, 0.06 + Math.random() * 0.05), at + j * 95);
+      }
+    },
+    // a gentle wind rising and falling once (the rain has stopped)
+    windGust(seconds = 6) { burst(420, 0.35, 0.05, seconds * 0.45, seconds * 0.55, 'lowpass'); burst(1300, 0.5, 0.012, seconds * 0.5, seconds * 0.5); },
+    // a cold, low hum that fills a room (the dark ending): two low tones a little apart, swelling and dying away
+    hum(seconds = 9) {
+      if (!live()) return;
+      const t = ctx.currentTime, g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.05, t + seconds * 0.3); g.gain.linearRampToValueAtTime(0.04, t + seconds * 0.75); g.gain.exponentialRampToValueAtTime(0.0008, t + seconds);
+      for (const [f, k] of [[55, 1], [110.7, 0.5], [221.1, 0.12]]) { const o = ctx.createOscillator(), og = ctx.createGain(); o.type = 'sine'; o.frequency.value = f; og.gain.value = k; o.connect(og); og.connect(g); o.start(t); o.stop(t + seconds + 0.1); }
+      g.connect(master);
+    },
+    // a helicopter far over the city (the assault): the beat of its blades through filtered noise. level 0 = gone
+    setHeli(level) {
+      if (!ctx) return;
+      if (!heli) {
+        const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+        const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 340; f.Q.value = 0.7;
+        const chop = ctx.createGain(); chop.gain.value = 0.5;
+        const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 11.5;
+        const depth = ctx.createGain(); depth.gain.value = 0.45; lfo.connect(depth); depth.connect(chop.gain);
+        const g = ctx.createGain(); g.gain.value = 0;
+        src.connect(f); f.connect(chop); chop.connect(g); g.connect(master); src.start(); lfo.start();
+        heli = { g };
+      }
+      glide(heli.g.gain, Math.max(0, Math.min(1, level)) * 0.16, 0.8);
+    },
     // everything that runs all the time goes quiet (when the player leaves the vehicle)
     quiet() {
       this.setEngine(false); this.setScreech(0); this.setWind(0); this.setRoad(0); this.setScrape(false); this.setSqueal(false); this.setHorn(false); this.setSiren(false); this.setInside(false); this.setSpray(false);

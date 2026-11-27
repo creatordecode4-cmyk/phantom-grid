@@ -560,7 +560,10 @@ export function createStory(G) {
   // ---------------------------------------------------------------- the world
   // (Chapter 10: { to: hour, seconds } - the night turns slowly into the morning; rain: 'ease' - the rain stops by
   //  itself over some seconds and the streets dry)
+  let timeTask = null;
   STEP.time = (s) => {
+    // (a new hour, or a new way to it, ends the slow change that was running)
+    if ((s.hour !== undefined || s.to !== undefined) && timeTask) { timeTask.dead = true; timeTask = null; }
     if (s.hour !== undefined) lighting.setHour(s.hour);
     lighting.setRunning(!!s.run);                           // (the story keeps its hour: the night does not end in the middle of a scene)
     if (s.rain === 'ease') { weather.setRaining(false); hud.setRainButton(false); }
@@ -568,7 +571,8 @@ export function createStory(G) {
     if (s.to !== undefined) {
       const from = lighting.hour, span = ((s.to - from + 36) % 24) - 12, sec = s.seconds || 10;
       let k = 0;
-      bg.push({ update(dt) { k += dt; lighting.setHour(from + span * Math.min(1, k / sec)); return k >= sec; } });
+      const task = { dead: false, update(dt) { if (this.dead) return true; k += dt; lighting.setHour(from + span * Math.min(1, k / sec)); return k >= sec; } };
+      timeTask = task; bg.push(task);
     }
   };
   // (the numbers the story asked for last: a room shown for a moment - Lena's safehouse - gives them back after)
@@ -902,6 +906,9 @@ export function createStory(G) {
     sirenBurst: (s) => { sound.setSiren(true); setTimeout(() => sound.setSiren(false), (s.seconds || 1.4) * 1000); },
     // Chapter 9: the truck's heavy back door, the core going into its socket, an old phone lifted and dialled
     heavyDoor: () => sound.heavyDoor(), coreClick: () => sound.coreClick(), phoneLift: () => sound.phoneLift(), phoneDial: () => sound.phoneDial(),
+    // Chapter 10: two knocks, dawn birds, a gust of wind, the cold hum of the dark ending, a helicopter (level: 0 = gone)
+    knock: (s) => sound.knock(s.times || 2), birds: (s) => sound.birds(s.seconds || 7), wind: (s) => sound.windGust(s.seconds || 6),
+    hum: (s) => sound.hum(s.seconds || 9), heli: (s) => sound.setHeli(s.level === undefined ? 0.6 : s.level),
   };
   STEP.sound = (s) => {
     if (SOUNDS[s.name]) SOUNDS[s.name](s);
@@ -1664,6 +1671,7 @@ export function createStory(G) {
     if (s.view) T.view(s.view);
     if (s.floor !== undefined) T.floor(s.floor);
     if (s.alarm !== undefined) T.alarm(!!s.alarm);
+    if (s.mirror !== undefined) T.mirror(!!s.mirror);
     if (s.door) T.door(s.door.name, !!s.door.open);
     return null;
   };
@@ -1818,6 +1826,26 @@ export function createStory(G) {
     (s.id ? Promise.resolve({ id: s.id }) : nextChapter(chapter.number)).then((next) => (next ? load(next.id, s.mission || 0, 0, replay) : false)).then((ok) => { if (!ok) G.onExit('title'); });
     return { update: () => false };
   };
+  // THE END OF THE STORY (src/story/endings.js): { ending: 'let_go' | 'keep_him' | 'new_body', continued } - the ending
+  // is unlocked (the Ending gallery) with its rewards; then one card for each friend (the epilogue of endings.js,
+  // chosen by the flags), the numbers of the story, the credits rolling, and the buttons (PLAY AGAIN keeps the
+  // endings and the rewards; an ending played again from the gallery saves nothing else).
+  STEP.finale = (s) => {
+    const key = s.ending, ch = chapter;
+    if (!replay) { flags.ending = key; save.setFlags(flags); }
+    save.unlockEnding(key);
+    for (const c of (ch.rewards && ch.rewards[key]) || []) save.unlockCosmetic(c);
+    const list = (ch.epilogue && (ch.epilogue[key] || ch.epilogue[key === 'new_body' ? 'let_go' : key])) || [];
+    const cards = list.filter((c) => !c.if || test(c.if)).map((c) => ({ who: c.who ? t('name.' + c.who) : '', text: t(c.text) }));
+    const d = save.data, st = d.stats || { choices: 0, seconds: 0 };
+    const mins = Math.max(1, Math.round(st.seconds / 60)), time = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
+    const g = (ch.gallery || []).find((x) => x.key === key), name = g ? t(g.title) : key;
+    leaveCine(); ui.clearSubs(); quietTalk();
+    ui.finale({ title: name, cards, continued: !!s.continued,
+      stats: [[t('end.stat.ending'), name], [t('end.stat.chapters'), String(new Set(d.done || []).size)], [t('end.stat.choices'), String(st.choices || 0)], [t('end.stat.time'), time]] },
+    (a) => { ui.hideMenus(); G.onExit(a); });
+    return { update: () => false };
+  };
   // the end card of a chapter: { over, title, lines: [keys], locked: key }
   STEP.end = (s) => {
     const my = gen, done = chapter;
@@ -1928,7 +1956,7 @@ export function createStory(G) {
     if (jacketOn && world.jacket) world.jacket(false);
     jacketOn = false;
     drivers.reset(); enterable.clear();
-    music.reset(); music.setTapeVolume(1);
+    music.reset(); music.setTapeVolume(1); if (sound.setHeli) sound.setHeli(0);
     police.reset(); police.setScripted({ stars: 0 });
     realPolice = false; announce = false; newsText = null; fillPower = null; starsWas = 0; seenWas = false;
     if (world.tarp) { world.tarp.userData.setLift(0); world.tarp.visible = true; }

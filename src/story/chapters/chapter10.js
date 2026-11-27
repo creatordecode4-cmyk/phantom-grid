@@ -56,13 +56,17 @@ const SAFE = {
   // the things on the table (its top is 0.765 m up)
   key: s(1.74, 0.772, -1.62), badge: s(1.44, 0.772, -1.56), drawing: s(2.02, 0.768, -1.98), palm: s(0.86, 0.77, -1.84),
 };
+const THEO_JACKET = { color: [0.11, 0.42, 0.78], cuff: 0.83, hem: 0.07 };
+const WOLVES_JACKET = { color: [0.16, 0.16, 0.18], cuff: 0.86, hem: 0.06, trim: [0.6, 0.62, 0.66] };
 const LENA = { do: 'actor', id: 'lena', model: 'Lena_Marchetti', name: 'name.lena', at: SAFE.lena, face: 180, pose: 'sit', floorBelow: 0.5, fixed: true, mood: 'stern', look: SAFE.laptop };
 const ROOM = [
   LENA,
   { do: 'actor', id: 'mace', model: 'Mace_Doyle', name: 'name.mace', at: SAFE.mace, face: 321, pose: 'crossed', fixed: true, look: null, mood: 'tired', if: HAS.mace },
   { do: 'actor', id: 'rask', model: 'Viktor_Rask', name: 'name.rask', at: SAFE.rask, face: 172, pose: 'hold', fixed: true, look: null, mood: 'stern', if: HAS.rask },
   { do: 'prop', id: 'wwatch', kind: 'stopWatch', on: 'rask', bone: 'hand_L', p: [0, 0.004, 0], wrist: true, band: 1.4, if: HAS.rask },
-  { do: 'actor', id: 'dante', model: 'Dante_Rios', name: 'name.dante', at: SAFE.dante, face: 230, pose: 'hips', fixed: true, look: null, mood: 'stern', jacket: { flag: 'jacket_taken' }, if: HAS.dante },
+  // (Dante: Theo's old blue jacket if Nate left it with him in Chapter 4, else an old Chrome Wolves jacket)
+  { do: 'actor', id: 'dante', model: 'Dante_Rios', name: 'name.dante', at: SAFE.dante, face: 230, pose: 'hips', fixed: true, look: null, mood: 'stern', jacket: THEO_JACKET, if: { all: [HAS.dante, { flag: 'jacket_taken', is: false }] } },
+  { do: 'actor', id: 'dante', model: 'Dante_Rios', name: 'name.dante', at: SAFE.dante, face: 230, pose: 'hips', fixed: true, look: null, mood: 'stern', jacket: WOLVES_JACKET, if: { all: [HAS.dante, { flag: 'jacket_taken' }] } },
   { do: 'actor', id: 'harrow', model: 'Sloane_Harrow', name: 'name.harrow', at: SAFE.harrow, face: 262, pose: 'crossed', fixed: true, look: null, mood: 'tired', if: HAS.harrow },
   { do: 'prop', id: 'laptop', kind: 'laptop', at: SAFE.laptop, face: 0 },
 ];
@@ -178,7 +182,7 @@ export default {
             { seconds: 3.4, if: HAS.juno, cam: { from: s(-0.2, 1.5, -0.6), look: s(0.6, 1.2, -1.85), fov: 34 },
               do: [{ do: 'actorSet', id: 'lena', look: { of: 'juno', p: [0, 1.6, 0] } }] },
             { seconds: 4.2, if: HAS.juno, cam: { from: s(0.62, 1.12, -1.3), to: s(0.66, 1.08, -1.36), look: SAFE.palm, fov: 26, near: NEAR },
-              do: [{ do: 'actorSet', id: 'juno', pose: 'putDown', place: SAFE.palm }, { do: 'music', silence: 1.6 }] },
+              do: [{ do: 'actorSet', id: 'juno', pose: 'putDown', hands: SAFE.palm }, { do: 'music', silence: 1.6 }] },
             // MACE'S KEY: the key of the garage, on the table
             { seconds: 4.0, if: HAS.mace, cam: { from: s(-0.9, 1.62, -0.9), look: { of: 'mace', p: [0, 1.5, 0] }, fov: 36 },
               do: [{ do: 'prop', id: 'macekey', kind: 'carKey', on: 'mace', bone: 'hand_R', p: [0, -0.07, 0.035] }, { do: 'actorSet', id: 'mace', pose: 'give' }],
@@ -286,6 +290,7 @@ export default {
         { do: 'police', real: true, known: true, phantom: true, cars: 2, drones: 2, gates: false, roadblocks: false, startStars: 1, patrol: { at: [180, 160], r: 420, drones: 2, cars: 0 }, if: EASY },
         { do: 'news', text: 'c10.news.ascend' },
         { do: 'music', tension: 0.45 },
+        { do: 'sound', name: 'heli', level: 0.5 },
       ],
       on: [
         // the diversion: Dante's Wolves, or a fire at Rask's docks, pulls the drones away
@@ -336,6 +341,7 @@ export default {
           ],
         },
         { do: 'countdown', stop: true },
+        { do: 'sound', name: 'heli', level: 0 },
         { do: 'police', real: false },
         { do: 'news', text: null },
       ],
@@ -416,7 +422,7 @@ export default {
               do: [{ do: 'sound', name: 'heavyDoor' }, { do: 'tower', ride: 3 }, { do: 'player', look: tw('shaft', 0, 1.6, 2) }],
               lines: [{ at: 1.4, do: [{ do: 'tower', ride: 7, floor: 12 }] }, { at: 2.6, do: [{ do: 'tower', floor: 21 }] }] },
             { seconds: 4.2, cam: { from: tw('shaft', 0.85, 1.55, 0.6), look: { of: 'player', p: [0, 1.62, 0] }, fov: 30 },
-              do: [{ do: 'tower', floor: 34 }, { do: 'player', mood: 'afraid' }, { do: 'music', heart: 64 }],
+              do: [{ do: 'tower', floor: 34 }, { do: 'player', mood: 'afraid' }, { do: 'music', heart: 64 }, { do: 'sound', name: 'breath' }],
               lines: [{ at: 1.0, who: 'lena', kind: 'radio', text: 'c10.lena.breathe', seconds: 2.4 }, { at: 3.0, do: [{ do: 'tower', floor: 47 }] }] },
             // THE TRUTH: the white comes in ...
             { seconds: 2.0, cam: { from: tw('shaft', 0.6, 1.62, 0.7), to: tw('shaft', 0.45, 1.62, 0.5), look: { of: 'player', p: [0, 1.64, 0] }, fov: 24 }, fade: 'out', fadeSeconds: 1.8,
@@ -440,7 +446,7 @@ export default {
           do: 'cutscene', skippable: false, shots: [
             // from the passenger seat: the wipers, the road, Nate's hands on the wheel; the tape plays
             { seconds: 5.6, fade: 'fromWhite', cam: { from: { cabin: 'ride', at: 'pass', p: [0, 0.02, 0] }, look: { cabin: 'ride', at: 'pass', p: [-0.2, 0.0, 6] }, fov: 54, near: NEAR },
-              do: [{ do: 'vehicleSet', id: 'ride', speed: 150, beam: 1 }, { do: 'autoDrive', gas: 0.6, brake: 0, steer: 0 }, { do: 'music', tape: 6, fromEnd: 30, hud: false },
+              do: [{ do: 'vehicleSet', id: 'ride', speed: 150, beam: 1 }, { do: 'autoDrive', gas: 0.6, brake: 0, steer: 0 }, { do: 'music', tape: 6, fromEnd: 30, hud: false, calm: 0.35 },
                 { do: 'drive', id: 'phw', path: [[LN[1], 72], [LN[1], 900]], speed: 150 }, { do: 'player', mood: 'smile' }] },
             // Nate, young, laughing at the road
             { seconds: 3.4, cam: { from: { cabin: 'ride', at: 'pass', p: [0.05, 0.02, 0.1] }, look: { cabin: 'ride', at: 'eye', p: [0, -0.02, 0] }, fov: 40, near: NEAR } },
@@ -554,6 +560,7 @@ export default {
         { do: 'prop', id: 'gate', kind: 'bridgeGate', width: 13.2, at: [GATE[0], 0, GATE[1]], face: 180 },
         { do: 'cam', mode: 'chase' },
         { do: 'news', text: 'c10.news.phantoms' },
+        { do: 'sound', name: 'heli', level: 0.7 },
         ...LOOSE,
       ],
       on: [
@@ -586,6 +593,7 @@ export default {
         { do: 'driveTo', at: RAMP_FOOT, radius: 18, text: 'c10.obj.ramp_up' },
         // up the ramp (a cut): the city's Phantoms stay below; two follow him onto the highway
         { do: 'police', stars: 0, real: false, phantom: false },
+        { do: 'sound', name: 'heli', level: 0 },
         { do: 'allow', drive: false },
         { do: 'fade', to: 'black', seconds: 0.5 },
         { do: 'vehicleSet', id: 'run', place: [LN[1], -150], face: 0, arena: 'ironhill', speed: 120 },
