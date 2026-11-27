@@ -604,6 +604,30 @@
     #bustcard .line { margin-top: 16px; font-size: 14px; font-style: italic; opacity: 0.85; max-width: 420px; }
     #bustcard .fine { margin-top: 22px; font-size: 13px; letter-spacing: 0.24em; color: #ff8a7a; }
     #bustcard .left { margin-top: 6px; font-size: 10px; letter-spacing: 0.24em; opacity: 0.65; }
+    /* the Ending gallery */
+    #gallery { background: rgba(5, 6, 8, 0.9); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+    #gallery .list { margin-top: 22px; width: min(420px, 90vw); display: flex; flex-direction: column; gap: 12px; }
+    #gallery .g-card { padding: 16px 16px 14px; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 10px; text-align: left; }
+    #gallery .g-card.seen { border-color: rgba(255, 201, 74, 0.45); background: rgba(255, 201, 74, 0.05); }
+    #gallery .g-name { font-size: 13px; letter-spacing: 0.32em; }
+    #gallery .g-line { margin-top: 6px; font-size: 11px; line-height: 1.6; opacity: 0.65; }
+    #gallery .g-card .btn { margin-top: 12px; width: 100%; height: 46px; font-size: 11px; letter-spacing: 0.24em; }
+    /* the hidden DEBUG FLAGS screen (src/ui/debugFlags.js): small and dense - it is a tool */
+    #debug { background: rgba(4, 5, 7, 0.95); padding: 16px 12px calc(24px + env(safe-area-inset-bottom)); }
+    #debug .dbg-note { margin-top: 8px; max-width: 520px; font-size: 10px; line-height: 1.6; letter-spacing: 0.06em; opacity: 0.62; }
+    #debug .dbg-head { margin-top: 20px; width: min(560px, 94vw); font-size: 10px; letter-spacing: 0.34em; color: #ffc94a; text-align: left; }
+    #debug .dbg-sub { margin-top: 12px; width: min(560px, 94vw); font-size: 9px; letter-spacing: 0.24em; opacity: 0.6; text-align: left; }
+    #debug .dbg-chips { margin-top: 6px; width: min(560px, 94vw); display: flex; flex-wrap: wrap; gap: 6px; }
+    #debug .dbg-chip { height: 38px; padding: 0 12px; font-size: 10px; letter-spacing: 0.08em; }
+    #debug .dbg-start { width: min(560px, 94vw); }
+    #debug .dbg-table { width: min(560px, 94vw); display: flex; flex-direction: column; gap: 4px; }
+    #debug .dbg-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); text-align: left; }
+    #debug .dbg-name { font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0; word-break: break-all; }
+    #debug .dbg-name small { display: block; font: 10px/1.35 inherit; font-family: inherit; opacity: 0.5; word-break: normal; }
+    #debug .dbg-val { flex: none; min-width: 74px; max-width: 46%; height: 38px; padding: 0 10px; font-size: 10px; letter-spacing: 0.06em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #debug .dbg-val.unset { opacity: 0.45; }
+    #debug .dbg-val.yes { background: rgba(255, 201, 74, 0.22); border-color: rgba(255, 201, 74, 0.6); }
+    #debug .menu-col { margin-top: 22px; }
     @media (orientation: landscape) and (max-height: 520px) {
       #paint .swatch { height: 64px; } #paint .spray { height: 52px; }
       #title h1 { font-size: clamp(22px, 6vw, 40px); } .menu-col { margin-top: 14px; gap: 7px; } .menu-col .btn { height: 44px; }
@@ -767,6 +791,9 @@
     <div class="screen" id="pause" hidden></div>
     <div class="screen" id="settings" hidden></div>
     <div class="screen" id="select" hidden></div>
+    <div class="screen" id="debug" hidden></div>
+    <div class="screen" id="gallery" hidden></div>
+    <div class="screen" id="finale" hidden></div>
 
     <div id="hint">W A S D &nbsp;MOVE &nbsp;·&nbsp; MOUSE &nbsp;LOOK &nbsp;·&nbsp; SHIFT &nbsp;RUN &nbsp;·&nbsp; E &nbsp;CAR &nbsp;·&nbsp; M &nbsp;MAP &nbsp;·&nbsp; C &nbsp;CAMERA &nbsp;·&nbsp; N &nbsp;NITRO</div>
   </div>

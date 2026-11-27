@@ -41,6 +41,7 @@ import { createEffects } from './vehicles/effects.js';
 import { createWanted, FINE } from './ai/wanted.js';
 import { createMissions } from './missions/missionManager.js';
 import { createStoryUI } from './ui/storyUI.js';
+import { showDebugFlags } from './ui/debugFlags.js';
 import { createMusic } from './audio/music.js';
 import { createSave } from './story/save.js';
 import { createActors, jacketLook } from './story/actors.js';
@@ -1001,13 +1002,37 @@ async function boot() {
     lighting.setHour(23); lighting.setRunning(false); weather.setInstant(true); hud.setRainButton(true);
     player.place(TITLE.x - 9, TITLE.z, 0); player.setHidden(true);
     const info = await story.saveInfo();
+    info.gallery = save.unlocks.endings.length;
     if (gameMode === 'title') ui.title(info, onTitle);
+  }
+  // the Ending gallery: the endings that were seen can be played again (from their start; nothing is saved)
+  async function openGallery() {
+    const list = await story.endingList();
+    if (gameMode !== 'title') return;
+    const seen = save.unlocks.endings;
+    ui.gallery(list.map((e) => ({ ...e, seen: seen.includes(e.key) })), (e) => {
+      if (e) startStory(() => story.playEnding(e.key)); else showTitle();
+    });
+  }
+  // the hidden DEBUG FLAGS screen (three quick taps on the game's name): every flag, the presets, start anywhere
+  function openDebug() {
+    if (gameMode !== 'title') return;
+    ui.hideMenus();
+    showDebugFlags(document.getElementById('debug'), {
+      flags: save.data.flags, list: story.missionList(), endings: story.endingList(),
+      // (an ending: these flags are saved, then the ending plays as from the gallery - NEW BODY always shows the knock)
+      onStart: (id, flags) => startStory(() => (id.key ? (save.replaceFlags(flags), story.playEnding(id.key)) : story.startAt(id.chapter, id.mission, flags))),
+      onSave: (flags) => save.replaceFlags(flags),
+      onBack: () => showTitle(),
+    });
   }
   function onTitle(action) {
     if (action === 'continue') startStory(() => story.resume());
     else if (action === 'new') startStory(() => story.newGame());
     else if (action === 'free') startFree(false);
     else if (action === 'settings') openSettings(showTitle);
+    else if (action === 'debug') openDebug();
+    else if (action === 'gallery') openGallery();
     else if (action === 'select') {
       // the mission list: every mission of every chapter that exists
       story.missionList().then((list) => {

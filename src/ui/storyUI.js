@@ -32,6 +32,7 @@ export function createStoryUI() {
     cargoRow: $('cargo-row'), cargoBar: $('cargo-bar').firstElementChild, cargoNum: $('cargo-num'),
     convoy: $('convoy'), cvLabel: $('cv-label'), cvBar: $('cv-bar').firstElementChild, cvNum: $('cv-num'), cvCars: $('cv-cars'),
     title: $('title'), pause: $('pause'), settings: $('settings'), select: $('select'), endcard: $('endcard'), failcard: $('failcard'),
+    debug: $('debug'), gallery: $('gallery'), finale: $('finale'),
     paint: $('paint'), video: $('video'), videoDate: $('video-date'), videoFile: $('video-file'), videoLock: $('video-lock'), bustcard: $('bustcard'),
   };
   const button = (label, cls = 'btn') => { const b = document.createElement('button'); b.className = cls; b.textContent = label; return b; };
@@ -356,11 +357,19 @@ export function createStoryUI() {
 
   // ------------------------------------------------------------ menus
   const screen = (node, html) => { node.innerHTML = html; node.hidden = false; return node; };
-  function hideMenus() { for (const n of [el.title, el.pause, el.settings, el.select, el.endcard, el.failcard, el.bustcard]) n.hidden = true; }
-  // info: { canContinue, where: text under CONTINUE }, cb(action): 'continue' | 'new' | 'free' | 'select' | 'settings'
+  const MENUS = () => [el.title, el.pause, el.settings, el.select, el.endcard, el.failcard, el.bustcard, el.debug, el.gallery, el.finale];
+  function hideMenus() { for (const n of MENUS()) n.hidden = true; }
+  // info: { canContinue, where: text under CONTINUE, gallery: endings seen }, cb(action): 'continue' | 'new' | 'free' |
+  // 'select' | 'settings' | 'gallery' | 'debug' (three quick taps on the game's name: the hidden DEBUG FLAGS screen)
   function title(info, cb) {
     hideMenus();
     const n = screen(el.title, `<h1>${t('ui.game')}</h1><div class="sub">${t('ui.tagline')}</div><div class="menu-col"></div>`), col = n.querySelector('.menu-col');
+    let taps = 0, tapAt = 0;
+    press(n.querySelector('h1'), () => {
+      const now = performance.now();
+      taps = now - tapAt < 650 ? taps + 1 : 1; tapAt = now;
+      if (taps >= 3) { taps = 0; cb('debug'); }
+    });
     const add = (label, action, cls = 'btn') => { const b = button(label, cls); press(b, () => cb(action)); col.appendChild(b); return b; };
     if (info.canContinue) { add(t('ui.continue'), 'continue', 'btn main'); if (info.where) { const d = document.createElement('div'); d.className = 'note'; d.textContent = info.where; col.appendChild(d); } }
     if (!info.canContinue) add(t('ui.new_game'), 'new', 'btn main');
@@ -370,6 +379,8 @@ export function createStoryUI() {
       press(b, () => { if (armed) cb('new'); else { armed = true; b.textContent = t('ui.new_confirm'); } });
       col.appendChild(b);
     }
+    // (the Ending gallery is there once an ending was seen)
+    if (info.gallery) add(t('ui.gallery'), 'gallery');
     add(t('ui.missions'), 'select'); add(t('ui.free_roam'), 'free'); add(t('ui.settings'), 'settings');
     if (info.canContinue) { const d = document.createElement('div'); d.className = 'note'; d.textContent = t('ui.new_warn'); col.appendChild(d); }
   }
@@ -430,6 +441,22 @@ export function createStoryUI() {
     for (const it of list) {
       if (it.head) { const d = document.createElement('div'); d.className = 'head'; d.textContent = it.head; listNode.appendChild(d); continue; }
       const b = button(it.label); press(b, () => cb(it.id)); listNode.appendChild(b);
+    }
+    const back = button(t('ui.back'), 'btn main'); press(back, () => cb(null)); n.lastElementChild.appendChild(back);
+  }
+  // THE ENDING GALLERY: items [{ key, label, line, seen }], cb(item) (null = back). An ending not seen yet is a
+  // closed card with no name.
+  function gallery(items, cb) {
+    hideMenus();
+    const n = screen(el.gallery, `<h2>${t('ui.gallery')}</h2><div class="list"></div><div class="menu-col"></div>`);
+    const listNode = n.querySelector('.list');
+    for (const it of items) {
+      const c = document.createElement('div'); c.className = 'g-card' + (it.seen ? ' seen' : '');
+      const h = document.createElement('div'); h.className = 'g-name'; h.textContent = it.seen ? it.label : t('ui.gallery_locked');
+      const l = document.createElement('div'); l.className = 'g-line'; l.textContent = it.seen ? it.line : t('ui.gallery_hint');
+      c.appendChild(h); c.appendChild(l);
+      if (it.seen) { const b = button(t('ui.gallery_play'), 'btn'); press(b, () => cb(it)); c.appendChild(b); }
+      listNode.appendChild(c);
     }
     const back = button(t('ui.back'), 'btn main'); press(back, () => cb(null)); n.lastElementChild.appendChild(back);
   }
@@ -494,7 +521,7 @@ export function createStoryUI() {
     // change one setting from outside the settings screen (the TILT and SOUND buttons) and remember it
     setSetting(key, value) { settings[key] = value; saveSettings(); applyLook(); },
     cine, fade, card, say, clearSubs, choice, skip, limiter, prompt, tip, tape, limitBadge, cargo, convoy, mirror, drawMirror, reader,
-    title, pause, settingsScreen, select, endCard, failCard, hideMenus, paint, paintProgress, video, bustCard,
+    title, pause, settingsScreen, select, endCard, failCard, hideMenus, paint, paintProgress, video, bustCard, gallery,
     quiet(on) { body.classList.toggle('quiet', !!on); },
     // a calm chapter (Chapter 6): no minimap, no stars, no timer; big soft buttons (index.html, body.calm)
     calm(on) { body.classList.toggle('calm', !!on); },
@@ -504,7 +531,7 @@ export function createStoryUI() {
     get actShown() { return !el.act.hidden; },
     get actLabel() { return el.act.hidden ? null : el.act.textContent; },
     act() { if (actCb) actCb(); },
-    get menuOpen() { return [el.title, el.pause, el.settings, el.select, el.endcard, el.failcard, el.bustcard].some((n) => !n.hidden); },
+    get menuOpen() { return MENUS().some((n) => !n.hidden); },
     onPauseButton(fn) { press($('btn-pause-story'), fn); },
   };
 }

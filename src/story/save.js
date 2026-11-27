@@ -8,10 +8,16 @@
 //   done                           chapters that were finished
 //   ended                          number of the chapter that was just finished (null while one is being played)
 //   money                          Nate's credits (the Guard takes a fine when it catches him)
+//   stats                          for the last screen of an ending: choices made, seconds played
 // The game saves by itself at every checkpoint.
+//
+// Kept apart, so that NEW GAME and PLAY AGAIN do not erase them (key 'pg-unlocks'):
+//   endings                        the endings that were seen ('let_go', 'keep_him', 'new_body') - the Ending gallery
+//   cosmetics                      small rewards of the endings (the title screen at dawn ...)
 // ---------------------------------------------------------------------------
 
 const KEY = 'pg-story-save';
+const UNLOCK_KEY = 'pg-unlocks';
 const VERSION = 1;
 
 // the flags of the full game, with their values at the start
@@ -38,13 +44,18 @@ export const START_MONEY = 1500;
 
 export function createSave() {
   let data = null;
-  const fresh = () => ({ version: VERSION, chapter: null, mission: 0, checkpoint: 0, flags: { ...START_FLAGS }, unlocked: [], done: [], ended: null, money: START_MONEY });
+  const fresh = () => ({ version: VERSION, chapter: null, mission: 0, checkpoint: 0, flags: { ...START_FLAGS }, unlocked: [], done: [], ended: null, money: START_MONEY, stats: { choices: 0, seconds: 0 } });
+  // the things that last over every new game
+  let unlocks = { endings: [], cosmetics: [] };
+  try { const u = JSON.parse(localStorage.getItem(UNLOCK_KEY) || 'null'); if (u) unlocks = { endings: [...(u.endings || [])], cosmetics: [...(u.cosmetics || [])] }; } catch (e) { /* private mode */ }
+  const writeUnlocks = () => { try { localStorage.setItem(UNLOCK_KEY, JSON.stringify(unlocks)); } catch (e) { /* private mode */ } };
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
       const d = raw ? JSON.parse(raw) : null;
       data = d && d.version === VERSION ? { ...fresh(), ...d, flags: { ...START_FLAGS, ...(d.flags || {}) } } : fresh();
       if (typeof data.money !== 'number' || !isFinite(data.money)) data.money = START_MONEY;
+      if (!data.stats || typeof data.stats !== 'object') data.stats = { choices: 0, seconds: 0 };
     } catch (e) { data = fresh(); }      // private mode or broken data: start clean
     return data;
   }
@@ -64,8 +75,16 @@ export function createSave() {
     get money() { return data.money; },
     pay(amount) { data.money = Math.max(0, Math.round(data.money - amount)); write(); return data.money; },
     chapterDone(id) { if (!data.done.includes(id)) data.done.push(id); write(); },
-    // New Game: everything back to the start
+    // New Game: everything back to the start (the unlocked endings and rewards stay)
     reset() { data = fresh(); write(); },
+    // the numbers of the last screen: a choice was made; seconds of story played (written with the next save)
+    countChoice() { data.stats.choices++; },
+    addTime(seconds) { data.stats.seconds += seconds; },
+    // the Ending gallery and the small rewards
+    get unlocks() { return unlocks; },
+    unlockEnding(id) { if (!unlocks.endings.includes(id)) { unlocks.endings.push(id); writeUnlocks(); } },
+    unlockCosmetic(id) { if (!unlocks.cosmetics.includes(id)) { unlocks.cosmetics.push(id); writeUnlocks(); } },
+    hasCosmetic(id) { return unlocks.cosmetics.includes(id); },
     // (for tests and the mission list: start with the flags a normal game would have at that point)
     replaceFlags(flags) { data.flags = { ...START_FLAGS, ...flags }; write(); },
   };

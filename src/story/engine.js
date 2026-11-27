@@ -97,6 +97,7 @@ import { GARAGE, PARKING } from '../city/heroBuildings.js';
 import { FINE } from '../ai/wanted.js';
 import { lin } from '../city/models.js';
 import { createHack } from './hack.js';
+import { isKnownFlag } from './flags.js';
 import { createRepair } from './repair.js';
 import { stepBoat } from '../vehicles/physics.js';
 
@@ -115,6 +116,7 @@ export function createStory(G) {
   let gen = 0;                        // goes up whenever the story is stopped or restarted: old steps notice and give up
   let chapter = null, mission = null, mi = 0, cpIndex = 0, runner = null;
   let flags = {}, paths = {}, rules = [];
+  let replay = null;                  // an ending played again from the gallery ('let_go' | 'keep_him' | 'new_body')
   const cars = new Map();             // story vehicles by name
   const things = new Map();           // story props by name: { holder, inner, fly }
   const enterable = new Set();        // names of the vehicles the player may get into
@@ -149,8 +151,16 @@ export function createStory(G) {
   // ------------------------------------------------------------------ chapter files
   const files = new Map();
   // (a chapter that does not exist gives null: that is how the engine knows where the story ends for now)
+  // (the endings of the story are src/story/endings.js, written like a chapter: one "mission" for each ending)
   function loadChapter(id) {
-    if (!files.has(id)) files.set(id, import(`./chapters/${id}.js`).then((m) => m.default).catch(() => null));
+    if (!files.has(id)) {
+      const file = id === 'endings' ? import('./endings.js') : import(`./chapters/${id}.js`);
+      files.set(id, file.then((m) => m.default).catch((e) => {
+        // (a chapter that is not written yet is normal; a chapter that is there but broken must be seen)
+        if (!/fetch|import|find|404|resolve/i.test(String(e && e.message))) console.error(`[story] ${id}:`, e);
+        return null;
+      }));
+    }
     return files.get(id);
   }
   // the next chapter that exists after chapter n (a chapter that is not written yet is stepped over: the story goes on
@@ -235,6 +245,18 @@ export function createStory(G) {
   const inRange = (v, r) => !r || (v >= r[0] && v <= r[1]);
 
   // ------------------------------------------------------------------ conditions
+  // A flag the chapter reads. A flag that was never set reads as "no"; the console says so once per name, so a
+  // missing choice of an earlier chapter (or a typing mistake: a name that is not in src/story/flags.js) is found.
+  const warned = new Set();
+  function readFlag(name) {
+    if (!(name in flags) && !warned.has(name)) {
+      warned.add(name);
+      const where = `${chapter ? chapter.id : '?'} / ${mission ? mission.id : '?'}`;
+      if (isKnownFlag(name)) console.warn(`[flags] "${name}" is read but was never set (${where}): it reads as "no"`);
+      else console.warn(`[flags] "${name}" is read but it is not in src/story/flags.js - a typing mistake? (${where})`);
+    }
+    return flags[name];
+  }
   function test(c, time = 0) {
     if (!c) return true;
     if (c.all && !c.all.every((q) => test(q, time))) return false;
@@ -243,9 +265,17 @@ export function createStory(G) {
     const p = player.position;
     if (c.zone && !(inRange(p.x, c.zone.x) && inRange(p.z, c.zone.z))) return false;
     if (c.near) { const q = pt(c.near); if (Math.hypot(p.x - q[0], p.z - q[2]) > (c.radius || 6)) return false; }
-    // (is: a word compares the word - chip_holder is 'lena'; atLeast: a number - stories heard; else true / false)
-    if (c.flag && c.atLeast !== undefined) { if (!((Number(flags[c.flag]) || 0) >= c.atLeast)) return false; }
-    else if (c.flag && (typeof c.is === 'string' ? flags[c.flag] !== c.is : !!flags[c.flag] !== (c.is === undefined ? true : !!c.is))) return false;
+    // (is: a word compares the word - chip_holder is 'lena'; is: true means exactly true (mace_forgiven true, not
+    //  'neutral'); atLeast: a number - stories heard; has: a word in a list flag - ally_help has 'dante_street';
+    //  else "yes" / "no")
+    if (c.flag) {
+      const v = readFlag(c.flag);
+      if (c.atLeast !== undefined) { if (!((Number(v) || 0) >= c.atLeast)) return false; }
+      else if (c.has !== undefined) { if (!(Array.isArray(v) && v.includes(c.has))) return false; }
+      else if (typeof c.is === 'string') { if (v !== c.is) return false; }
+      else if (c.is === true) { if (v !== true) return false; }
+      else if (!!v !== (c.is === undefined ? true : !!c.is)) return false;
+    }
     if (c.time !== undefined && time < c.time) return false;
     if (c.event && !events.has(c.event)) return false;
     if (c.inCar !== undefined) {
@@ -545,7 +575,7 @@ export function createStory(G) {
     if (!arena) vehicles.clearParked((rec) => Math.hypot(rec.x - p[0], rec.z - p[2]) < 6.5);
     const opts = { keep: true, npc: !!s.npc, simple: !!s.simple, arena, tint: s.tint || null, lights: s.lights || 'normal', noDetail: !!s.noDetail };
     // (a car that was painted in the story keeps its new paint: paints = the list of colors, paintFlag = the flag with the choice)
-    if (s.paints && s.paintFlag && flags[s.paintFlag] >= 0 && s.paints[flags[s.paintFlag]]) s = { ...s, color: s.paints[flags[s.paintFlag]].color };
+    if (s.paints && s.paintFlag && readFlag(s.paintFlag) >= 0 && s.paints[flags[s.paintFlag]]) s = { ...s, color: s.paints[flags[s.paintFlag]].color };
     // ("or": the car to use when the wanted model file is missing in this copy of the game)
     const v = vehicles.spawn(s.kind, p[0], p[2], face, s.color ? lin(s.color) : null, opts) || (s.or ? vehicles.spawn(s.or, p[0], p[2], face, s.color ? lin(s.color) : lin([0.1, 0.1, 0.11]), opts) : null);
     if (!v) { console.warn('[story] no such vehicle:', s.kind); return; }
@@ -662,7 +692,7 @@ export function createStory(G) {
   // where: at (a place) + face, or in: 'car' with at: { cabinAt, p }, or on: 'person' with bone + p + rot (in the hand)
   STEP.prop = (s) => {
     if (things.has(s.id)) { if (!s.replace) return; removeThing(s.id); }
-    if (s.textFlag && flags[s.textFlag]) s = { ...s, text: flags[s.textFlag] };      // (a number plate that was changed in the story)
+    if (s.textFlag && readFlag(s.textFlag)) s = { ...s, text: flags[s.textFlag] };      // (a number plate that was changed in the story)
     // (many copies in one draw: list = [{ at: place, face }])
     if (s.list) s = { ...s, list: s.list.map((e) => { const q = pt(e.at); return [q[0], q[1], q[2], e.face || 0]; }) };
     const inner = props.make(s.kind, s), holder = new THREE.Group();
@@ -874,7 +904,15 @@ export function createStory(G) {
   };
   STEP.tip = (s) => { ui.tip(s.text ? t(s.text) : null, s.seconds || 5); };
   STEP.say = (s) => { if (s.texts) s = { ...s, text: s.texts[Math.floor(Math.random() * s.texts.length)] }; speak(s, !!s.now); };   // (texts: one of them, at random)
-  STEP.flag = (s) => { Object.assign(flags, s.set); };
+  // set: { name: value }; add: { name: word } puts the word into a list flag (Chapter 10: ally_help) once
+  STEP.flag = (s) => {
+    if (s.set) Object.assign(flags, s.set);
+    for (const [k, w] of Object.entries(s.add || {})) {
+      const list = Array.isArray(flags[k]) ? flags[k].slice() : [];
+      for (const x of [].concat(w)) if (!list.includes(x)) list.push(x);
+      flags[k] = list;
+    }
+  };
   STEP.fire = (s) => { fire(s.event); };
   // forget that something happened (a rule with repeat: true then waits for it to happen again)
   STEP.forget = (s) => { for (const e of [].concat(s.event || [])) events.delete(e); };
@@ -1035,6 +1073,7 @@ export function createStory(G) {
     ui.choice(s.prompt ? t(s.prompt) : '', shown.map((o) => t(o.text)), (i) => {
       const o = shown[i];
       if (o.set) Object.assign(flags, o.set);       // choices leave traces: they are saved with the next checkpoint
+      save.countChoice();
       run(o.do);
       done = true;
     }, s.seconds || 0, s.default || 0, s.layout || '');
@@ -1685,10 +1724,11 @@ export function createStory(G) {
   STEP.meanwhile = (s) => { const R = makeRunner(s.steps); bg.push({ update: (dt) => tickRunner(R, dt) }); };
   STEP.fail = (s) => { fail(s.text); return { update: () => false }; };
   // go on with another chapter
+  // (mission: start that chapter at this mission - Chapter 10 goes on to the ending that was chosen)
   STEP.chapter = (s) => {
-    save.setFlags(flags); save.chapterDone(chapter.id);
+    if (!replay) { save.setFlags(flags); save.chapterDone(chapter.id); }
     // (if that chapter does not exist, the story is over for now: back to the title screen)
-    (s.id ? Promise.resolve({ id: s.id }) : nextChapter(chapter.number)).then((next) => (next ? load(next.id, 0, 0) : false)).then((ok) => { if (!ok) G.onExit('title'); });
+    (s.id ? Promise.resolve({ id: s.id }) : nextChapter(chapter.number)).then((next) => (next ? load(next.id, s.mission || 0, 0, replay) : false)).then((ok) => { if (!ok) G.onExit('title'); });
     return { update: () => false };
   };
   // the end card of a chapter: { over, title, lines: [keys], locked: key }
@@ -1710,6 +1750,7 @@ export function createStory(G) {
   // ==================================================================== missions, saving, failing
   function checkpoint(id, note) {
     cpIndex = id;
+    if (replay) return;                            // (an ending played again from the gallery saves nothing)
     save.setFlags(flags);
     if (met.size) save.unlock([...met]);
     save.checkpoint(chapter.id, mi, id);
@@ -1826,8 +1867,11 @@ export function createStory(G) {
     await Promise.race([Promise.all(jobs), new Promise((r) => setTimeout(r, 25000))]);
   }
   // Start a chapter at a mission and a checkpoint. Loads the chapter's people and cars first.
-  async function load(id, m = 0, cp = 0) {
+  // (replayKey: an ending played again from the Ending gallery - the flag ending_replay says which, and nothing of the
+  //  replay is saved: CONTINUE stays where it was)
+  async function load(id, m = 0, cp = 0, replayKey = null) {
     halt();
+    replay = replayKey;
     const my = gen;
     active = true; loading = true;
     ui.storyMode(true);
@@ -1844,6 +1888,8 @@ export function createStory(G) {
     paths = {};
     for (const k of Object.keys(ch.paths || {})) paths[k] = makePath(ch.paths[k]);
     flags = { ...save.data.flags };
+    delete flags.ending_replay;
+    if (replay) flags.ending_replay = replay;
     police.setScripted({ stars: 0 });
     // a calm chapter (Chapter 6): no minimap, no stars, no timer - only a small soft hint
     calmOn = !!ch.calm; ui.calm(calmOn);
@@ -1857,7 +1903,7 @@ export function createStory(G) {
     if (!own) ui.fade('black', 0, 1.2);
     return true;
   }
-  const restart = () => load(chapter.id, mi, cpIndex);
+  const restart = () => load(chapter.id, mi, cpIndex, replay);
   function newGame() { save.reset(); return load(chapterFile(0), 0, 0); }
   // CONTINUE on the title screen. Gives 'locked' when the last chapter was finished and there is no next one yet.
   async function resume() {
@@ -1879,6 +1925,19 @@ export function createStory(G) {
     save.replaceFlags(fl);
     save.checkpoint(id, m, 0);
     return load(id, m, 0);
+  }
+  // the endings (src/story/endings.js): [{ key, label, line, id: { chapter: 'endings', mission } }]
+  // (the secret ending is the true ending with something after it: it starts with the same mission)
+  async function endingList() {
+    const ch = await loadChapter('endings');
+    if (!ch) return [];
+    return (ch.gallery || []).map((g) => ({ key: g.key, label: t(g.title), line: t(g.line), id: { chapter: 'endings', mission: Math.max(0, ch.missions.findIndex((q) => q.id === g.mission)), key: g.key } }));
+  }
+  // play one ending again (the Ending gallery): the player's own flags, and nothing is saved
+  async function playEnding(key) {
+    const list = await endingList();
+    const e = list.find((x) => x.key === key);
+    return e ? load('endings', e.id.mission, 0, key) : false;
   }
   async function missionList() {
     const out = [];
@@ -1915,6 +1974,7 @@ export function createStory(G) {
   function update(dt, time) {
     if (!active || loading || failed) return;
     clock += dt; frame++;
+    save.addTime(dt);                              // (the time on the last screen of an ending)
     const c = vehicles.state === 'driving' ? vehicles.active : null;
     // how long the limiter has been holding the van back (WREN notices)
     limitedFor = c && c.fx && c.fx.limited ? limitedFor + dt : Math.max(0, limitedFor - dt);
@@ -2032,7 +2092,7 @@ export function createStory(G) {
   }
 
   return {
-    update, load, resume, restart, newGame, startAt, stop, missionList, saveInfo,
+    update, load, resume, restart, newGame, startAt, stop, missionList, saveInfo, endingList, playEnding,
     // the film camera (main.js calls this after its own camera)
     applyCamera(dt) { director.apply(dt); },
     get active() { return active; },
