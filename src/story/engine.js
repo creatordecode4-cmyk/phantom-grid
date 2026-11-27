@@ -571,7 +571,14 @@ export function createStory(G) {
     if (s.to !== undefined) {
       const from = lighting.hour, span = ((s.to - from + 36) % 24) - 12, sec = s.seconds || 10;
       let k = 0;
-      const task = { dead: false, update(dt) { if (this.dead) return true; k += dt; lighting.setHour(from + span * Math.min(1, k / sec)); return k >= sec; } };
+      // (a little every frame: glideHour - the reflections follow when the sun has moved enough; the exact hour at the end)
+      const task = { dead: false, update(dt) {
+        if (this.dead) return true;
+        k += dt;
+        if (k >= sec) { lighting.setHour(from + span); return true; }
+        lighting.glideHour(from + span * (k / sec));
+        return false;
+      } };
       timeTask = task; bg.push(task);
     }
   };

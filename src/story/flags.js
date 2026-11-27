@@ -139,6 +139,7 @@ export const FLAGS = [
 
   // ---- the endings ----
   W('ending', 'end', ['let_go', 'keep_him', 'new_body'], 'The ending that was seen last.'),
+  B('ending_replay', 'end', 'Set only while an ending is played again from the Ending gallery (nothing is saved then; NEW BODY always shows the knock).'),
 ];
 
 // name -> entry

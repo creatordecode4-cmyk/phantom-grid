@@ -117,7 +117,13 @@ const SERVER_WATCH = [
   { ...STEALTH, sentries: [SERVER_CROSS, SERVER_SIDE], if: { not: HELP('juno_roof') } },
   { ...STEALTH, sentries: [SERVER_SIDE], if: HELP('juno_roof') },
 ];
-const TERRACE_WATCH = { ...STEALTH, sentries: [{ path: [TXZ('terrace', 12, -3), TXZ('terrace', -12, -3), TXZ('terrace', -12, 3.5), TXZ('terrace', 12, 3.5)], y: 6.5, speed: 2.4, range: 13, fov: 0.42, tilt: 0.75 }] };
+// (the drone of the sky garden flies a slow loop; it starts away from Nate, so who follows it at once - running behind
+// its light, as the tip says - reaches the service lift before it turns back. On Easy it flies slower.)
+const TERRACE_DRONE = (speed) => ({ path: [TXZ('terrace', 12, -3), TXZ('terrace', -12, -3), TXZ('terrace', -12, 3.5), TXZ('terrace', 12, 3.5)], y: 6.5, speed, range: 13, fov: 0.42, tilt: 0.75 });
+const TERRACE_WATCH = [
+  { ...STEALTH, sentries: [TERRACE_DRONE(2.1)], if: NORMAL },
+  { ...STEALTH, sentries: [TERRACE_DRONE(1.6)], if: EASY },
+];
 // (a restart inside the tower: the car of the ramp is not needed any more)
 const ON_FOOT = [{ do: 'player', leaveNow: true }, { do: 'remove', ids: ['run'] }, { do: 'allow', enter: 'none', move: true }];
 // THE PHANTOMS let loose (the chase of mission 4): up to 8 cars and 3 drones on normal, 4 and 2 on easy
@@ -434,22 +440,27 @@ export default {
         // ... and it is THE CRASH NIGHT, four years ago, seen through Theo's eyes: Nate at the wheel, the mixtape on,
         // the rain. In the mirror: a white KVI Phantom. "Don't slow down, Nate." Then the black one, in front.
         { do: 'tower', show: null },
-        { do: 'time', hour: 1.4, rain: true },
+        // (a memory: no Guard and no Phantom of tonight can see it - the crash at its end must not raise the stars)
+        { do: 'police', sentries: [], stealth: false, real: false },
+        // (the hour of the crash night in the prologue)
+        { do: 'time', hour: 2.6, rain: true },
         { do: 'world', traffic: 0, people: 0, indoors: false, now: true },
         { do: 'spawn', id: 'ride', kind: 'chrome_supercar', or: 'coupe', color: [0.6, 0.62, 0.66], at: [LN[1], 120], face: 0, arena: 'ironhill', lockExit: true },
         { do: 'actor', id: 'theo', model: 'Theo_Calloway', name: 'name.theo', seat: 'ride', mood: 'worried' },
         { do: 'player', inCar: 'ride' },
         { do: 'remove', ids: ['pkey'] },
-        { do: 'spawn', id: 'phw', kind: 'tech_patrol_car', or: 'sedan', color: [1, 1, 1], at: [LN[1], 72], face: 0, arena: 'ironhill', npc: true, noDetail: true, lights: 'bar', flash: true, type: { label: 'PHANTOM' } },
-        { do: 'spawn', id: 'phb', kind: 'tech_patrol_car', or: 'sedan', color: [0.02, 0.02, 0.025], tint: [0.07, 0.075, 0.085], at: [LN[1], 520], face: 0, arena: 'ironhill', npc: true, noDetail: true, lights: 'bar' },
+        { do: 'spawn', id: 'phw', kind: 'tech_patrol_car', or: 'sedan', color: [1, 1, 1], at: [LN[1], 92], face: 0, arena: 'ironhill', npc: true, noDetail: true, lights: 'bar', flash: true, type: { label: 'PHANTOM' } },
+        { do: 'spawn', id: 'phb', kind: 'tech_patrol_car', or: 'sedan', color: [0.02, 0.02, 0.025], tint: [0.07, 0.075, 0.085], at: [LN[0], 745], face: 0, arena: 'ironhill', npc: true, noDetail: true, lights: 'bar' },
         { do: 'memory', on: true },
+        // (a memory: the faces a little lit, as by the glow of the dashboard)
+        { do: 'fill', power: 0.6 },
         { do: 'flag', set: { nate_innocent_seen: true } },
         {
           do: 'cutscene', skippable: false, shots: [
-            // from the passenger seat: the wipers, the road, Nate's hands on the wheel; the tape plays
-            { seconds: 5.6, fade: 'fromWhite', cam: { from: { cabin: 'ride', at: 'pass', p: [0, 0.02, 0] }, look: { cabin: 'ride', at: 'pass', p: [-0.2, 0.0, 6] }, fov: 54, near: NEAR },
+            // from the passenger seat: Nate's hands on the wheel, the wipers, the wet road in the lights; the tape plays
+            { seconds: 5.6, fade: 'fromWhite', cam: { from: { cabin: 'ride', at: 'pass', p: [0, 0.02, 0] }, look: { cabin: 'ride', at: 'pass', p: [-0.5, -0.08, 2.4] }, fov: 56, near: NEAR },
               do: [{ do: 'vehicleSet', id: 'ride', speed: 150, beam: 1 }, { do: 'autoDrive', gas: 0.6, brake: 0, steer: 0 }, { do: 'music', tape: 6, fromEnd: 30, hud: false, calm: 0.35 },
-                { do: 'drive', id: 'phw', path: [[LN[1], 72], [LN[1], 900]], speed: 150 }, { do: 'player', mood: 'smile' }] },
+                { do: 'drive', id: 'phw', path: [[LN[1], 92], [LN[1], 1200]], speed: 158 }, { do: 'player', mood: 'smile' }] },
             // Nate, young, laughing at the road
             { seconds: 3.4, cam: { from: { cabin: 'ride', at: 'pass', p: [0.05, 0.02, 0.1] }, look: { cabin: 'ride', at: 'eye', p: [0, -0.02, 0] }, fov: 40, near: NEAR } },
             // the mirror: a white car, lights on, closing in
@@ -458,7 +469,7 @@ export default {
               lines: [{ at: 1.6, who: 'theo', kind: 'warm', text: 'c10.theo.dont_slow', seconds: 2.4 }] },
             // and in front: the black one, slowing, across the lane
             { seconds: 2.6, cam: { from: { cabin: 'ride', at: 'pass', p: [0, 0.02, 0] }, look: { cabin: 'ride', at: 'pass', p: [-0.3, 0.0, 8] }, fov: 46, near: NEAR },
-              do: [{ do: 'rearView', off: true }, { do: 'drive', id: 'phb', path: [[LN[1], 520], [LN[0], 700]], speed: 40 }] },
+              do: [{ do: 'rearView', off: true }, { do: 'drive', id: 'phb', path: [[LN[0], 745], [LN[1], 795]], speed: 40 }] },
             // white
             { seconds: 1.6, cam: { from: { cabin: 'ride', at: 'pass', p: [0, 0.02, 0] }, look: { cabin: 'ride', at: 'pass', p: [-0.3, -0.1, 4] }, fov: 70, near: NEAR },
               do: [{ do: 'sound', name: 'crash' }, { do: 'fade', to: 'white', seconds: 0.25 }, { do: 'music', stop: true }] },
@@ -466,9 +477,11 @@ export default {
         },
         { do: 'autoDrive', off: true },
         { do: 'memory', on: false },
+        { do: 'fill' },
         { do: 'player', leaveNow: true },
         { do: 'remove', ids: ['ride', 'theo', 'phw', 'phb'] },
         { do: 'time', hour: 23.92, rain: true },
+        { do: 'wanted', stars: 0 },
         { do: 'tower', show: 'shaft' },
         { do: 'tower', view: 'city', floor: 58, ride: 2 },
         { do: 'player', stage: { at: tw('shaft', 0.2, 0, -0.35), face: 0, pose: 'idle' }, mood: 'sad' },
@@ -492,11 +505,11 @@ export default {
         // ---- THE SERVER FLOOR ----
         { do: 'fade', to: 'black', seconds: 0.6 },
         { do: 'tower', show: 'server' },
-        { do: 'player', at: tw('server', -15.4, 0, -11.2), face: 60 },
+        { do: 'player', at: tw('server', -15.4, 0, -11.2), face: 320 },
         { do: 'allow', enter: 'none', move: true },
         ...SERVER_WATCH,
         { do: 'fade', to: 'clear', seconds: 1.0 },
-        { do: 'checkpoint', id: 5, setup: [...ON_FOOT, { do: 'tower', show: 'server' }, { do: 'tower', alarm: false }, { do: 'player', at: tw('server', -15.4, 0, -11.2), face: 60 }, ...SERVER_WATCH] },
+        { do: 'checkpoint', id: 5, setup: [...ON_FOOT, { do: 'tower', show: 'server' }, { do: 'tower', alarm: false }, { do: 'player', at: tw('server', -15.4, 0, -11.2), face: 320 }, ...SERVER_WATCH] },
         { do: 'say', who: 'lena', kind: 'radio', text: 'c10.lena.server' },
         { do: 'tip', text: 'c10.tip.juno', seconds: 6, if: HELP('juno_roof') },
         { do: 'goto', at: tw('server', 0, 0, 6.3), radius: 1.2, text: 'c10.obj.core', on: [{ spotted: true, fail: 'c10.fail.seen' }] },
@@ -504,7 +517,7 @@ export default {
         { do: 'police', sentries: [], stealth: false },
         { do: 'hack', title: 'c10.hack.key', sub: 'c10.hack.key_sub', seconds: 18, length: 6, fail: [{ do: 'fail', text: 'c10.fail.hack' }] },
         {
-          do: 'cutscene', keep: true, shots: [
+          do: 'cutscene', shots: [
             { seconds: 3.6, cam: { from: tw('server', 1.6, 1.7, 5.0), look: tw('server', 0, 1.5, 8.6), fov: 38 },
               lines: [{ at: 0.4, who: 'lena', kind: 'radio', text: 'c10.lena.copying', seconds: 2.4 }] },
             // THE ALARM: red light, the voice of the building - all Phantoms are let loose
@@ -521,10 +534,10 @@ export default {
         // ---- THE SKY GARDEN: the rain, the city far below, a KVI drone sweeping the terrace ----
         { do: 'fade', to: 'black', seconds: 0.5 },
         { do: 'tower', show: 'terrace' },
-        { do: 'player', at: tw('terrace', 14.8, 0, 0), face: 270 },
-        TERRACE_WATCH,
+        { do: 'player', at: tw('terrace', 14.8, 0, 0), face: 90 },
+        ...TERRACE_WATCH,
         { do: 'fade', to: 'clear', seconds: 0.8 },
-        { do: 'checkpoint', id: 7, setup: [...ON_FOOT, { do: 'tower', show: 'terrace' }, { do: 'player', at: tw('terrace', 14.8, 0, 0), face: 270 }, TERRACE_WATCH] },
+        { do: 'checkpoint', id: 7, setup: [...ON_FOOT, { do: 'tower', show: 'terrace' }, { do: 'player', at: tw('terrace', 14.8, 0, 0), face: 90 }, ...TERRACE_WATCH] },
         { do: 'goto', at: tw('terrace', -14.9, 0, 1.5), radius: 1.3, text: 'c10.obj.service_lift', tip: 'c10.tip.drone', tipSeconds: 6, on: [{ spotted: true, fail: 'c10.fail.seen' }] },
         { do: 'police', sentries: [], stealth: false, real: false },
         // THE LAST LIFT DOWN: glass, the city coming up to meet him
@@ -734,10 +747,11 @@ export default {
           ],
         },
         // he walks to the console; the room holds still
-        { do: 'player', stage: { at: tw('glass', -5.2, 0, 1), face: 270, pose: 'idle' }, mood: 'sad', look: tw('glass', -6.1, 1.05, 1) },
-        { do: 'actorSet', id: 'vance', at: tw('glass', 5.6, 0, 1), face: 270, look: 'player' },
-        { do: 'checkpoint', id: 2, setup: [{ do: 'tower', show: 'glass' }, { do: 'player', stage: { at: tw('glass', -5.2, 0, 1), face: 270, pose: 'idle' }, mood: 'sad' },
-          { do: 'actor', id: 'vance', model: 'Adrian_Vance', name: 'name.vance', at: tw('glass', 5.6, 0, 1), face: 270, pose: 'idle', fixed: true, look: 'player', mood: 'neutral' }] },
+        // (face is a compass bearing, as everywhere in the story: 0 = north (+z), 90 = east (-x) - the console is east of him)
+        { do: 'player', stage: { at: tw('glass', -5.45, 0, 1), face: 90, pose: 'idle' }, mood: 'sad', look: tw('glass', -6.1, 1.05, 1) },
+        { do: 'actorSet', id: 'vance', at: tw('glass', 5.6, 0, 1), face: 90, look: 'player' },
+        { do: 'checkpoint', id: 2, setup: [{ do: 'tower', show: 'glass' }, { do: 'player', stage: { at: tw('glass', -5.45, 0, 1), face: 90, pose: 'idle' }, mood: 'sad' },
+          { do: 'actor', id: 'vance', model: 'Adrian_Vance', name: 'name.vance', at: tw('glass', 5.6, 0, 1), face: 90, pose: 'idle', fixed: true, look: 'player', mood: 'neutral' }] },
         // THE DECISION: the world stops. Only the rain and a heartbeat. A long silence before the two buttons.
         { do: 'music', stop: true },
         { do: 'music', calm: 0, tension: 0, silence: 2.0 },
@@ -745,7 +759,7 @@ export default {
           do: 'cutscene', keep: true, skippable: false, shots: [
             { seconds: 5.5, cam: { from: tw('glass', -3.2, 1.55, 3.4), to: tw('glass', -3.5, 1.56, 3.0), look: { of: 'player', p: [0, 1.5, 0] }, fov: 36 },
               lines: [{ at: 1.5, do: [{ do: 'music', heart: 46 }] }] },
-            { seconds: 4.0, hold: true, cam: { from: tw('glass', -4.2, 1.28, 1.9), look: tw('glass', -6.1, 1.05, 1), fov: 30 } },
+            { seconds: 4.0, hold: true, cam: { from: tw('glass', -7.6, 1.45, 2.3), look: tw('glass', -5.4, 1.35, 0.95), fov: 38 } },
           ],
         },
         { do: 'choice', layout: 'final', options: [

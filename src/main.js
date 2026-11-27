@@ -830,7 +830,7 @@ async function boot() {
     postfx.setSun(sx, sy, c[0] * k, c[1] * k, c[2] * k);
   }
 
-  let drawnAt = 0;
+  let drawnAt = 0, frameCalls = 0;
   function draw() {
     renderer.info.reset();
     // (the film's rear-view mirror is made first: its small picture is then part of the big one)
@@ -842,6 +842,9 @@ async function boot() {
       renderer.setRenderTarget(null);
       renderer.render(scene, camera);
     }
+    // (the draw calls of this picture alone - the tests read it; renderer.info also counts what is drawn between two
+    //  pictures, like a new reflection map of the sky)
+    frameCalls = renderer.info.render.calls;
   }
 
   // ------------------------------------------------------------ start settings
@@ -1161,8 +1164,9 @@ async function boot() {
     const hold = gameMode !== 'title' && (paused || ui.menuOpen);
     if (hold !== frozen) { frozen = hold; sound.pause(frozen); }
     if (frozen) {
-      // (the picture is still drawn now and then, so turning the phone or changing the graphics level shows)
-      if (++idleFrames % 12 === 0) draw();
+      // (the picture is still drawn now and then, so turning the phone or changing the graphics level shows -
+      // but not under the last screens of the story, which are black and cover it all)
+      if (++idleFrames % 12 === 0 && !ui.coverOpen) draw();
       return;
     }
     // (a film scene starts or ends: its picture settings)
@@ -1241,6 +1245,7 @@ async function boot() {
     get filmLook() { return filmLook; },
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
+    get frameCalls() { return frameCalls; },
     get paused() { return frozen; },
     get waypoint() { return waypoint; },
     set waypoint(w) { waypoint = w; routeTimer = 0; },

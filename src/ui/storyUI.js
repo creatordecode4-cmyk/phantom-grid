@@ -612,6 +612,8 @@ export function createStoryUI() {
     get actLabel() { return el.act.hidden ? null : el.act.textContent; },
     act() { if (actCb) actCb(); },
     get menuOpen() { return MENUS().some((n) => !n.hidden); },
+    // the last screens of the story are open: they are black and cover everything, so nothing is drawn under them
+    get coverOpen() { return !el.finale.hidden; },
     onPauseButton(fn) { press($('btn-pause-story'), fn); },
   };
 }

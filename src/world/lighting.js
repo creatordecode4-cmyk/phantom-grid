@@ -683,6 +683,10 @@ export function createLighting(scene, renderer, city, materials) {
     setRain(v) { rain = v; },
     get hour() { return hour; },
     setHour(h) { hour = ((h % 24) + 24) % 24; envDirty = true; envSunEl = 99; farDirty = true; },
+    // a slow change of the hour (a dawn in a film scene, a little every frame): the sky moves on, but the reflection
+    // map and the far shadow are only drawn again when the sun has moved enough, as when time runs by itself
+    // (setHour draws them again at once - every frame, that would cost the whole city once more each frame)
+    glideHour(h) { hour = ((h % 24) + 24) % 24; },
     jumpTo(name) { this.setHour(TC.presets[name]); },
     setRunning(v) { running = v; },
     get nightMode() { return nightMode; },

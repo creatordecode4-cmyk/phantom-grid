@@ -121,17 +121,18 @@ export default {
         { do: 'world', traffic: 0, people: 0, indoors: true, now: true },
         { do: 'wanted', stars: 0 },
         { do: 'tower', show: 'glass' },
-        { do: 'player', stage: { at: tw('glass', -5.2, 0, 1), face: 270, pose: 'idle' }, mood: 'sad' },
+        { do: 'player', stage: { at: tw('glass', -5.45, 0, 1), face: 90, pose: 'idle' }, mood: 'sad' },
         { do: 'allow', enter: 'none', move: false },
       ],
       steps: [
         // THE SWITCH: his hand on Lena's console. White.
         {
           do: 'cutscene', skippable: false, shots: [
-            { seconds: 3.6, fade: 'in', cam: { from: tw('glass', -4.35, 1.4, 1.75), to: tw('glass', -4.45, 1.36, 1.6), look: tw('glass', -6.1, 1.05, 1), fov: 30 },
+            // (from beyond the console: his face over the blue light, and his hand coming down on it)
+            { seconds: 3.6, fade: 'in', cam: { from: tw('glass', -7.3, 1.5, 1.95), to: tw('glass', -7.2, 1.46, 1.8), look: tw('glass', -5.85, 1.2, 0.95), fov: 34 },
               do: [{ do: 'player', pose: 'putDown', hands: tw('glass', -6.0, 1.07, 1) }, { do: 'music', heart: 44 }],
               lines: [{ at: 2.6, do: [{ do: 'sound', name: 'clunk' }, { do: 'music', heart: 0 }] }] },
-            { seconds: 1.6, cam: { from: tw('glass', -4.35, 1.4, 1.75), look: tw('glass', -6.1, 1.05, 1), fov: 24 },
+            { seconds: 1.6, cam: { from: tw('glass', -7.2, 1.46, 1.8), look: tw('glass', -5.95, 1.1, 1.0), fov: 26 },
               do: [{ do: 'fade', to: 'white', seconds: 1.2 }, { do: 'music', silence: 2.0 }] },
           ],
         },
@@ -141,7 +142,7 @@ export default {
         PHANTOM('p1', [181, 126], 0), PHANTOM('p2', [176.4, 149], 270), PHANTOM('p3', [191, 158], 205),
         {
           do: 'cutscene', skippable: false, shots: [
-            { seconds: 5.6, fade: 'fromWhite', cam: { from: [168, 2.6, 110], to: [169, 2.8, 113], look: [182, 1.2, 140], fov: 46 },
+            { seconds: 5.6, fade: 'fromWhite', cam: { from: [174, 2.3, 113], to: [175, 2.45, 116], look: [183, 1.0, 141], fov: 46 },
               do: [{ do: 'time', to: 5.75, seconds: 16 }, { do: 'time', rain: 'ease' }, { do: 'sound', name: 'wind' }],
               lines: [{ at: 1.3, do: [{ do: 'vehicleSet', id: 'p1', flash: false, lights: 'off' }] }, { at: 2.6, do: [{ do: 'vehicleSet', id: 'p2', flash: false, lights: 'off' }] },
                 { at: 3.8, do: [{ do: 'vehicleSet', id: 'p3', flash: false, lights: 'off' }] }] },
@@ -250,15 +251,15 @@ export default {
         { do: 'world', traffic: 0, people: 0, indoors: true, now: true },
         { do: 'wanted', stars: 0 },
         { do: 'tower', show: 'glass' },
-        { do: 'player', stage: { at: tw('glass', -5.2, 0, 1), face: 270, pose: 'idle' }, mood: 'stern' },
-        { do: 'actor', id: 'vance', model: 'Adrian_Vance', name: 'name.vance', at: tw('glass', 5.6, 0, 1), face: 270, pose: 'idle', fixed: true, look: 'player', mood: 'neutral' },
+        { do: 'player', stage: { at: tw('glass', -5.45, 0, 1), face: 90, pose: 'idle' }, mood: 'stern' },
+        { do: 'actor', id: 'vance', model: 'Adrian_Vance', name: 'name.vance', at: tw('glass', 5.6, 0, 1), face: 90, pose: 'idle', fixed: true, look: 'player', mood: 'neutral' },
         { do: 'allow', enter: 'none', move: false },
       ],
       steps: [
         // his hand on the console; the screen goes white; a cold low hum fills the room
         {
           do: 'cutscene', skippable: false, shots: [
-            { seconds: 3.8, fade: 'in', cam: { from: tw('glass', -4.35, 1.4, 1.75), look: tw('glass', -6.1, 1.05, 1), fov: 30 },
+            { seconds: 3.8, fade: 'in', cam: { from: tw('glass', -7.3, 1.5, 0.05), look: tw('glass', -5.85, 1.2, 1.0), fov: 34 },
               do: [{ do: 'player', pose: 'putDown', hands: tw('glass', -6.0, 1.07, 1) }],
               lines: [{ at: 2.4, do: [{ do: 'sound', name: 'hum' }] }] },
             // at the far end of the table: the smallest smile

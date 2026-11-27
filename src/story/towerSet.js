@@ -291,7 +291,8 @@ export function createTower({ scene, renderer, camera, lighting, props = null, c
         b.solid(X(x - 0.75), Z(z - 0.75), X(x + 0.75), Z(z + 0.75), H);
       }
       // long planters with low trees: cover
-      for (const [x, z] of [[-8.5, -4], [8.5, -4], [-16, 1], [16, 1], [-7, 6.2], [7, 6.2]]) {
+      // (the two nearest the gates stand 2 m clear of them: there is always room to walk round them)
+      for (const [x, z] of [[-8.5, -4], [8.5, -4], [-16, 1], [16, 1], [-7, 4.6], [7, 4.6]]) {
         const p = F(x, z, Math.abs(x) > 12 ? Math.PI / 2 : 0);
         p.box('gloss', 0, 0, 0, 3.8, 0.95, 1.1, C('#30353c'), { r: 0.04 });
         p.box('cloth', 0, 0.95, 0, 3.6, 0.06, 0.9, C('#2b2219'), { r: 0.01 });
