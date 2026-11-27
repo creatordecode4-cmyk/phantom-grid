@@ -730,6 +730,27 @@ export function createTower({ scene, renderer, camera, lighting, props = null, c
     roomShade.uRoomH.value.set(h, h, h);
     roomShade.uRoomY.value = r.floor || 0;
   }
+  // (only two zones stay in memory: the one shown and the one before it - going back one step is quick; anything
+  //  older is thrown away and built again if the story comes back to it. The kit's shared materials stay.)
+  const order = [];
+  function unload(name) {
+    const z = zones[name];
+    if (!z) return;
+    const shared = new Set(Object.values(mats()));
+    z.group.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      for (const m of [].concat(o.material || [])) if (!shared.has(m)) { if (m.map) m.map.dispose(); if (m.uniforms && m.uniforms.tDiffuse) { /* the mirror's own picture */ } m.dispose(); }
+      if (o.isMesh && o.getRenderTarget) o.getRenderTarget().dispose();
+    });
+    root.remove(z.group);
+    delete zones[name];
+  }
+  function prune(name) {
+    const i = order.indexOf(name);
+    if (i >= 0) order.splice(i, 1);
+    order.push(name);
+    while (order.length > 2) unload(order.shift());
+  }
   let rainMesh = null;
   function show(name) {
     if (name && !BUILD[name]) name = null;
@@ -748,6 +769,7 @@ export function createTower({ scene, renderer, camera, lighting, props = null, c
       return;
     }
     if (!zones[name]) { zones[name] = BUILD[name](); zones[name].group.traverse((m) => m.layers.set(INTERIOR_LAYER)); }
+    prune(name);
     const z = zones[name];
     if (!shown) { saved = { mask: camera.layers.mask }; camera.layers.set(INTERIOR_LAYER); }
     shown = name; root.visible = true; z.group.visible = true; layerT = 0;

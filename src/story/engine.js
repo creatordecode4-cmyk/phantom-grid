@@ -723,7 +723,7 @@ export function createStory(G) {
     holder.add(inner);
     if (s.scale) holder.scale.setScalar(s.scale);
     if (s.rot) holder.rotation.set(s.rot[0], s.rot[1], s.rot[2], 'YXZ');
-    const o = { holder, inner, fly: null };
+    const o = { holder, inner, fly: null, drop: null };
     if (s.in) {
       const v = car(s.in);
       if (!v) return;
@@ -790,6 +790,8 @@ export function createStory(G) {
     }
     // (a delivery drone: it flies up and down a line of points)
     if (s.fly) o.fly = { path: makePath(s.fly.path), y: s.fly.y || 9, speed: s.fly.speed || 7, s: 0 };
+    // (drop: meters - it falls from that high onto its place and lands with a heavy thud: Chapter 10's container)
+    if (s.drop) { o.drop = { y: holder.position.y, v: 0 }; holder.position.y += s.drop; }
     if (s.hidden) holder.visible = false;
     things.set(s.id, o);
   };
@@ -1919,13 +1921,14 @@ export function createStory(G) {
     ui.clearSubs(); quietTalk(); ui.limiter(null); ui.prompt(null); ui.tip(null); ui.paint(null); hack.cancel();
     music.setHeartbeat(0); sound.setSpray(false);
     const left = save.pay(FINE);
-    const n = 1 + Math.floor(Math.random() * 3);
-    ui.say(t('name.guard'), t('c2.busted.' + n), { now: true, seconds: 2.4 });
+    // (a chapter can have its own words for it: Chapter 10's Phantoms are KVI, not the Guard)
+    const B = (chapter && chapter.busted) || { who: 'guard', lines: ['c2.busted.1', 'c2.busted.2', 'c2.busted.3'], after: 'c2.busted.after' };
+    ui.say(t('name.' + B.who), t(B.lines[Math.floor(Math.random() * B.lines.length)]), { now: true, seconds: 2.4 });
     if (navigator.vibrate) { try { navigator.vibrate([60, 60, 60]); } catch (e) { /* not allowed */ } }
     setTimeout(() => {
       if (my !== gen) return;
       ui.fade('black', 0.6, 0.6);
-      ui.bustCard({ title: t('ui.busted'), line: t('c2.busted.after'), fine: `${t('ui.fine')}   -${FINE} CR`, left: `${t('ui.money_left')}   ${left} CR`, label: t('ui.continue') }, () => {
+      ui.bustCard({ title: t('ui.busted'), line: t(B.after), fine: `${t('ui.fine')}   -${FINE} CR`, left: `${t('ui.money_left')}   ${left} CR`, label: t('ui.continue') }, () => {
         ui.hideMenus(); failed = false;
         if (my === gen) restart();
       });
@@ -2176,6 +2179,12 @@ export function createStory(G) {
       // (a glow inside a prop always faces the camera)
       const bp = o.inner.userData.billboardPart;
       if (bp && bp.parent) { bp.parent.getWorldQuaternion(_bq); bp.quaternion.copy(_bq.invert().multiply(camera.quaternion)); }
+      if (o.drop) {
+        const d = o.drop;
+        d.v += 24 * dt;
+        o.holder.position.y = Math.max(d.y, o.holder.position.y - d.v * dt);
+        if (o.holder.position.y <= d.y) { o.drop = null; sound.crash('heavy', 1); sound.thump(1); }
+      }
       if (o.fly) {
         const f = o.fly, L2 = f.path.total * 2;
         f.s = (f.s + f.speed * dt) % L2;

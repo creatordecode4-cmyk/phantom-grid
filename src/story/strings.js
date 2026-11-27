@@ -1161,6 +1161,10 @@ export const STRINGS = {
     'c10.lena.ready': "It's done. The switch is ready.",
     'c10.lena.top': 'But it only runs from his console. The top floor.',
     'c10.fail.caught': 'The Phantoms boxed you in.',
+    'c10.busted.1': 'Phantom unit in contact. Hold still.',
+    'c10.busted.2': 'Driver contained. For your safety.',
+    'c10.busted.3': 'Stay in the vehicle. Hands on the wheel.',
+    'c10.busted.after': 'They had you for a moment. Lena got you out. Back to the last checkpoint.',
     // ---- 5. the glass room ----
     'c10.lena.alone': 'He sent everybody home. He is alone up there.',
     'c10.vance.safety': 'For your safety.',

@@ -1191,7 +1191,8 @@ async function boot() {
       const frames_ = frames, span_ = fpsTimer;
       frames = 0;
       fpsTimer = 0;
-      hud.setLocation(interiors.inside ? interiors.label : vehicles.active && vehicles.active.arena ? 'IRONHILL HIGHWAY' : layout.districtAt(player.position.x, player.position.z));
+      // (Chapter 10: inside the KVI tower; on its spiral ramp the car is on the tower's own arena)
+      hud.setLocation(world.tower && world.tower.zone ? 'KVI TOWER' : interiors.inside ? interiors.label : vehicles.active && vehicles.active.arena ? 'IRONHILL HIGHWAY' : layout.districtAt(player.position.x, player.position.z));
       hud.setClock(lighting.hour);
       hud.setWeather(weather.amount > 0.3 ? 'RAIN' : lighting.info.night > 0.6 ? 'NIGHT' : 'CLEAR');
       if (statsOn) {

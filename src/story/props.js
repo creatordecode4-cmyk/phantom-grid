@@ -180,6 +180,24 @@ export function createProps() {
       const pool = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 4.5), mat); pool.rotation.x = -Math.PI / 2; pool.position.set(0, 0.03, 1.1); pool.renderOrder = 14; g.add(pool);
       return g;
     },
+    // CHAPTER 10: a plain shipping container (6 m, dented dark red, ribbed sides drawn in its picture, the doors at
+    // one end) - Rask drops one from a crane into the street behind Nate. One mesh, one material.
+    container() {
+      const t = tex('containerRibs', () => {
+        const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+        const g = c.getContext('2d');
+        g.fillStyle = '#5a1e17'; g.fillRect(0, 0, 256, 128);
+        for (let x = 0; x < 256; x += 8) { const gr = g.createLinearGradient(x, 0, x + 8, 0); gr.addColorStop(0, 'rgba(0,0,0,0.35)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.08)'); gr.addColorStop(1, 'rgba(0,0,0,0.35)'); g.fillStyle = gr; g.fillRect(x, 0, 8, 128); }
+        g.fillStyle = 'rgba(20,10,8,0.5)'; g.fillRect(0, 0, 256, 6); g.fillRect(0, 122, 256, 6);
+        for (let i = 0; i < 18; i++) { g.fillStyle = `rgba(120,70,40,${0.15 + (i % 3) * 0.08})`; g.fillRect((i * 37) % 250, (i * 53) % 120, 6 + (i % 4) * 5, 3 + (i % 3) * 4); }
+        const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; tx.wrapS = THREE.RepeatWrapping; tx.repeat.set(2, 1);
+        return tx;
+      });
+      const m = box(2.44, 2.59, 6.06, new THREE.MeshStandardMaterial({ map: t, roughness: 0.75, metalness: 0.35 }));
+      m.position.y = 1.295;
+      const g = new THREE.Group(); g.add(m);
+      return g;
+    },
     // a delivery drone with a parcel under it and a blinking lamp
     cargoDrone() {
       const g = new THREE.Group();

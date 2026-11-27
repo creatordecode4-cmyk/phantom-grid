@@ -147,6 +147,8 @@ export default {
     harrow_switched: true, harrow_access_card: true, rask_redeemed: true, ascend_announced: true,
   },
   preload: { actors: ['Lena_Marchetti', 'Dante_Rios', 'Viktor_Rask', 'Sloane_Harrow', 'Mace_Doyle', 'Adrian_Vance'], vehicles: ['tech_patrol_car'] },
+  // caught by a Phantom: KVI's words, not the Guard's (then the last checkpoint, as always)
+  busted: { who: 'pa', lines: ['c10.busted.1', 'c10.busted.2', 'c10.busted.3'], after: 'c10.busted.after' },
 
   missions: [
     // =====================================================================
@@ -585,10 +587,18 @@ export default {
           on: [{ time: 14, do: [{ do: 'say', who: 'harrow', kind: 'radio', text: 'c10.harrow.block', if: HAS.harrow }, { do: 'police', clearRoadblock: 45, if: HAS.harrow }] }] },
         { do: 'checkpoint', id: 2, setup: [{ do: 'vehicleSet', id: 'run', place: GRID_A, face: 180, stop: true }, { do: 'police', stars: 4, seen: true, if: NORMAL }, { do: 'police', stars: 3, seen: true, if: EASY }] },
         { do: 'driveTo', at: GRID_B, radius: 26, text: 'c10.obj.grid2',
-          on: [{ time: 10, do: [{ do: 'say', who: 'dante', kind: 'radio', text: 'c10.dante.block', if: HELP('dante_street') }, { do: 'police', lose: 3, calm: 9, if: HELP('dante_street') }, { do: 'sound', name: 'crash', if: HELP('dante_street') }] }] },
+          on: [{ time: 10, do: [{ do: 'say', who: 'dante', kind: 'radio', text: 'c10.dante.block', if: HELP('dante_street') }, { do: 'police', lose: 3, calm: 9, if: HELP('dante_street') },
+            // (two Chrome Wolves cars swing across the street behind him)
+            { do: 'spawn', id: 'wolf1', kind: 'coupe', at: { of: 'run', p: [-2.6, 0, -30] }, face: 90, color: [0.1, 0.1, 0.11], npc: true, simple: true, lights: 'normal', if: HELP('dante_street') },
+            { do: 'spawn', id: 'wolf2', kind: 'coupe', at: { of: 'run', p: [2.6, 0, -34] }, face: 270, color: [0.16, 0.16, 0.18], npc: true, simple: true, lights: 'normal', if: HELP('dante_street') },
+            { do: 'sound', name: 'honkTwice', if: HELP('dante_street') }] }] },
+        { do: 'remove', ids: ['wolf1', 'wolf2'] },
         { do: 'checkpoint', id: 3, setup: [{ do: 'vehicleSet', id: 'run', place: GRID_B, face: 180, stop: true }, { do: 'police', stars: 4, seen: true, if: NORMAL }, { do: 'police', stars: 3, seen: true, if: EASY }] },
         { do: 'driveTo', at: NEON, radius: 26, text: 'c10.obj.neon',
-          on: [{ time: 12, do: [{ do: 'say', who: 'rask', kind: 'radio', text: 'c10.rask.container', if: HELP('rask_street') }, { do: 'police', lose: 2, calm: 8, if: HELP('rask_street') }, { do: 'sound', name: 'crash', if: HELP('rask_street') }] }] },
+          on: [{ time: 12, do: [{ do: 'say', who: 'rask', kind: 'radio', text: 'c10.rask.container', if: HELP('rask_street') }, { do: 'police', lose: 2, calm: 8, if: HELP('rask_street') },
+            // (a container falls into the street behind him, from a crane of the docks)
+            { do: 'prop', id: 'box', kind: 'container', at: { of: 'run', p: [0, 0, -26] }, face: 80, drop: 16, if: HELP('rask_street') }] }] },
+        { do: 'remove', ids: ['box'] },
         { do: 'checkpoint', id: 4, setup: [{ do: 'vehicleSet', id: 'run', place: NEON, face: 90, stop: true }, { do: 'police', stars: 4, seen: true, if: NORMAL }, { do: 'police', stars: 3, seen: true, if: EASY }] },
         { do: 'driveTo', at: RAMP_FOOT, radius: 18, text: 'c10.obj.ramp_up' },
         // up the ramp (a cut): the city's Phantoms stay below; two follow him onto the highway
