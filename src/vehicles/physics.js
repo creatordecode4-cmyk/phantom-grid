@@ -108,7 +108,7 @@ export function stepCar(v, input, dt, world) {
   // A BICYCLE (bicycle.js) has no motor and no gearbox to work out: the legs push hard from a stop and less
   // and less the faster it goes; backward it is only pushed with the feet
   if (v.info.cycle) {
-    v.gear = 1;
+    v.gear = 6;                      // (one "gear" that reaches the top speed: nothing holds it back at a low speed)
     drive = gas <= 0.02 ? 0 : v.reverse ? -1.3 * gas * clamp(1 + fwd / 2.5, 0, 1) : T.accel * gas * clamp(1 - (fwd / top) ** 2, 0, 1);
   }
   // A HEAVY LOAD (Chapter 5: a crate, a trailer with a container; v.heavy 0..1): the engine pulls less

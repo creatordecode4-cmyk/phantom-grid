@@ -2,8 +2,8 @@
 // weapons.js - A BAT AND TWO GUNS for free roam.
 //
 // FOR THE PLAYER (on foot, free roam only - never in the story):
-//   the WEAPON button (or the G key) goes through: EMPTY HANDS, BAT, PISTOL, RIFLE
-//   the HIT / FIRE button (or the F key): swing the bat, or shoot (hold it to keep shooting)
+//   the WEAPON button (or the Z key) goes through: EMPTY HANDS, BAT, PISTOL, RIFLE
+//   the HIT / FIRE button (or the X key): swing the bat, or shoot (hold it to keep shooting)
 //
 //   * THE BAT: one swing. People in front of you fall over, street things (bins, news boxes, meters) fly, a car
 //     gets a dent. The people of the city run away.
@@ -149,8 +149,8 @@ export function createWeapons({ scene, player, city, vehicles, police, loose, si
   bFire.addEventListener('pointerdown', (e) => { stop(e); holdFire = true; bFire.classList.add('down'); });
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) bFire.addEventListener(ev, () => { holdFire = false; bFire.classList.remove('down'); });
   let keyFire = false;
-  window.addEventListener('keydown', (e) => { if (e.code === 'KeyG' && !e.repeat && shown) next(); if (e.code === 'KeyF') keyFire = true; });
-  window.addEventListener('keyup', (e) => { if (e.code === 'KeyF') keyFire = false; });
+  window.addEventListener('keydown', (e) => { if (e.code === 'KeyZ' && !e.repeat && shown) next(); if (e.code === 'KeyX') keyFire = true; });
+  window.addEventListener('keyup', (e) => { if (e.code === 'KeyX') keyFire = false; });
 
   function label() { bWeapon.textContent = INFO[current].label; bFire.textContent = INFO[current].act || ''; bFire.hidden = !shown || current === 'none'; }
   function show(kind) {

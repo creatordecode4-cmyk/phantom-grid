@@ -382,7 +382,12 @@ export function createStoryUI() {
     }
     // (the Ending gallery is there once an ending was seen)
     if (info.gallery) add(t('ui.gallery'), 'gallery');
-    add(t('ui.missions'), 'select'); add(t('ui.free_roam'), 'free'); add(t('ui.online'), 'online'); add(t('ui.settings'), 'settings');
+    add(t('ui.missions'), 'select');
+    // (FREE ROAM and ONLINE side by side: one more row would not fit on a small phone held sideways)
+    const row = document.createElement('div'); row.className = 'menu-row2';
+    for (const [label, action] of [[t('ui.free_roam'), 'free'], [t('ui.online'), 'online']]) { const b = button(label, 'btn'); press(b, () => cb(action)); row.appendChild(b); }
+    col.appendChild(row);
+    add(t('ui.settings'), 'settings');
     if (info.canContinue) { const d = document.createElement('div'); d.className = 'note'; d.textContent = t('ui.new_warn'); col.appendChild(d); }
   }
   // cb(action): 'resume' | 'settings' | 'restart' | 'title'

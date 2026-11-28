@@ -60,6 +60,9 @@ Open the GitHub Pages address of this repository (see "Publish on GitHub Pages" 
 | Rain | `RAIN` button | same, or key `R` |
 | Quality | Quality button, then Auto / Low / Medium / High | same |
 | FPS + draw calls | `FPS` button | same, or key `F` |
+| Weapons (free roam, on foot) | `WEAPON` button: hands, bat, pistol, rifle. `HIT` / `FIRE` button (hold to keep shooting) | `Z` changes the weapon, `X` hits or fires |
+| Bank, police station | walk in through the door with the `BANK` / `POLICE` sign (they are marked on the map), stand at the cash machine, the counter or the desk: a button shows | same, `E` |
+| Play with others | title screen > `ONLINE` (needs a world server: see `server/README.md`) | same |
 | Full screen | `FULL` button | same |
 | Get into / out of a car | `CAR` button (shows up next to a car), `EXIT` while driving | `E` |
 | Drive | `◀` `▶` steer (or `TILT`: steer by tilting the phone), `GAS`, `BRAKE` (hold = reverse), `HANDBRAKE`, `HORN`. The pedals are analog: slide your finger up on `GAS` / `BRAKE` for more | `W` gas, `S` brake / reverse, `A` `D` steer, `Space` handbrake, `H` horn |
@@ -120,6 +123,7 @@ src/
   main.js                  starts everything, quality presets, the main loop
   config.js                ALL numbers you may want to tweak (speeds, quality, time ...)
   city/
+    siteBuilding.js        the building site: fence, concrete frame, scaffolding, tower crane, office, heaps (a lot of the city)
     layout.js              THE MAP as plain data: streets, blocks, districts, spawn point
     cityBuilder.js         turns the layout into meshes + collision data + lamp light map
     materials.js           loads textures, builds all materials and their shader patches
@@ -138,6 +142,7 @@ src/
     models.js              the small 3D models, built in code
     backdrop.js            ocean, hills, far Crown towers, highway, maglev line
   vehicles/
+    bicycle.js             the bicycle, made in code (frame, fork, bars, cranks, chain, spoked wheels)
     carModels.js           THE FOUR CAR TYPES (sedan, SUV, van, sports coupe), built in code,
                            and how each one drives (top speed, grip ...)
     vehicleLoader.js       loads the vehicle model files from assets/vehicles/, fits them (size,
@@ -198,6 +203,7 @@ src/
     streetLife.js          free roam: small moments in the streets (people with their own business,
                            lines you overhear when you walk past) - a list of data, easy to add to
   interiors/
+    furniture3.js          the pieces of the bank and the police station, and standing people (staff, a guard)
     interiors.js           GOING INTO HOUSES: the real doors in the city (ENTER / EXIT), the fade, the
                            rooms' light for every hour (sun through the window, lamps, moonlight),
                            sun beams with dust; the street keeps living around the door meanwhile
@@ -214,7 +220,14 @@ src/
     sound.js               all sounds, made in code (engine, tires, horn, crash, footsteps)
     music.js               the mixtape "DON'T SKIP" (six lo-fi tracks made in code, track 7 is empty),
                            rain, traffic hum, waves, far sirens, the chase pad, the heartbeat
+  net/
+    online.js              online free roam: the ONLINE screen, the other players, their vehicles, shots and chat
   world/
+    stability.js           phones: the crash guard, the picture budget of each graphics level, the own graphics options
+    looseProps.js          street things that a car knocks over (bins, news boxes, meters, signs, hydrants): small rigid bodies
+    construction.js        what moves on the building site: twelve workers, the digger, the site board
+    places.js              which doors are a bank or a police station, their signs, what can be done inside
+    weapons.js             a bat, a pistol and a rifle for free roam
     water.js               where the water is and how deep (the canals of The Sunk, the sea): who is in deep water swims
     lighting.js            sky, sun, day / night, shadows, haze, reflections, street lamps
     weather.js             rain and wet streets
@@ -235,6 +248,8 @@ src/
     math.js                small math helpers, seeded random numbers, polygons
     geometry.js            MeshBuilder (many shapes -> one mesh), InstancedSet, DetailSet
     noise.js               noise, normal maps made from photos, canvas helpers
+server/                    the world server for online free roam (Node.js, no dependencies): server.js, README.md
+render.yaml                the settings of the world server for a free host
 assets/
   textures/                the tileable photo textures (see below)
   characters/              put Nate_Calloway.glb here (and Nate_Calloway_rigged.glb with animations)
@@ -2505,6 +2520,145 @@ What the tests found, and what was changed:
   Theo's eyes are those of the passenger (the request said "he drives").
 - Tested by a robot in a software renderer, without sound: the music, the knocks and the voices were never heard, and
   60 fps has to be checked on a phone.
+
+
+## The open world (version 14.0)
+
+Free roam became a place to play in: the game is safer on small phones, the street answers when you hit it, there
+are a bank, a police station and a building site, a bat and two guns, a bicycle - and other people can be in the
+same city.
+
+### 1. Phones: it must not close by itself
+
+A phone closes a browser tab that uses too much memory; the player only sees the game "crash".
+
+- **A crash guard** (`src/world/stability.js`). The game writes "open" into the phone's storage when it starts and
+  "closed" when it is put away. If it starts and finds "open", the last session died on the screen: the graphics
+  start **one level lower** than the level that died, and a line says so. Three good minutes forget old crashes.
+  When the graphics chip is taken away (the phone ran out of memory for it) a full-screen note appears and the game
+  starts again by itself, one level lower.
+- **A picture budget.** Every graphics level has a largest picture size; bigger pictures are made smaller on the
+  way to the chip. Measured picture memory on the chip: **19 MB on VERY LOW, 32 MB on LOW, 93 MB on MEDIUM**
+  (before: about 155 MB at every level).
+- **A new level VERY LOW**, chosen by itself for phones with 2 GB or less: 60 % sharpness, no shadows, 8 people,
+  6 cars, a shorter view. The big city meshes are cut into 220 m squares there (and on LOW), so the chip only
+  works on what is in front of the camera: 736 000 triangles became 496 000.
+- **Own graphics options** (SETTINGS > GRAPHICS - OPTIONS): LEVEL (AUTO, VERY LOW, LOW, MEDIUM, HIGH), SHARPNESS,
+  SHADOWS, GLOW AND COLOR, VIEW DISTANCE, PEOPLE, TRAFFIC, PICTURES A SECOND (30 or 60). A line shows what is
+  running now. If the phone gets hot or the game closes: VERY LOW, SOFT, 30.
+
+### 2. Shapes: fewer cubes
+
+`softBox()` (`src/utils/geometry.js`) is a box with cut edges whose faces are shaded as if they were round (44
+triangles instead of 12): every box of the street furniture uses it now. The dumpster leans and has ribs and two
+curved lids, planters are turned oval pots, the bus stop has an arched roof on round posts, the news boxes, the
+chargers and the posts of the gates are rounded, the furniture in the rooms has softer edges, the islands of the
+maglev pillars are round. MEDIUM draws 3.5 million triangles instead of 3.2 with the same number of draw calls.
+
+### 3. Physics: the street answers
+
+The car model already had an engine curve, a gearbox, weight moving between the axles, a grip budget per axle,
+understeer and oversteer and three kinds of ground; what was missing was the world answering. So:
+
+- **Street things can be knocked over** (`src/world/looseProps.js`): trash bins, news boxes, parking meters,
+  street signs and hydrants. A car that hits one fast enough tears it loose; a small rigid body takes its place:
+  a box with a place, a speed, a turn and a spin; its lowest corner under the ground gets a push up and a push
+  against its sliding **at that corner**, so it tips, tumbles and rolls by itself. Hit at 50 km/h the things
+  come to rest after 1.4 to 2.2 seconds, 7 to 14 m away. A hydrant leaves a jet of water. Far behind the player
+  the city puts everything back.
+- **People are thrown** along the car's way (further for a faster car) instead of falling on the spot. They
+  still get up again: nobody is hurt.
+- **A bicycle** has its own simple drive (the legs push hard from a stop, less the faster it goes, no gearbox).
+
+### 4. Places
+
+- **A building site** one block east of the start (`src/city/siteBuilding.js`, a lot of the city like the
+  hand-made buildings): a board fence with an open gate, the concrete frame of a new house with four slabs, a
+  stair core and steel bars standing out of the top, scaffolding with plank decks and braces, a tower crane with a
+  load on its hook, the site office, a portable toilet, a generator, a mixer, heaps of sand and gravel, bricks on
+  pallets, pipes, timber, cement bags, barrels, a skip, cones and barriers. All of this stands still and is part
+  of the city's big meshes: no extra draw calls.
+  What moves (`src/world/construction.js`, six draw calls, only within 95 m): **twelve workers** in vests and
+  hard hats who hammer, shovel, carry, guide the crane with an arm up, talk at the office and walk their rounds
+  (the arm and body movement is done by the crowd shader, `PG_WORK` in `materials.js`), **a digger** whose upper
+  part swings and whose arm dips, the board with the name of the project, hammer blows and the digger's motor.
+  A worker hit by a car or a bat falls and gets up.
+- **Three banks and two police stations** (`src/world/places.js`): five of the doors of the city, chosen from the
+  doors themselves (the same every time). Each has a lit sign over the door (one mesh for all) and a mark on the
+  map; the building site has a mark too.
+  Inside (`src/interiors/generate.js`, pieces in `furniture3.js`; 20 to 21 draw calls): **the bank** has a long
+  counter behind brass and glass with three tellers, two cash machines, a rope lane, the round door of the vault,
+  a guard and somebody waiting; **the station** has a front desk with an officer, seats, a board of notices, a
+  holding cell behind bars with somebody in it, lockers and two desks.
+  In free roam: the **cash machine** pays 200 credits every five minutes, the **counter** can be robbed with a
+  gun in the hand (2500 credits, the alarm, four stars), the **police desk** takes a fine of 300 credits a star
+  and calls the Guard off. These credits are kept apart from the money of the story.
+- **Offices, shops, cafés, flats, garages** were already behind the other doors (version 6.0).
+
+### 5. A bat, two guns, a bicycle
+
+- On foot in free roam: the **WEAPON** button (key Z) goes through HANDS, BAT, PISTOL, RIFLE; **HIT / FIRE**
+  (key X, hold to keep shooting). `src/world/weapons.js`.
+- The bat knocks people over, sends street things flying and dents cars. A shot flies where you look (it finds
+  somebody in front by itself, so a phone needs no second finger to aim), stops at the first wall and knocks over
+  people and loose things on its way; cars take damage. A light line and sparks show it.
+- **Nobody is hurt and nobody bleeds**: people fall and get up, the others run away along their sidewalk.
+- Swinging at people or firing makes you **wanted**: two stars for a shot, three when somebody was hit, four for
+  a Guard car. No shooting inside rooms; no weapons in the story.
+- **The bicycle** (`src/vehicles/bicycle.js`) stands at the end of the garage row: a frame of tubes in its
+  colour, fork, flat bars with grips and levers, cranks, pedals, chain, mudguards, a bottle, spoked wheels. It is
+  ridden like the street bike (it leans into corners), is silent and reaches about 40 km/h.
+
+### 6. Online
+
+Title screen > **ONLINE**: JOIN THE MAIN WORLD (everybody), MAKE MY OWN WORLD (a code of six letters for your
+friends), JOIN with a code. The other players walk, ride and drive around with their names over their heads; you
+see and hear their shots; CHAT sends a line to your world.
+
+- `server/server.js` is the world server: a WebSocket server with **no dependencies** (the handshake and the
+  frames are written out). 16 players in a world; MAIN-2 opens when MAIN is full; an own world closes when its
+  last player leaves. It passes on places ten times a second, shots and chat, and trusts nothing it gets.
+- `src/net/online.js` is the game's side: the others on foot are one instanced mesh, their vehicles are real
+  vehicles of the game moved by the network, a sleeping free host is woken before the connection is made.
+- **Somebody has to run the server** - a web page cannot be one. `server/README.md` has the steps for a free
+  host (about ten minutes, from a phone). Until an address is typed into the ONLINE screen (or put into
+  `CONFIG.online.server`), ONLINE says that no server is set.
+- Shared: the players. **Not shared:** traffic, people, the Guard, credits - every player has their own city life.
+
+### 7. How it was tested, and the numbers
+
+- The world server alone, with three clients: 15 checks (worlds, codes, a full world, cleaning of bad numbers
+  and text, events, leaving, a message that is too big).
+- Two copies of the game and the server together: 20 checks (both join, each sees the other where they stand and
+  walk, a bicycle ridden by one appears for the other, shots, the weapon in the hand, chat, an own world, a wrong
+  code, the ONLINE screen).
+- Every chapter's first mission still starts (10 of 10, no errors) with the new lot in the city.
+- Free roam after this version:
+
+  | Draw calls (triangles) | VERY LOW | LOW | MEDIUM |
+  |---|---|---|---|
+  | at the start point, beside the row of nine test vehicles | 162 (0.54 M) | 165 (0.62 M) | 322 (3.71 M) |
+  | at the gate of the building site (workers and digger at work) | 109 (0.49 M) | 115 (0.57 M) | 244 (3.58 M) |
+  | in front of a bank | 109 (0.49 M) | 115 (0.57 M) | 245 (3.61 M) |
+  | riding the bicycle up the start street | 122 (0.37 M) | 126 (0.46 M) | 232 (3.45 M) |
+  | inside the bank / the police station | - | 21 / 20 | - |
+
+  The start point is the heaviest place of the city on MEDIUM: the row of test vehicles stands there (each one
+  is several parts, drawn again for the shadows). It was 313 before this version and is 322 now (the bicycle and
+  the signs); everywhere else MEDIUM stays under 250. The bicycle reached 37 km/h on the flat.
+
+- As always: all of it was done by a test robot in a software renderer. **No sound was heard**, no real phone
+  was used, and the online part ran on one computer, not over the internet.
+
+### 8. What is not there
+
+- Other players on a bicycle or a motorbike are shown as the vehicle with their name over it, without the rider.
+  Players cannot hit each other; a shot at another player does nothing to them.
+- The workers have no tools in their hands, and nobody stands on the upper decks of the scaffolding while the
+  player is far away (they are only drawn within 95 m).
+- The staff of the bank and the station stand still (they are part of the room, like its furniture).
+- The crane does not turn and the mixer truck is not there: the site has one machine that moves.
+- The test buttons of free roam (TIME, RAIN, FPS, CARS, ASSIST, RIG TEST) are still on the screen.
 
 
 ## Known limits

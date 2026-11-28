@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 9.0',
+  version: 'Phase 14.0',
 
   // ----- ONLINE ------------------------------------------------------------
   // The address of the world server that everybody uses (server/server.js, see server/README.md), for example

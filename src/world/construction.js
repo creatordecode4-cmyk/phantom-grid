@@ -13,7 +13,7 @@
 //   * THE SITE BOARD on the fence, with the name of the project.
 //   * hammer blows and the digger's motor, when the player is near.
 //
-// Everything here is only shown (and only moved) when the player is within 115 m.
+// Everything here is only shown (and only moved) when the player is within 95 m.
 //
 //   const site = createConstruction({ scene, city, materials, sound });
 //   site.update(dt, time, playerX, playerZ, obstacles);     obstacles: the circles of the player's car (main.js)
@@ -27,7 +27,7 @@ import { SITE } from '../city/siteBuilding.js';
 
 const WORK = { stand: 0, walk: 0, hammer: 1, dig: 2, carry: 3, wave: 4 };
 const VESTS = [[1.0, 0.36, 0.02], [0.85, 0.75, 0.05], [1.0, 0.42, 0.04], [0.85, 0.75, 0.05], [0.95, 0.3, 0.02]];
-const SHOW = 115;
+const SHOW = 95;
 
 export function createConstruction({ scene, city, materials, sound }) {
   if (!SITE.ready) return { update() {}, knockAt() { return 0; }, get ready() { return false; }, site: SITE };
@@ -64,7 +64,7 @@ export function createConstruction({ scene, city, materials, sound }) {
   // ======================================================================= the digger
   // (the tracks stand still; the upper part turns on them, the arm moves on the upper part)
   const YEL = lin([0.92, 0.66, 0.06]), DRK = lin([0.14, 0.14, 0.15]), GLS = lin([0.07, 0.12, 0.17]), STL = lin([0.62, 0.64, 0.66]);
-  const part = (fill) => {
+  const part = (fill, shadow = true) => {
     const mb = new MeshBuilder();
     const put = (g, c, x, y, z, rot = null, scale = null, rough = 0.6, metal = 0.2) => { mb.color(c[0], c[1], c[2], 1); mb.data(rough, metal, 0, 0); mb.add(g, x, y, z, rot, scale); };
     // a bar from a to b
@@ -79,7 +79,7 @@ export function createConstruction({ scene, city, materials, sound }) {
     const m = new THREE.InstancedMesh(mb.build(), materials.mats.prop, 1);
     m.setMatrixAt(0, new THREE.Matrix4());
     m.frustumCulled = false;
-    m.castShadow = true; m.receiveShadow = true;
+    m.castShadow = shadow; m.receiveShadow = true;
     return m;
   };
   const BOX = new THREE.BoxGeometry(1, 1, 1), CYL = new THREE.CylinderGeometry(1, 1, 1, 12);
@@ -94,7 +94,7 @@ export function createConstruction({ scene, city, materials, sound }) {
     }
     put(softBox(1.7, 0.36, 1.8, 0.06), DRK, 0, 0.5, 0);
     put(CYL, DRK, 0, 0.8, 0, null, [0.8, 0.26, 0.8]);
-  });
+  }, false);         // (the tracks lie in the shadow of the upper part anyway: they are not drawn into the shadow map)
   const upper = new THREE.Group();
   upper.position.y = 0.93;
   upper.add(part((put, bar) => {
@@ -153,7 +153,7 @@ export function createConstruction({ scene, city, materials, sound }) {
     const back = part((put) => {
       put(BOX, lin([0.5, 0.52, 0.54]), 0, 0, 0, null, [4.5, 2.3, 0.06], 0.7, 0.3);
       for (const dx of [-1.8, 1.8]) put(BOX, lin([0.4, 0.42, 0.44]), dx, -0.75, -0.08, null, [0.1, 3.9, 0.1], 0.6, 0.5);
-    });
+    }, false);
     back.position.set(S.x, S.y, S.z);
     back.rotation.y = S.rot;
     group.add(back);

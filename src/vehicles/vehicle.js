@@ -276,14 +276,15 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     const steer = new THREE.Group();
     head.add(steer);
     const front = new THREE.Mesh(g.front, mats.carPaint);
-    front.castShadow = true;
+    front.castShadow = !cycle;
     steer.add(front);
     const axle = new THREE.Group();
     axle.position.set(0, -g.forkLen, 0);
     axle.rotation.x = K.rake;                           // (the wheel itself stands upright again)
     steer.add(axle);
     // (a bicycle has its own thin wheels with spokes: one small mesh each)
-    const thin = () => { const m = new THREE.Mesh(g.wheel, mats.carPaint); m.castShadow = true; return m; };
+    // (thin spokes and tubes throw no shadow worth a second drawing: only the frame of a bicycle casts one)
+    const thin = () => new THREE.Mesh(g.wheel, mats.carPaint);
     const fw = cycle ? axle.add(thin()).children[axle.children.length - 1] : mountDetailedWheel(axle, BIKE_R, 0.12, 'bikeF', -1, mats.carPaint, 0.72);
     v.tilt.add(head);
     v.wheels.push({ steerNode: steer, mesh: fw, front: true, spin: -1 });
