@@ -241,6 +241,11 @@ export function createSound() {
       blip('sine', 95, 34, 0.6 * s, 0.3);
     },
     thud(strength) { this.crash('heavy', strength); },
+    // ---- the open world: a construction site, weapons, a bicycle, a bank ----
+    // one hammer blow on steel or wood
+    hammer(vol = 0.5) { burst(1700 + Math.random() * 900, 7, 0.16 * vol, 0.001, 0.05); blip('triangle', 820 + Math.random() * 200, 420, 0.05 * vol, 0.05); },
+    // one puff of a slow diesel motor (the digger: called twice a second)
+    motorPuff(vol = 0.3) { burst(95, 0.9, 0.5 * vol, 0.03, 0.4, 'lowpass'); blip('sawtooth', 58, 50, 0.05 * vol, 0.4); },
     // engine start: starter whine, then the engine catches
     startEngine() { blip('sawtooth', 190, 320, 0.07, 0.45, out || master); setTimeout(() => burst(220, 0.9, 0.3, 0.02, 0.35, 'lowpass', out || master), 380); },
     // surface: 'concrete' or 'sand'

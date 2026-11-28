@@ -216,6 +216,7 @@ export const LAYOUT = {
     { id: 'b10', col: 9, row: 5, at: 'e', front: 'E' },    // S-curve tower, The Crown
     { id: 'b02', col: 7, row: 7, at: 'sw', front: 'S' },   // terrace tower, The Crown
     { id: 'b11', col: 7, row: 7, at: 'ne', front: 'E' },   // second hourglass tower, The Crown
+    { id: 's01', col: 3, row: 4, at: 'w', front: 'W' },    // a construction site: one block east of the start (src/city/siteBuilding.js)
   ],
   // Extra model files (hero1.glb ... hero4.glb or buildings.json) stand on these lots.
   modelLots: [

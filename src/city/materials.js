@@ -222,6 +222,10 @@ varying vec3 vPgNormal;
 	attribute vec4 aGait;     // per person, how they walk: arm swing, step, sway, lean (none: the plain walk)
 	attribute vec2 aGaitB;    // per person: arms held out from the body (radians), bounce
 #endif
+#ifdef PG_WORK
+	uniform float uPgTime;
+	attribute vec2 aWork;     // per person: what they do at work (0 nothing .. 4), their own time shift
+#endif
 #ifdef PG_WINMOD
 	attribute vec4 aInst;     // per window: width, height (meters), cell across, cell up
 	attribute vec4 aInstB;    // per window: wall color (r, g, b), style + switches
@@ -306,6 +310,35 @@ const PG_VERTEX_MAIN = /* glsl */ `
 const PG_VERTEX_WIND = /* glsl */ `
 #ifdef PG_PED
 	{
+	#ifdef PG_WORK
+		// A PERSON AT WORK (src/world/construction.js). aWork.x says what they do:
+		//   1 hammering: the right arm beats down from the shoulder, again and again
+		//   2 digging: both arms push a shovel forward and lift it, the body bends with it
+		//   3 carrying: both arms held forward
+		//   4 guiding the crane: the left arm high up, waving slowly
+		if ( aWork.x > 0.5 ) {
+			float wT = uPgTime + aWork.y;
+			float wArm = step( 0.5, aPart ) * step( aPart, 2.5 );
+			float wRight = step( 1.5, aPart ) * step( aPart, 2.5 );
+			float wLeg = step( 2.5, aPart );
+			float wAng = 0.0;         // how far the arm is raised forward (radians: 1.57 = straight out)
+			float wBend = 0.0;        // the body bends forward at the hips
+			if ( aWork.x < 1.5 ) { float wH = pow( abs( sin( wT * 4.2 ) ), 0.6 ); wAng = wRight * ( 0.45 + 1.3 * wH ) + ( 1.0 - wRight ) * 0.35; wBend = 0.14 + 0.05 * wH; }
+			else if ( aWork.x < 2.5 ) { float wD = sin( wT * 1.9 ); wAng = 0.8 + 0.42 * wD; wBend = 0.4 - 0.27 * wD; }
+			else if ( aWork.x < 3.5 ) { wAng = 1.0; wBend = -0.03; }
+			else { wAng = ( 1.0 - wRight ) * ( 2.55 + 0.3 * sin( wT * 3.0 ) ); }
+			float wY0 = transformed.y;
+			if ( wArm > 0.5 ) {
+				vec3 wQ = transformed - vec3( 0.0, aLimb.x, 0.0 );
+				float wC = cos( -wAng ), wS = sin( -wAng );
+				transformed = vec3( wQ.x, wQ.y * wC - wQ.z * wS, wQ.y * wS + wQ.z * wC ) + vec3( 0.0, aLimb.x, 0.0 );
+			}
+			float wW = wArm > 0.5 ? 1.0 : smoothstep( 0.9, 1.1, wY0 ) * ( 1.0 - wLeg );
+			float wB = wBend * wW, wBc = cos( wB ), wBs = sin( wB );
+			vec3 wP = transformed - vec3( 0.0, 0.95, 0.0 );
+			transformed = vec3( wP.x, wP.y * wBc - wP.z * wBs, wP.y * wBs + wP.z * wBc ) + vec3( 0.0, 0.95, 0.0 );
+		}
+	#endif
 		// (walking: aPhase moves on. Somebody standing keeps aPhase at 0 and does not move the legs)
 		float pgWalk = step( 0.0001, abs( sin( aPhase ) ) + abs( cos( aPhase ) - 1.0 ) );
 		// HOW THIS PERSON WALKS (pedestrians.js gives everybody a style; a crowd without it walks the plain way):
@@ -1698,6 +1731,7 @@ export async function createMaterials(renderer, onProgress = () => {}) {
   mats.carPaint = patch(new THREE.MeshPhysicalMaterial({ vertexColors: true, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1.25 }), ['PG_PROP', 'PG_CAR']);
   // People on the sidewalks: the prop shader + swinging arms and legs.
   mats.ped = patch(std({}), ['PG_PROP', 'PG_PED']);
+  mats.worker = patch(std({}), ['PG_PROP', 'PG_PED', 'PG_WORK']);     // people at work (src/world/construction.js)
   // Leaves and palm fronds.
   // Tree trunks: the same prop shader + a bark picture.
   mats.bark = patch(std({ map: tex.bark }), ['PG_PROP']);

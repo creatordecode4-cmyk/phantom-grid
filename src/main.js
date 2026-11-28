@@ -37,6 +37,7 @@ import { createGPS } from './ui/gps.js';
 import { createSound } from './audio/sound.js';
 import { createVehicles } from './vehicles/vehicle.js';
 import { createLooseProps } from './world/looseProps.js';
+import { createConstruction } from './world/construction.js';
 import { CAR_TYPES, carInfo } from './vehicles/carModels.js';
 import { loadVehicles } from './vehicles/vehicleLoader.js';
 import { createEffects } from './vehicles/effects.js';
@@ -187,6 +188,8 @@ async function boot() {
   // street things a car can knock over (bins, news boxes, meters, signs, hydrants): src/world/looseProps.js
   const loose = createLooseProps({ scene, city, sound });
   vehicles.onKnock = (c, v) => loose.knock(c, v.vx, v.vz);
+  // the construction site: its workers and the digger (the site itself is part of the city, src/city/siteBuilding.js)
+  const site = createConstruction({ scene, city, materials, sound });
   const garage = vehicles.buildGarage();                // one of each vehicle, parked next to the start point
   const gps = createGPS(layout);
   const storyProps = createProps();
@@ -527,6 +530,7 @@ async function boot() {
     races.preVehicles(dt, input);                       // (the cars of a race see each other; the countdown holds them)
     vehicles.update(dt, input, player, night, time);
     loose.update(dt, px, pz);
+    site.update(dt, time, px, pz, car && !onFoot ? obstacles : null);
     races.update(dt, time, input);
     zero.update(dt, { free: gameMode === 'free' && !story.active, car: vehicles.state === 'driving' ? vehicles.active : null });
     world.nightRun.update(dt, time);
@@ -1305,7 +1309,7 @@ async function boot() {
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
     get frameCalls() { return frameCalls; },
-    guard, texBudget, gfx, setGfx, loose,
+    guard, texBudget, gfx, setGfx, loose, site,
     get qualityNow() { return { mode, active, label: quality.label, cap: texBudget.cap, fpsCap, pr: renderer.getPixelRatio() }; },
     get paused() { return frozen; },
     get waypoint() { return waypoint; },

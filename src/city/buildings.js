@@ -173,7 +173,7 @@ export async function loadHeroModels() {
     try { return (await fetch(base + file, { method: 'HEAD' })).ok; } catch (e) { return false; }
   };
   const want = [];
-  for (const [id, h] of Object.entries(HEROES)) if (await exists(h.file + '.glb')) want.push({ id, file: h.file + '.glb' });
+  for (const [id, h] of Object.entries(HEROES)) if (h.file && await exists(h.file + '.glb')) want.push({ id, file: h.file + '.glb' });
   let list = null;
   try {
     const r = await fetch(base + 'buildings.json', { cache: 'no-cache' });

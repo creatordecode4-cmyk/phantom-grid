@@ -27,6 +27,7 @@
 // ---------------------------------------------------------------------------
 
 import { ENTRANCES } from './entrances.js';
+import { buildSite, SITE_SIZE } from './siteBuilding.js';
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { FLOOR, GLASS_TINTS } from './buildingKit.js';
@@ -48,6 +49,7 @@ export const HEROES = {
   b11: { file: 'b11_hourglass_tower', height: 140, w: 36, d: 36 },
   g01: { file: 'g01_mace_garage', height: 8, w: 18, d: 14 },   // story: Mace's garage with Nate's flat above it
   g02: { file: 'g02_parking_garage', height: 8, w: 30, d: 24 }, // story: an old car park with a flooded ground floor (Chapter 2)
+  s01: { file: null, height: 45, w: SITE_SIZE.w, d: SITE_SIZE.d },   // a construction site (src/city/siteBuilding.js)
 };
 
 // A curve on a body as a list of points: f(t) gives where around, y runs from ya to yb.
@@ -930,12 +932,13 @@ function g02(kit, s) {
   return { rect: { minX: Math.min(a[0], b[0]), maxX: Math.max(a[0], b[0]), minZ: Math.min(a[2], b[2]), maxZ: Math.max(a[2], b[2]) }, top: y3, solid: true };
 }
 
-const BUILDERS = { b01, b02, b03, b04, b05, b06, b07, b08, b09, b10, b11, g01, g02 };
+const BUILDERS = { b01, b02, b03, b04, b05, b06, b07, b08, b09, b10, b11, g01, g02, s01: buildSite };
 
 // Build one hero. Returns { rect, top } and adds its collision box.
 export function buildHero(kit, id, site) {
   const out = BUILDERS[id](kit, site);
-  if (!site.far) {
+  // (an open lot - the construction site - is no house: it brings its own walls and has no roof)
+  if (!site.far && !out.open) {
     if (!out.solid) kit.collide(out.rect, out.top);
     kit.finish({ ...out.rect, top: out.top, floors: Math.round(out.top / FLOOR), mat: 'hero', playable: true, type: id, hero: true });
   }
