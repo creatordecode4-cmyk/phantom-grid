@@ -38,6 +38,7 @@ import { createSound } from './audio/sound.js';
 import { createVehicles } from './vehicles/vehicle.js';
 import { createLooseProps } from './world/looseProps.js';
 import { createConstruction } from './world/construction.js';
+import { createPlaces, PLACE_INFO } from './world/places.js';
 import { CAR_TYPES, carInfo } from './vehicles/carModels.js';
 import { loadVehicles } from './vehicles/vehicleLoader.js';
 import { createEffects } from './vehicles/effects.js';
@@ -311,6 +312,9 @@ async function boot() {
   }
   // HOUSES YOU CAN WALK INTO (src/interiors): real doors on the start street, rooms built far away
   const interiors = createInteriors({ scene, renderer, camera, player, rig, ui, hud, sound, lighting });
+  // banks and police stations: which doors, their signs, what can be done inside (src/world/places.js)
+  const world2 = { armed: () => false };          // (the weapons fill this in)
+  const places = createPlaces({ scene, interiors, hud, sound, police, t, armed: () => world2.armed(), canAct: () => gameMode === 'free' && !story.active });
   // NATE'S FACE for the WANTED posters and the news (a picture of the player character's own head, taken once)
   let portraitURL = null;
   if (player.rig && player.rig.bones && player.rig.bones.head) {
@@ -560,7 +564,9 @@ async function boot() {
     if (world.tower && world.tower.zone) { world.tower.follow(vehicles.active); world.tower.update(dt, towerCast); }
     streetLife.update(dt, time, gameMode === 'free' && !inside);
     // ---- the doors of the houses (ENTER / EXIT) ----
+    places.update(dt, shared.uPgNight.value);
     interiors.update(dt, {
+      free: gameMode === 'free' && !story.active,
       can: gameMode !== 'title' && vehicles.state === 'none' && !player.staged && !(S && (S.locks.move || S.cameraActive)),
       seen: !police.scripted && police.mode === 'chase' && police.seen, film: !!S && S.cameraActive, rain, time,
     });
@@ -825,8 +831,12 @@ async function boot() {
   const mapExtra = () => {
     // while the Guard is after the player (or knows his face): its view cones, the search area and the scanner gates, and a wider view
     const showGuard = !police.scripted && (stars > 0 || police.known);
-    return { inCar: vehicles.driving, cars: city.traffic.cars, waypoint: story.active ? null : waypoint, marker: goalState.marker, route, wanted: showGuard ? police.mapView() : null, view: showGuard ? 0.5 : 0, time, race: races.mapExtra };
+    return { inCar: vehicles.driving, cars: city.traffic.cars, waypoint: story.active ? null : waypoint, marker: goalState.marker, route, wanted: showGuard ? police.mapView() : null, view: showGuard ? 0.5 : 0, time, race: races.mapExtra,
+      places: gameMode === 'free' && !story.active ? mapPlaces : null };
   };
+  // the marks of the open world on the map: banks, police stations, the construction site
+  const mapPlaces = places.list.map((p) => ({ x: p.x, z: p.z, name: PLACE_INFO[p.kind].name, letter: PLACE_INFO[p.kind].letter, dot: PLACE_INFO[p.kind].dot }));
+  if (site.ready) mapPlaces.push({ x: site.site.gate.x, z: site.site.gate.z, name: 'BUILDING SITE', letter: 'B', dot: '#ffb347' });
 
   // ---- sun glow: is the sun on the screen, and do buildings hide it? ----
   const _sun = new THREE.Vector3(), _camFwd = new THREE.Vector3(), _ray = new THREE.Vector3();
@@ -1309,7 +1319,7 @@ async function boot() {
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
     get frameCalls() { return frameCalls; },
-    guard, texBudget, gfx, setGfx, loose, site,
+    guard, texBudget, gfx, setGfx, loose, site, places,
     get qualityNow() { return { mode, active, label: quality.label, cap: texBudget.cap, fpsCap, pr: renderer.getPixelRatio() }; },
     get paused() { return frozen; },
     get waypoint() { return waypoint; },

@@ -27,13 +27,18 @@ import { C, frame, shell, casing, windowIn, table, chair, chairPadded, plant, bi
 import { sofa, coffeeTable, tvUnit, bookcase, floorLamp, roundTable, bistroChair, gondola, shopCounter, drinksFridge, cafeCounter, menuBoard,
   officeDesk, officeChair, filingCabinet, waterCooler, whiteboard, mailboxes, liftDoors, receptionDesk, bench, workbench, pegboard, tires, drum,
   boxes, ceilingPanel, rack } from './furniture2.js';
+import { person, tellerCounter, atm, vaultDoor, ropePosts, standDesk, frontDesk, cellBars, lockers, noticeBoard, waitingSeats } from './furniture3.js';
 import { wallBoxes } from './rooms.js';
+import { placeOf } from '../world/places.js';
 
 const PI = Math.PI;
 const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
 
 // ---------------------------------------------------------------- what is behind a door
 export function kindOf(e) {
+  // (a few doors of the city are a bank or a police station: src/world/places.js chooses them)
+  const place = placeOf(e);
+  if (place) return place.kind;
   const R = rng(hash(e.id + 'k'));
   if (e.door === 3) return 'garage';
   if (e.door === 1) return 'store';
@@ -54,6 +59,8 @@ const NAMES = {
   lobby: ['LOBBY', 'ENTRANCE HALL', 'HOTEL LOBBY'],
   garage: ['GARAGE', 'WORKSHOP', 'LOCK-UP GARAGE'],
   store: ['STORE ROOM', 'STORAGE'],
+  bank: ['MERIDIAN SAVINGS BANK'],
+  police: ['MERIDIAN GUARD · STATION'],
 };
 
 // ---------------------------------------------------------------- one room
@@ -94,6 +101,8 @@ function result(r, o) {
     windows: [{ hole: r.win, room: 'main', aim: o.aim }],
     lamps: [{ at: o.lamp, room: 'main', color: o.lampColor || [1.0, 0.8, 0.58], power: o.lampPower || 5, range: o.lampRange || 8, kind: 'ceiling' }],
     fill: { main: o.fill || [1, 0.9, 0.78] },
+    // places where something can be done (a cash machine, a counter): [{ id, x, z, r }] - src/world/places.js
+    spots: o.spots || [],
   };
 }
 const PASTEL = ['#f0dcc0', '#d8e6d8', '#ecd2c4', '#d4dfec', '#f2e4c4', '#e2d6ea', '#e8e4dc'].map(C);
@@ -303,6 +312,102 @@ const TEMPLATES = {
     for (let i = 0; i < 2; i++) ceilingPanel(r.RF, X(W / 2), D * (0.33 + i * 0.34), H, 1.3, 0.25);
     const lamp = [X(W / 2), H - 0.3, D / 2];
     return result(r, { aim: [X(W / 2), 0, D - 2.0], lamp, lampPower: 7, lampRange: 9, lampColor: [0.95, 0.97, 1.0], shutter: true, doorColor: C('#7a7f84'), fill: [0.96, 0.96, 0.98] });
+  },
+
+  // ============================================================ A BANK: a long counter behind glass with three tellers,
+  //   cash machines, a rope lane to wait in, the round door of the vault behind the counter, a guard at the door
+  bank(b, R, mirror) {
+    const W = 9.2, D = 7.8, H = 3.4;
+    const green = C('#2f4a3f');
+    const r = room(b, R, mirror, W, D, H, {
+      label: 'BANK',
+      shell: { floor: 'walltile', floorTile: 1.0, floorColor: C('#cfc6b4'), wall: 'wallpaint', wallTile: 2.0, wallColor: C('#efe8da'),
+        dado: { mat: 'walltile', h: 1.15, tile: 0.6, color: C('#e4dccb'), border: green }, skirting: green, ceiling: { color: C('#f2efe8') } },
+      holes: [
+        { wall: 'z0', a: 0.7, b: 1.9, y0: 0, y1: 2.35, kind: 'door', depth: 0.25 },
+        { wall: 'z0', a: 2.7, b: W - 0.8, y0: 0.8, y1: 2.6, kind: 'window', depth: 0.25 },
+      ],
+      trim: green,
+    });
+    const { F, X } = r;
+    windowIn(b, r.win, { color: green, panes: [4, 2] });
+    // the counter from wall to wall, the three tellers behind it
+    const cz = D - 2.5;
+    tellerCounter(F(W / 2, cz, PI), { w: W - 0.04, windows: 3 });
+    const shirts = [C('#e8eaee'), C('#dfe6f2'), C('#f2ece0')], ties = [green, C('#7a2a2a'), C('#22344e')];
+    for (let i = 0; i < 3; i++) person(F(W * (i + 0.5) / 3 + 0.1, cz + 0.75, PI + (R() - 0.5) * 0.3), { shirt: shirts[i], tie: ties[i], trousers: C('#2a2f38') });
+    // behind them: the vault, cabinets, a desk with a screen
+    vaultDoor(F(W - 2.1, D, PI), 0, 0);
+    for (let i = 0; i < 3; i++) filingCabinet(F(0.9 + i * 0.5, D - 0.32, PI), { color: C('#7d858c') });
+    officeDesk(F(3.7, D - 0.45, PI), { screen: [0.3, 0.6, 0.4] });
+    clock(F(W / 2 - 0.6, D, PI), 0, 2.6, 0);
+    // two cash machines on the side wall, a desk to write at across the room
+    atm(F(0, 3.0, PI / 2));
+    atm(F(0, 4.05, PI / 2));
+    standDesk(F(W - 0.3, 3.4, -PI / 2), { w: 1.4 });
+    // a lane of rope to wait in, in front of the middle teller
+    ropePosts(r.RF, [[X(3.3), cz - 1.1], [X(3.3), cz - 2.6], [X(5.9), cz - 2.6]].map(([x, z]) => [x, z]));
+    ropePosts(r.RF, [[X(5.9), cz - 1.1], [X(5.9), cz - 1.8]]);
+    // somebody waiting, the guard beside the door, seats under the window, plants
+    person(F(4.6, cz - 1.05, PI + 0.1), { shirt: pick(R, [C('#7a4a3a'), C('#3a5a7a'), C('#c8b89a')]), trousers: C('#3a3a40') });
+    person(F(2.55, 0.75, 0.5), { shirt: C('#22344e'), trousers: C('#1c222c'), cap: C('#1c2a40'), badge: true, size: 1.03 });
+    waitingSeats(F((2.9 + W - 1.0) / 2 + 0.6, 0.36, 0), { n: 4, color: green });
+    bigPlant(r.RF, X(W - 0.45), 0.6);
+    bigPlant(r.RF, X(0.45), D - 3.4 - 0.3 > 4.9 ? 5.2 : 5.2);
+    picture(F(W, 1.7, -PI / 2), 0, 1.8, 0, 0.7, 0.5, pick(R, [0, 7, 3]));
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) ceilingPanel(r.RF, X(W * (0.2 + i * 0.3)), 1.8 + j * 2.6, H, 1.4, 0.35);
+    for (let i = 0; i < 2; i++) ceilingPanel(r.RF, X(W * (0.3 + i * 0.4)), D - 1.2, H, 1.2, 0.3);
+    const lamp = [X(W / 2), H - 0.35, D / 2 - 0.6];
+    return result(r, { aim: [X(W * 0.6), 0, 2.6], lamp, lampPower: 11, lampRange: 12, lampColor: [1.0, 0.93, 0.8], glassDoor: true, doorColor: green, fill: [1, 0.95, 0.86],
+      spots: [{ id: 'atm', x: X(1.05), z: 3.5, r: 1.0 }, { id: 'teller', x: X(W / 2 + 0.1), z: cz - 1.0, r: 1.1 }] });
+  },
+
+  // ============================================================ A POLICE STATION: the front desk, seats to wait on,
+  //   a board of notices, a holding cell behind bars, lockers and two desks at the back
+  police(b, R, mirror) {
+    const W = 8.8, D = 7.4, H = 3.0;
+    const navy = C('#22344e');
+    const r = room(b, R, mirror, W, D, H, {
+      label: 'STATION',
+      shell: { floor: 'walltile', floorTile: 0.8, floorColor: C('#9da3aa'), wall: 'wallpaint', wallTile: 2.0, wallColor: C('#e6eaee'),
+        dado: { mat: 'walltile', h: 1.1, tile: 0.6, color: C('#d5dbe2'), border: navy }, skirting: navy, ceiling: { color: C('#f2f4f5') } },
+      holes: [
+        { wall: 'z0', a: 0.7, b: 1.8, y0: 0, y1: 2.3, kind: 'door', depth: 0.25 },
+        { wall: 'z0', a: 2.6, b: W - 0.8, y0: 0.9, y1: 2.4, kind: 'window', depth: 0.25 },
+      ],
+      trim: navy,
+    });
+    const { F, X } = r;
+    windowIn(b, r.win, { color: C('#4a5560'), panes: [4, 2] });
+    // the front desk, an officer behind it
+    frontDesk(F(W / 2 + 1.0, 3.1, PI), { w: 2.8 });
+    person(F(W / 2 + 1.0, 3.85, PI + 0.15), { shirt: C('#2c4468'), trousers: C('#1c222c'), cap: C('#1c2a40'), badge: true, tie: C('#141a24') });
+    // seats under the window, somebody waiting on their feet beside them, the notice board
+    waitingSeats(F((2.7 + W - 0.9) / 2, 0.36, 0), { n: 4, color: C('#3f5a78') });
+    person(F(W - 1.0, 1.25, -1.9), { shirt: pick(R, [C('#8a5a3a'), C('#5a6a5a'), C('#b8a070')]), trousers: C('#3a3a40') });
+    noticeBoard(F(W, 2.2, -PI / 2), 0, 1.1, 0, 2.0, 1.0);
+    clock(F(W, 4.2, -PI / 2), 0, 2.3, 0);
+    // the holding cell in the back corner: bars on two sides, a bench, somebody inside
+    const cellW = 3.0, cellZ = D - 2.5;
+    cellBars(F(cellW / 2, cellZ, 0), { w: cellW, h: H, doorAt: 0.75 });
+    cellBars(F(cellW, (cellZ + D) / 2, PI / 2), { w: D - cellZ, h: H, door: false });
+    bench(F(cellW / 2 - 0.2, D - 0.3, PI), { w: 1.8 });
+    person(F(0.7, D - 1.1, 2.4), { shirt: pick(R, [C('#6a6a6a'), C('#8a3a2a'), C('#2f4a3f')]), trousers: C('#30343a') });
+    // at the back: lockers, two desks with screens, cabinets, water
+    lockers(F(cellW + 1.25, D - 0.26, PI), { n: 5 });
+    officeDesk(F(W - 1.9, D - 1.3, PI), { screen: [0.25, 0.4, 0.7] });
+    officeChair(F(W - 1.9, D - 0.62, PI + 0.3), {});
+    officeDesk(F(W - 1.9, D - 3.0, PI), { screen: [0.3, 0.5, 0.75] });
+    person(F(W - 2.0, D - 2.3, PI - 0.2), { shirt: C('#2c4468'), trousers: C('#1c222c'), badge: true });
+    filingCabinet(F(W - 0.32, D - 0.9, -PI / 2), {});
+    filingCabinet(F(W - 0.32, D - 1.4, -PI / 2), {});
+    waterCooler(r.RF, X(0.4), 2.4);
+    bigPlant(r.RF, X(0.45), 3.6);
+    whiteboard(F(cellW + 3.2, D, PI), 0, 1.05, 0, 1.5, 0.9);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) ceilingPanel(r.RF, X(W * (0.2 + i * 0.3)), 1.9 + j * 3.2, H, 1.4, 0.3);
+    const lamp = [X(W / 2), H - 0.3, D / 2 - 0.4];
+    return result(r, { aim: [X(W * 0.6), 0, 2.4], lamp, lampPower: 10, lampRange: 11, lampColor: [0.92, 0.96, 1.0], glassDoor: true, doorColor: navy, fill: [0.94, 0.97, 1.0],
+      spots: [{ id: 'desk', x: X(W / 2 + 1.0), z: 2.1, r: 1.15 }] });
   },
 
   // ============================================================ A STORE ROOM: shelves and boxes

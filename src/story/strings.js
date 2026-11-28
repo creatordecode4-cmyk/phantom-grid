@@ -81,6 +81,12 @@ export const STRINGS = {
     'ui.pause': 'PAUSE',
     'ui.busted': 'BUSTED', 'ui.fine': 'FINE', 'ui.money_left': 'CREDITS LEFT', 'ui.open': 'OPEN', 'ui.sit': 'SIT',
     'ui.enter': 'ENTER', 'ui.exit': 'EXIT',
+    // ---- the open world: banks and police stations (src/world/places.js) ----
+    'ui.place.atm': 'TAKE OUT 200', 'ui.place.rob': 'ROB THE BANK', 'ui.place.askDesk': 'ASK AT THE DESK', 'ui.place.fine': 'PAY THE FINE · {n}',
+    'ui.place.atmPaid': 'PAY DAY · YOU HAVE {n} CREDITS', 'ui.place.atmWait': 'THE MACHINE IS EMPTY · COME BACK IN {n} MIN',
+    'ui.place.robNoGun': 'THE TELLER SMILES. (TAKE A GUN IN YOUR HAND TO ROB THE BANK.)', 'ui.place.robEmpty': 'THE TILLS ARE EMPTY. THE GUARD IS ON ITS WAY.',
+    'ui.place.robbed': 'ALARM! YOU HAVE {n} CREDITS · GET OUT', 'ui.place.deskCalm': '"NOTHING AGAINST YOU TODAY. STAY OUT OF TROUBLE."',
+    'ui.place.fineNoMoney': 'THE FINE IS {n} CREDITS · YOU HAVE {have}', 'ui.place.finePaid': 'FINE PAID · THE GUARD LETS YOU GO · {n} CREDITS LEFT',
     'ui.difficulty': 'DRIVING', 'ui.easy': 'EASY', 'ui.normal': 'NORMAL', 'ui.hard': 'HARD',
     // how Nate walks (settings: a button that goes through them)
     'ui.walk': 'WALK STYLE',

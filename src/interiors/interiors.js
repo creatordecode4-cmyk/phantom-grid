@@ -539,11 +539,22 @@ export function createInteriors({ scene, renderer, camera, player, rig, ui, hud,
     gone = inBox ? 0 : gone + dt;
     if (gone > 0.25) { reset(); return; }
     const ex = house.data.exit;
-    if (Math.hypot(lx - ex.x, lz - ex.z) < ex.r && ctx.can) setPrompt(t('ui.exit'), leave);
-    else setPrompt(null);
+    if (Math.hypot(lx - ex.x, lz - ex.z) < ex.r && ctx.can) { setPrompt(t('ui.exit'), leave); return; }
+    // a place in the room where something can be done (a cash machine, a counter: src/world/places.js);
+    // only in free roam
+    if (ctx.can && ctx.free && api.onSpot) {
+      for (const sp of house.data.spots || []) {
+        if (Math.hypot(lx - sp.x, lz - sp.z) > sp.r) continue;
+        const label = api.spotLabel ? api.spotLabel(sp) : null;
+        if (label) { setPrompt(label, () => api.onSpot(sp, house)); return; }
+      }
+    }
+    setPrompt(null);
   }
 
-  return {
+  const api = {
+    // set by places.js: the button text of a spot (or nothing), and what happens when it is pressed
+    spotLabel: null, onSpot: null,
     update, reset,
     get inside() { return state === 'in' || state === 'leaving' || (state === 'entering' && !!house); },
     // moving through a door: the player stands still
@@ -589,4 +600,5 @@ export function createInteriors({ scene, renderer, camera, player, rig, ui, hud,
       lighting.interior = null;
     },
   };
+  return api;
 }

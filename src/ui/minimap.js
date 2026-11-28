@@ -227,6 +227,13 @@ export function createMinimap(canvas, layout) {
         ctx.beginPath(); ctx.arc(MX(c.x), MY(c.z), 3.2 * dpr, 0, 7); ctx.fill(); ctx.stroke();
       }
     }
+    // banks and police stations: a small round mark with a letter
+    for (const p of extra.places || []) {
+      const px = MX(p.x), py = MY(p.z);
+      if (px < -8 * dpr || px > s + 8 * dpr || py < -8 * dpr || py > s + 8 * dpr) continue;
+      ctx.beginPath(); ctx.arc(px, py, 5.5 * dpr, 0, 7); ctx.fillStyle = p.dot; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 1.2 * dpr; ctx.stroke();
+      ctx.fillStyle = '#0c1014'; ctx.font = `bold ${Math.round(8 * dpr)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.letter, px, py + 0.5 * dpr);
+    }
     // the Meridian Guard: where they search, what they see, the scanner gates
     if (extra.wanted) drawWanted(ctx, extra.wanted, MX, MY, k, s, extra.time || 0);
     // the other cars: small dots
@@ -405,6 +412,12 @@ export function createMinimap(canvas, layout) {
       for (const car of extra.cars) if (car.alive) c.fillRect(BX(car.x) - 1.5 * d, BY(car.z) - 1.5 * d, 3 * d, 3 * d);
     }
     const dot = (p, color, r) => { c.beginPath(); c.arc(BX(p.x), BY(p.z), r * d, 0, 7); c.fillStyle = color; c.strokeStyle = 'rgba(0,0,0,0.7)'; c.lineWidth = 1.5 * d; c.stroke(); c.fill(); };
+    // banks, police stations, the construction site: a round mark with a letter and the name under it
+    for (const p of extra.places || []) {
+      dot(p, p.dot, 7);
+      c.fillStyle = '#0c1014'; c.font = `bold ${Math.round(10 * d)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(p.letter, BX(p.x), BY(p.z) + 0.5 * d);
+      c.fillStyle = 'rgba(255,255,255,0.85)'; c.font = `${Math.round(9 * d)}px sans-serif`; c.fillText(p.name, BX(p.x), BY(p.z) + 14 * d);
+    }
     if (extra.marker) dot(extra.marker, '#ffc94a', 6);
     if (extra.waypoint) dot(extra.waypoint, '#ff5a4a', 6);
     // the scanner gates and the search area of the Guard (they help to plan a way through side streets)

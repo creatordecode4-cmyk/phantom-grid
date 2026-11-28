@@ -244,6 +244,10 @@ export function createSound() {
     // ---- the open world: a construction site, weapons, a bicycle, a bank ----
     // one hammer blow on steel or wood
     hammer(vol = 0.5) { burst(1700 + Math.random() * 900, 7, 0.16 * vol, 0.001, 0.05); blip('triangle', 820 + Math.random() * 200, 420, 0.05 * vol, 0.05); },
+    // coins and notes: a cash machine pays, a fine is paid
+    cash() { blip('sine', 1320, 1320, 0.07, 0.07); setTimeout(() => blip('sine', 1760, 1760, 0.07, 0.12), 70); burst(5200, 3, 0.05, 0.002, 0.12, 'highpass'); },
+    // the alarm bell of a bank: rings for some seconds
+    alarm(seconds = 5) { for (let i = 0; i < seconds * 8; i++) setTimeout(() => { blip('square', 1480, 1480, 0.035, 0.06); burst(3000, 9, 0.05, 0.001, 0.07); }, i * 125); },
     // one puff of a slow diesel motor (the digger: called twice a second)
     motorPuff(vol = 0.3) { burst(95, 0.9, 0.5 * vol, 0.03, 0.4, 'lowpass'); blip('sawtooth', 58, 50, 0.05 * vol, 0.4); },
     // engine start: starter whine, then the engine catches
