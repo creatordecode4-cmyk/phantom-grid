@@ -13,7 +13,7 @@
 //   * THE SITE BOARD on the fence, with the name of the project.
 //   * hammer blows and the digger's motor, when the player is near.
 //
-// Everything here is only shown (and only moved) when the player is within 150 m.
+// Everything here is only shown (and only moved) when the player is within 115 m.
 //
 //   const site = createConstruction({ scene, city, materials, sound });
 //   site.update(dt, time, playerX, playerZ, obstacles);     obstacles: the circles of the player's car (main.js)
@@ -27,7 +27,7 @@ import { SITE } from '../city/siteBuilding.js';
 
 const WORK = { stand: 0, walk: 0, hammer: 1, dig: 2, carry: 3, wave: 4 };
 const VESTS = [[1.0, 0.36, 0.02], [0.85, 0.75, 0.05], [1.0, 0.42, 0.04], [0.85, 0.75, 0.05], [0.95, 0.3, 0.02]];
-const SHOW = 150;
+const SHOW = 115;
 
 export function createConstruction({ scene, city, materials, sound }) {
   if (!SITE.ready) return { update() {}, knockAt() { return 0; }, get ready() { return false; }, site: SITE };

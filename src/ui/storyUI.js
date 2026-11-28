@@ -382,7 +382,7 @@ export function createStoryUI() {
     }
     // (the Ending gallery is there once an ending was seen)
     if (info.gallery) add(t('ui.gallery'), 'gallery');
-    add(t('ui.missions'), 'select'); add(t('ui.free_roam'), 'free'); add(t('ui.settings'), 'settings');
+    add(t('ui.missions'), 'select'); add(t('ui.free_roam'), 'free'); add(t('ui.online'), 'online'); add(t('ui.settings'), 'settings');
     if (info.canContinue) { const d = document.createElement('div'); d.className = 'note'; d.textContent = t('ui.new_warn'); col.appendChild(d); }
   }
   // cb(action): 'resume' | 'settings' | 'restart' | 'title'

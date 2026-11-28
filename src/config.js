@@ -11,7 +11,14 @@
 // ---------------------------------------------------------------------------
 
 export const CONFIG = {
-  version: 'Phase 8.2',
+  version: 'Phase 9.0',
+
+  // ----- ONLINE ------------------------------------------------------------
+  // The address of the world server that everybody uses (server/server.js, see server/README.md), for example
+  // 'wss://my-phantom-grid.onrender.com'. Empty: each player types an address into the ONLINE screen.
+  online: {
+    server: '',
+  },
 
   // ----- TIME OF DAY -------------------------------------------------------
   time: {

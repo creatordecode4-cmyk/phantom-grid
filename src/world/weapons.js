@@ -259,6 +259,7 @@ export function createWeapons({ scene, player, city, vehicles, police, loose, si
     flash.visible = true; flashT = 0.045;
     if (sound.gunshot) sound.gunshot(current);
     if (navigator.vibrate) navigator.vibrate(current === 'rifle' ? 12 : 25);
+    if (api.onEvent) api.onEvent('shot', { x: px, z: pz, dx, dz, d: tHit, w: current });
     // ---- the city reacts ----
     city.people.scareAt(px, pz, 45);
     wanted(hitCar && hitCar.role === 'police' ? 4 : hitPerson || hitWorker ? 3 : 2);
@@ -272,12 +273,26 @@ export function createWeapons({ scene, player, city, vehicles, police, loose, si
       swing = 0.42; hitDone = false;
       player.setPose('batSwing', 0.1);
       if (sound.batSwing) sound.batSwing();
+      if (api.onEvent) api.onEvent('bat', { x: player.position.x, z: player.position.z });
       return { what: 'swing' };
     }
     return fire();
   }
 
-  return {
+  // the shot of somebody else (another player online): its line, flash and bang, and the people run
+  function showShot(x, y, z, dx, dz, dist, kind = 'pistol') {
+    const T = tracers[nextTracer = (nextTracer + 1) % tracers.length], m0 = MUZZLE[kind] || 0.3;
+    T.m.position.set(x + dx * (0.45 + m0), y + 1.38, z + dz * (0.45 + m0));
+    T.m.rotation.set(0, Math.atan2(dx, dz), 0);
+    T.m.scale.set(1, 1, Math.max(0.1, dist - 0.45 - m0));
+    T.m.visible = true; T.t = 0.06;
+    const far = Math.hypot(x - player.position.x, z - player.position.z);
+    if (far < 120 && sound.gunshot) sound.gunshot(kind);
+    if (far < 60) city.people.scareAt(x, z, 45);
+  }
+  const api = {
+    // set by main.js: (kind, data) - what the other players of an online world should see
+    onEvent: null, showShot,
     get current() { return current; },
     get armed() { return current === 'pistol' || current === 'rifle'; },
     set, next, attack, meshes,
@@ -316,4 +331,5 @@ export function createWeapons({ scene, player, city, vehicles, police, loose, si
     // a new game, the story starts: empty hands
     reset() { if (current !== 'none') { current = 'none'; for (const k of Object.keys(meshes)) meshes[k].visible = false; label(); } swing = 0; holdFire = false; },
   };
+  return api;
 }

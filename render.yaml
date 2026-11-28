@@ -1,0 +1,10 @@
+# The world server for online free roam (see server/README.md). Render reads this file with New > Blueprint.
+services:
+  - type: web
+    name: phantom-grid-world
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node server.js
+    plan: free
+    healthCheckPath: /

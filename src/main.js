@@ -40,6 +40,7 @@ import { createLooseProps } from './world/looseProps.js';
 import { createConstruction } from './world/construction.js';
 import { createPlaces, PLACE_INFO } from './world/places.js';
 import { createWeapons } from './world/weapons.js';
+import { createOnline } from './net/online.js';
 import { CAR_TYPES, carInfo } from './vehicles/carModels.js';
 import { loadVehicles } from './vehicles/vehicleLoader.js';
 import { createEffects } from './vehicles/effects.js';
@@ -319,6 +320,10 @@ async function boot() {
   // a bat and two guns for free roam (src/world/weapons.js)
   const weapons = createWeapons({ scene, player, city, vehicles, police, loose, site, sound, hud, effects, t });
   world2.armed = () => weapons.armed;
+  // online free roam: the other players of a world (src/net/online.js, server/server.js)
+  const online = createOnline({ scene, player, vehicles, materials, hud, sound, t });
+  weapons.onEvent = (kind, data) => online.event(kind, data);
+  online.onShot = (m, o) => weapons.showShot(m.x, o.y || 0, m.z, m.dx, m.dz, m.d, m.w);
   // NATE'S FACE for the WANTED posters and the news (a picture of the player character's own head, taken once)
   let portraitURL = null;
   if (player.rig && player.rig.bones && player.rig.bones.head) {
@@ -569,6 +574,7 @@ async function boot() {
     streetLife.update(dt, time, gameMode === 'free' && !inside);
     // ---- the doors of the houses (ENTER / EXIT) ----
     places.update(dt, shared.uPgNight.value);
+    online.update(dt, { car: car && !onFoot ? car : null, inside: interiors.inside ? interiors.anchor : null, weapon: weapons.current });
     weapons.update(dt, { can: gameMode === 'free' && !story.active && onFoot && vehicles.state === 'none' && !player.staged && !player.swimming && !player.hidden && !ui.menuOpen && !interiors.busy, inside: interiors.inside });
     interiors.update(dt, {
       free: gameMode === 'free' && !story.active,
@@ -1075,6 +1081,7 @@ async function boot() {
   }
   async function showTitle(opts = {}) {
     interiors.reset();
+    if (online.state !== 'off') online.leave(true);
     story.stop(); missions.stop();
     gameMode = 'title'; paused = false;
     document.body.classList.add('title');
@@ -1118,6 +1125,7 @@ async function boot() {
     if (action === 'continue') startStory(() => story.resume());
     else if (action === 'new') startStory(() => story.newGame());
     else if (action === 'free') startFree(false);
+    else if (action === 'online') { ui.hideMenus(); online.openMenu({ onBack: () => showTitle(), onJoined: () => startFree(false) }); }
     else if (action === 'settings') openSettings(showTitle);
     else if (action === 'debug') openDebug();
     else if (action === 'gallery') openGallery();
@@ -1131,6 +1139,7 @@ async function boot() {
   }
   async function startStory(go) {
     interiors.reset();
+    if (online.state !== 'off') online.leave(true);
     loose.reset();
     weapons.reset();
     ui.hideMenus();
@@ -1325,7 +1334,7 @@ async function boot() {
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
     get frameCalls() { return frameCalls; },
-    guard, texBudget, gfx, setGfx, loose, site, places, weapons,
+    guard, texBudget, gfx, setGfx, loose, site, places, weapons, online,
     get qualityNow() { return { mode, active, label: quality.label, cap: texBudget.cap, fpsCap, pr: renderer.getPixelRatio() }; },
     get paused() { return frozen; },
     get waypoint() { return waypoint; },
