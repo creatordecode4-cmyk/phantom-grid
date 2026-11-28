@@ -336,7 +336,7 @@ export function createAnimator(THREE, rig, opts = {}) {
   // Every foot is either PLANTED at a fixed place in the world, or in the air on
   // its way to the next place. Places are stored in world coordinates.
   const step = SIDES.map(({ s }) => ({ planted: true, wx: 0, wz: 0, wy: 0, yaw: 0, fx: 0, fz: 0, fy: 0, fyaw: 0, t: 1, dur: 0.3, lift: 0, off: s > 0 ? 0 : 0.5, first: true, strikeT: 9, phase: 0 }));
-  const st = { x: 0, z: 0, heading: 0, y: 0, ground: null, phase: 0, speed: 0, time: 0, bob: 0, drop: 0, lean: 0, moving: 0, run: 0 };
+  const st = { x: 0, z: 0, heading: 0, y: 0, ground: null, phase: 0, speed: 0, time: 0, bob: 0, drop: 0, lean: 0, moving: 0, run: 0, crouch: 0, lookHold: false };
   let vx = 0, vz = 0;       // virtual position, for walking on the spot (test screen)
   // the WALKING STYLE: G = the numbers in use; they glide to the chosen style's numbers (Gt) in about half a second
   const G = walkStyle('normal'), Gt = walkStyle('normal');
@@ -352,8 +352,10 @@ export function createAnimator(THREE, rig, opts = {}) {
     const moving = smooth((Math.abs(speed) - 0.12) / 0.5), run = smooth((speed - 2.3) / 2.2);
     st.moving = lerp(st.moving, moving, 1 - Math.exp(-10 * dt)); st.run = lerp(st.run, run, 1 - Math.exp(-8 * dt));
     // how long a step is and how long a foot stays on the ground
-    const stepLen = (0.4 + 0.235 * Math.abs(speed)) * (legLen / 0.86) * (speed < 0 ? 0.7 : 1) * lerp(G.stride, 1, st.run);
-    const duty = lerp(0.62, 0.3, st.run);
+    // (a walker takes about two steps a second; a runner's step is long but quick - the foot is on the ground only
+    //  a short time. Crouching: short careful steps.)
+    const stepLen = (0.38 + 0.22 * Math.abs(speed)) * (legLen / 0.86) * (speed < 0 ? 0.7 : 1) * lerp(G.stride, 0.94, st.run) * (1 - 0.32 * st.crouch);
+    const duty = lerp(lerp(0.62, 0.7, st.crouch), 0.3, st.run);
     const cycleTime = Math.abs(speed) > 0.05 ? (2 * stepLen) / Math.abs(speed) : 1e9;
     if (moving > 0.01) st.phase = frac(st.phase + dt / cycleTime);
     const sign = speed < 0 ? -1 : 1;
@@ -434,8 +436,8 @@ export function createAnimator(THREE, rig, opts = {}) {
           const sw = S.t;
           pitch += (lerp(lerp(34, 46, st.run), -lerp(16 * G.heel, 4, st.run), smooth(sw * 1.25)) * DEG) * m * sign;
           toe = (1 - smooth(sw * 3)) * 0.5;
-          // a runner's foot kicks up behind
-          lift += Math.sin(Math.PI * clamp(sw * 1.5, 0, 1)) * 0.16 * k * st.run;
+          // the knee folds in the swing: the heel comes up behind early in it (a walker a little, a runner a lot)
+          lift += Math.sin(Math.PI * clamp(sw * 1.5, 0, 1)) * lerp(0.05, 0.16, st.run) * k;
         }
       }
       F.yaw = yawL; F.pitch = pitch; F.toe = toe;
@@ -471,7 +473,7 @@ export function createAnimator(THREE, rig, opts = {}) {
     // (phase 0 = the left foot lands in front; turning by a positive angle around 'up' brings the RIGHT hip forward)
     const hipYaw = -Math.cos(ph) * lerp(5 * G.hipYaw, 9, r) * DEG * m * sgn;          // the hip of the leading leg goes forward
     const hipRoll = Math.sin(ph - 0.38) * lerp(3.2 * G.hipDrop, 4.5, r) * DEG * m;    // the hip of the swinging leg drops a little
-    const leanF = (lerp(2.5, 9, r) * m * sgn + st.lean + G.lean * (1 - r * m)) * DEG;
+    const leanF = (lerp(4, 9, r) * m * sgn + st.lean + G.lean * (1 - r * m)) * DEG;
     // ---- idle: breathing and shifting the weight ----
     const breathe = Math.sin(t * 1.45) * (1 - m * 0.6), idle = 1 - m;
     sway = Math.sin(t * 0.43) * 0.6 + Math.sin(t * 0.171 + 1.3) * 0.4;
@@ -482,7 +484,8 @@ export function createAnimator(THREE, rig, opts = {}) {
     // ---- hips height: as high as the legs allow (so the body sinks when the feet are far apart) ----
     const lateralSway = Math.sin(ph - 0.38) * lerp(0.018 * G.sway, 0.008, r) * k * m;          // over the standing foot
     // (a little up at each step, when the standing leg is straight under the body - more for a bouncy walk)
-    const stepBob = (0.5 - 0.5 * Math.cos(2 * ph)) * 0.006 * G.bounce * k * m * wk;
+    // (highest when the standing leg passes under the body, lowest when both feet are down: twice in a cycle)
+    const stepBob = (0.5 - 0.5 * Math.cos(2 * ph)) * 0.016 * G.bounce * k * m * wk;
     const nominal = hipsRest.y - (0.012 + 0.03 * r) * k * m - 0.006 * k + breathe * 0.0025 * k - G.crouch * k * wk + stepBob;
     let y = nominal + st.bob;
     hipsPos.set(lateralSway + shift, y, hipsRest.z + lerp(0, 0.03, r) * k * m * sgn);
@@ -509,11 +512,12 @@ export function createAnimator(THREE, rig, opts = {}) {
     setDelta('chest', spineBend(-breathe * 0.9 * DEG - chestOut * 0.55), spineBend(counter * 0.35), spineBend(-hipRoll * 0.1 - rock * 0.6));
     // ---- head: stays level and looks where the body goes; when idle it looks around slowly ----
     look.next -= dt;
-    if (look.next <= 0) { look.next = 2.5 + Math.random() * 4; look.tYaw = (Math.random() - 0.5) * 50 * DEG * idle; look.tPitch = (Math.random() - 0.4) * 12 * DEG * idle; }
+    if (look.next <= 0 && !st.lookHold) { look.next = 2.5 + Math.random() * 4; look.tYaw = (Math.random() - 0.5) * 50 * DEG * idle; look.tPitch = (Math.random() - 0.4) * 12 * DEG * idle; }
     if (m > 0.3 && !lookAt) { look.tYaw = 0; look.tPitch = 0; }
     // (speaking, a person looks ahead at the one they talk to - not around; after the line the eyes wander again)
     if (!lookAt && face && face.speaking) { look.tYaw = 0; look.tPitch = 0; look.next = Math.max(look.next, 1.2); }
-    if (lookAt) { look.tYaw = clamp(lookAt.yaw, -1.3, 1.3); look.tPitch = clamp(lookAt.pitch || 0, -0.5, 0.5); look.next = 1; }     // the story says where to look
+    if (st.lookHold && !lookAt) { look.tYaw = 0; look.tPitch = 0; }
+    if (lookAt) { look.tYaw = clamp(lookAt.yaw, -60 * DEG, 60 * DEG); look.tPitch = clamp(lookAt.pitch || 0, -0.5, 0.5); look.next = 1; }     // the story says where to look
     const quick = lookAt ? 5 : 1.6;
     look.yaw += (look.tYaw - look.yaw) * (1 - Math.exp(-quick * dt)); look.pitch += (look.tPitch - look.pitch) * (1 - Math.exp(-quick * dt));
     const sh = speechHead(dt);
@@ -528,8 +532,8 @@ export function createAnimator(THREE, rig, opts = {}) {
       const sw = Math.cos(a) * sgn, late = Math.cos(a - 0.5) * sgn;         // (the forearm is 0.5 rad late: overlap)
       // (the style: how far this arm swings - a lopsided walk swings the right arm more)
       const armK = G.arm * (1 + (q === 1 ? G.lopsided : -0.5 * G.lopsided));
-      const flexWalk = 4 + (sw * 22 + (sw < 0 ? sw * 6 : 0)) * armK, flexRun = 2 + sw * 42;
-      const elbowWalk = 14 + G.elbow + (Math.max(0, late) * 22 + Math.max(0, -late) * 4) * Math.min(1.3, armK), elbowRun = 88 + late * 18;
+      const flexWalk = 5 + (sw * 27 + (sw < 0 ? sw * 6 : 0)) * armK, flexRun = 4 + sw * 46;
+      const elbowWalk = 20 + G.elbow + (Math.max(0, late) * 26 + Math.max(0, -late) * 5) * Math.min(1.3, armK), elbowRun = 90 + late * 18;
       const flex = lerp(lerp(2, flexWalk, m), flexRun, r) + breathe * 0.6 * idle;
       // (never closer to the body than the plain walk: the hands would go into the hips)
       const side = lerp(lerp(9, 8, m), 11, r) + Math.max(0, G.out) * wk + breathe * 0.5 * idle + Math.max(0, -s * sway) * 1.2 * idle;
@@ -1186,7 +1190,12 @@ export function createAnimator(THREE, rig, opts = {}) {
     else if (pose === 'sit' || pose === 'sitEdge') sittingPose(dt);
     else if (pose === 'lie') sleepPose();
     else if (pose === 'fallen') fallenPose();
-    else { locomotion(dt, speed, 0); bodyAndArms(dt, speed); if (pose !== 'idle' || talk > 0 || talkNow > 0.02 || gHand[0].w > 0.004 || gHand[1].w > 0.004) standingPose(dt); }
+    else {
+      locomotion(dt, speed, 0); bodyAndArms(dt, speed);
+      if (pose !== 'idle' || talk > 0 || talkNow > 0.02 || gHand[0].w > 0.004 || gHand[1].w > 0.004) standingPose(dt);
+      // ACTIONS on top of walking and standing (pick up, hit, jump, crouch ...: src/characters/animStates.js)
+      if (overlay) overlay(OV, dt);
+    }
     // the body language of speaking and listening (standing, sitting, driving - not lying, not swimming)
     if (!swimming && pose !== 'lie' && pose !== 'fallen' && mode !== 'armsForward' && mode !== 'deepBend') bodyLanguage();
     // a hand that holds something by its handle (a case): the fingers close around it
@@ -1195,6 +1204,19 @@ export function createAnimator(THREE, rig, opts = {}) {
     // the face (faceAnim.js): its expression, blinking, the jaw while speaking; asleep = eyes shut
     if (face) { if (pose === 'lie' && !asleep) { asleep = true; awake = face.name; face.set('asleep', 0.6); } else if (pose !== 'lie' && asleep) { asleep = false; face.set(awake, 0.5); } face.update(dt, talk, asleep); }
   }
+  // ---------------------------------------------------------------- the ACTION layer (animStates.js)
+  // An action changes the pose after walking and standing were worked out: it turns the body and the spine a
+  // little more, puts a hand somewhere (with "mix" it comes softly from where the arm swings), lowers the hips.
+  let overlay = null;
+  const OV = {
+    THREE, k, DEG, legLen, hipsRest, hipsPos, bodyQ, euler, st, foot, step, hand, SIDES, upperLen, foreLen,
+    setDelta, addDelta, armAngles, fingers, setTarget,
+    // a hand to a place in the character's own space (x left, y up, z forward); w: 0 = the arm as it swings .. 1 = there
+    handTo(q, x, y, z, px, py, pz, w = 1) { handAt(q, x, y, z, px, py, pz); hand[q].mix = clamp(w, 0, 1); },
+    // a point of the world in the character's own space
+    toLocal(wx, wy, wz, out) { const o = toLocal(wx, wz, { x: 0, z: 0 }); out.set(o.x, wy - st.y, o.z); return out; },
+    startBlend,
+  };
   function setMode(next, seconds = 0.2) {
     if (next === mode) return;
     startBlend(seconds);
@@ -1262,5 +1284,11 @@ export function createAnimator(THREE, rig, opts = {}) {
     // for tests: is a foot on the ground, and where (world)
     get feet() { return step.map((S, q) => ({ planted: S.planted, x: S.wx, z: S.wz, knee: foot[q].knee })); },
     get phase() { return st.phase; },
+    // the action layer (animStates.js): fn(OV, dt), called every frame after walking and standing
+    set overlay(fn) { overlay = fn || null; },
+    // how much the character crouches (0..1): the step gets short and careful (set by the action layer)
+    set crouch(v) { st.crouch = clamp(v, 0, 1); },
+    // the state of the feet and the walk, for the ANIM TEST screen
+    get gait() { return { moving: st.moving, run: st.run, phase: st.phase, crouch: st.crouch }; },
   };
 }

@@ -29,7 +29,7 @@ import * as THREE from 'three';
 
 const ORDER = ['none', 'bat', 'pistol', 'rifle'];
 const INFO = {
-  none: { label: 'HANDS', pose: 'idle' },
+  none: { label: 'HANDS', pose: 'idle', act: 'HIT', every: 0.55 },
   bat: { label: 'BAT', pose: 'bat', act: 'HIT', every: 0.62 },
   pistol: { label: 'PISTOL', pose: 'pistol', act: 'FIRE', every: 0.3, range: 60, spread: 0.012 },
   rifle: { label: 'RIFLE', pose: 'aim', act: 'FIRE', every: 0.11, range: 90, spread: 0.028 },
@@ -152,7 +152,7 @@ export function createWeapons({ scene, player, city, vehicles, police, loose, si
   window.addEventListener('keydown', (e) => { if (e.code === 'KeyZ' && !e.repeat && shown) next(); if (e.code === 'KeyX') keyFire = true; });
   window.addEventListener('keyup', (e) => { if (e.code === 'KeyX') keyFire = false; });
 
-  function label() { bWeapon.textContent = INFO[current].label; bFire.textContent = INFO[current].act || ''; bFire.hidden = !shown || current === 'none'; }
+  function label() { bWeapon.textContent = INFO[current].label; bFire.textContent = INFO[current].act || ''; bFire.hidden = !shown; }
   function show(kind) {
     for (const k of Object.keys(meshes)) meshes[k].visible = k === kind;
     player.setPose(INFO[kind].pose, 0.22);
@@ -266,9 +266,31 @@ export function createWeapons({ scene, player, city, vehicles, police, loose, si
     return { what, dist: +tHit.toFixed(1), things };
   }
 
+  // A PUNCH (empty hands): whoever is right in front staggers back for a moment (nobody falls, nobody is hurt)
+  function punchHit() {
+    const [dx, dz] = fwd(), px = player.position.x, pz = player.position.z, hx = px + dx * 0.8, hz = pz + dz * 0.8;
+    let people = city.people.staggerAt ? city.people.staggerAt(hx, hz, 0.75, dx, dz) : 0;
+    if (site && site.knockAt && !people) people += site.knockAt(hx, hz, 0.6, dx, dz, 1.2);
+    const things = loose ? loose.push(hx, hz, 0.55, dx, dz, 2.5) : 0;
+    let car = null;
+    for (const v of vehicles.live) { if (v.away || !v.circles) continue; if (Math.hypot(v.x - hx, v.z - hz) < (v.radius || 1) + 0.6) { car = v; break; } }
+    if (people || things || car) { if (sound.batHit) sound.batHit(car ? 'metal' : 'soft'); if (navigator.vibrate) navigator.vibrate(25); }
+    if (people) { city.people.scareAt(px, pz, 14); wanted(1); }
+    return { people, things, car: !!car };
+  }
   function attack() {
-    if (current === 'none' || cool > 0) return null;
+    if (cool > 0) return null;
     cool = INFO[current].every;
+    // the bat and the fist: the swing is an action of the body (wind-up, strike, recover: src/characters/animStates.js);
+    // what it hits is worked out in the middle of the strike
+    if ((current === 'bat' || current === 'none') && player.actions) {
+      const bat = current === 'bat';
+      if (!player.actions.play('attack', { weapon: bat ? 'bat' : 'fist', onStrike: () => (bat ? batHit() : punchHit()) })) { cool = 0; return null; }
+      if (bat && sound.batSwing) setTimeout(() => sound.batSwing(), 150);
+      if (api.onEvent) api.onEvent('bat', { x: player.position.x, z: player.position.z, dx: Math.sin(player.heading), dz: Math.cos(player.heading) });
+      return { what: 'swing' };
+    }
+    if (current === 'none') return null;
     if (current === 'bat') {
       swing = 0.42; hitDone = false;
       player.setPose('batSwing', 0.1);
@@ -297,7 +319,7 @@ export function createWeapons({ scene, player, city, vehicles, police, loose, si
     get armed() { return current === 'pistol' || current === 'rifle'; },
     set, next, attack, meshes,
     // tests: the hit of a bat swing right now; where a weapon sits in the hand
-    batHit,
+    batHit, punchHit,
     tune(kind, p, r) { meshes[kind].position.fromArray(p); meshes[kind].rotation.set(r[0], r[1], r[2]); },
     update(dt, ctx = {}) {
       const can = !!ctx.can;
@@ -310,14 +332,14 @@ export function createWeapons({ scene, player, city, vehicles, police, loose, si
       }
       cool = Math.max(0, cool - dt);
       // the swing of the bat: the hit lands in its middle, then the arm goes back
-      if (swing > 0) {
+      if (swing > 0 && !player.actions) {
         swing -= dt;
         if (!hitDone && swing < 0.27) { hitDone = true; if (can) batHit(); }
         if (swing <= 0 && can && current === 'bat') player.setPose('bat', 0.25);
       }
-      if (can && (holdFire || keyFire) && current !== 'none') {
+      if (can && (holdFire || keyFire)) {
         // (no shooting in a room: the bank's guard would not like it - and a room has no street to hit)
-        if (ctx.inside && current !== 'bat') { if (cool <= 0) { cool = 0.8; hud.toast(t('ui.weapon.notHere'), 1600); } }
+        if (ctx.inside && current !== 'bat' && current !== 'none') { if (cool <= 0) { cool = 0.8; hud.toast(t('ui.weapon.notHere'), 1600); } }
         else attack();
       }
       // a gun always points where the player looks, level - whatever the hand is doing at this moment of the pose

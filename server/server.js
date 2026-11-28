@@ -20,12 +20,12 @@
 //
 // THE MESSAGES (text, JSON)
 //   game -> server   { t: 'join', world: 'MAIN' | 'NEW' | 'K7QP2M', name }
-//                    { t: 's', x, y, z, h, k, sp, w }        my state: place, heading, vehicle kind ('' on foot),
-//                                                             speed, weapon in the hand
+//                    { t: 's', x, y, z, h, k, sp, w, a }     my state: place, heading, vehicle kind ('' on foot),
+//                                                             speed, weapon in the hand, animation state (a name)
 //                    { t: 'e', k: 'shot' | 'bat' | 'say', ... }   something that happened (passed on as it is)
 //   server -> game   { t: 'joined', id, world, own, players: [{ id, name }], max }
 //                    { t: 'in', id, name }   { t: 'out', id }
-//                    { t: 'u', p: [[id, x, y, z, h, k, sp, w], ...] }     everybody else, ten times a second
+//                    { t: 'u', p: [[id, x, y, z, h, k, sp, w, a], ...] }  everybody else, ten times a second
 //                    { t: 'e', id, k, ... }                      an event of another player
 //                    { t: 'no', why }                            could not join (a wrong code, the world is full)
 // ---------------------------------------------------------------------------
@@ -99,7 +99,9 @@ function onMessage(p, text) {
   if (m.t === 's') {
     // (only numbers in sensible ranges are kept: nothing a player sends is trusted)
     p.state = [p.id, round(num(m.x, -5000, 5000), 100), round(num(m.y, -100, 500), 100), round(num(m.z, -5000, 5000), 100), round(num(m.h, -7, 7), 1000),
-      clean(m.k, 20), round(num(m.sp, -100, 100), 10), clean(m.w, 8)];
+      clean(m.k, 20), round(num(m.sp, -100, 100), 10), clean(m.w, 8),
+      // the animation state of somebody on foot ('' walking or standing, 'crouch', 'pickup', 'attack', 'getHit', 'jump' ...)
+      clean(m.a, 10)];
   } else if (m.t === 'e') {
     // not more than twelve events a second from one player
     const t = now();

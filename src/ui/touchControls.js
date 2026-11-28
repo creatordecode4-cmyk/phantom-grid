@@ -31,6 +31,8 @@ export function createControls(dom) {
     drive: { steer: 0, gas: 0, brake: 0, handbrake: false, horn: false, nitro: false, up: false, down: false, quiet: false, ram: false, turn: false },
     camera: false,        // true for one frame: next camera view
     lights: false,        // true for one frame: high beam on / off
+    jump: false,          // true for one frame: jump (on foot: the JUMP button or Space)
+    crouch: false,        // true for one frame: crouch on / off (the CROUCH button or Ctrl)
   };
 
   // ------------------------------------------------------------------ joystick
@@ -107,6 +109,28 @@ export function createControls(dom) {
     e.stopPropagation();
   });
 
+  // ------------------------------------------------- JUMP and CROUCH (on foot)
+  // (two round buttons beside RUN; made here so the page does not need to know about them)
+  let jumpPressed = false, crouchPressed = false;
+  {
+    const css = document.createElement('style');
+    css.textContent = `
+      #btn-jump, #btn-crouch { position: absolute; width: 58px; height: 58px; font-size: 9px; letter-spacing: 0.14em; zoom: var(--ctl, 1); touch-action: none; }
+      #btn-jump { right: calc(206px + env(safe-area-inset-right)); bottom: calc(60px + env(safe-area-inset-bottom)); }
+      #btn-crouch { right: calc(206px + env(safe-area-inset-right)); bottom: calc(132px + env(safe-area-inset-bottom)); }
+      #btn-crouch.on { background: rgba(255, 255, 255, 0.86); color: #0b0d10; }
+      @media (pointer: fine) and (hover: hover) { #btn-jump, #btn-crouch { display: none; } }
+      body.driving #btn-jump, body.driving #btn-crouch, body.cine #btn-jump, body.cine #btn-crouch, body.title #btn-jump, body.title #btn-crouch,
+      body.calm #btn-jump, body.calm #btn-crouch { display: none; }`;
+    document.head.appendChild(css);
+    const parent = dom.runButton.parentNode || document.body;
+    const mk = (id, label, aria) => { const b = document.createElement('button'); b.className = 'btn round'; b.id = id; b.textContent = label; b.setAttribute('aria-label', aria); parent.appendChild(b); return b; };
+    const bj = mk('btn-jump', 'JUMP', 'Jump'), bc = mk('btn-crouch', 'CROUCH', 'Crouch on or off');
+    bj.addEventListener('pointerdown', (e) => { jumpPressed = true; e.preventDefault(); e.stopPropagation(); });
+    bc.addEventListener('pointerdown', (e) => { crouchPressed = true; e.preventDefault(); e.stopPropagation(); });
+    input.setCrouchShown = (on) => bc.classList.toggle('on', !!on);
+  }
+
   // ------------------------------------------------------- driving buttons (phone)
   // a button is "down" while at least one finger is on it
   const held = { left: false, right: false, gas: false, brake: false, hand: false, horn: false, nitro: false, up: false, down: false, quiet: false, ram: false, turn: false };
@@ -164,6 +188,9 @@ export function createControls(dom) {
     if (e.code === 'KeyM' && !e.repeat) mapPressed = true;
     if (e.code === 'KeyC' && !e.repeat) camPressed = true;
     if (e.code === 'KeyL' && !e.repeat) lightPressed = true;
+    // (Space is the handbrake in a car; on foot it jumps - main.js only reads "jump" on foot)
+    if (e.code === 'Space' && !e.repeat) jumpPressed = true;
+    if ((e.code === 'ControlLeft' || e.code === 'ControlRight') && !e.repeat) crouchPressed = true;
     keys.add(e.code);
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   });
@@ -212,6 +239,8 @@ export function createControls(dom) {
     lookDX = lookDY = mouseDX = mouseDY = 0;
 
     input.action = actionPressed; actionPressed = false;
+    input.jump = jumpPressed; jumpPressed = false;
+    input.crouch = crouchPressed; crouchPressed = false;
     input.map = mapPressed; mapPressed = false;
     input.camera = camPressed; camPressed = false;
     input.lights = lightPressed; lightPressed = false;

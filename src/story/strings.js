@@ -87,7 +87,7 @@ export const STRINGS = {
     'dbg.start': 'START AT (WITH THESE FLAGS)',
     'dbg.endings': 'ENDINGS',
     'dbg.flags': 'ALL FLAGS',
-    'dbg.save': 'SAVE FLAGS',
+    'dbg.save': 'SAVE FLAGS', 'dbg.anim': 'ANIM TEST',
     'dbg.saved': 'SAVED',
     'dbg.clear': 'CLEAR ALL',
     'ui.exit_tip': 'STOP AND PRESS EXIT TO GET OUT',
@@ -96,6 +96,7 @@ export const STRINGS = {
     'ui.enter': 'ENTER', 'ui.exit': 'EXIT',
     // ---- the open world: banks and police stations (src/world/places.js) ----
     'ui.weapon.notHere': 'NOT IN HERE.',
+    'ui.pickup': 'PICK UP', 'ui.pickup.wallet': 'A LOST WALLET · +{n} CREDITS · YOU HAVE {all}',
     'ui.place.atm': 'TAKE OUT 200', 'ui.place.rob': 'ROB THE BANK', 'ui.place.askDesk': 'ASK AT THE DESK', 'ui.place.fine': 'PAY THE FINE · {n}',
     'ui.place.atmPaid': 'PAY DAY · YOU HAVE {n} CREDITS', 'ui.place.atmWait': 'THE MACHINE IS EMPTY · COME BACK IN {n} MIN',
     'ui.place.robNoGun': 'THE TELLER SMILES. (TAKE A GUN IN YOUR HAND TO ROB THE BANK.)', 'ui.place.robEmpty': 'THE TILLS ARE EMPTY. THE GUARD IS ON ITS WAY.',

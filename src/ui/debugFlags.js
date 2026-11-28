@@ -91,7 +91,10 @@ export function showDebugFlags(node, opts) {
   press(clearB, () => { flags = {}; for (const o of pre.children) o.classList.remove('on'); preNote.textContent = ''; drawValues(); });
   const back = button(t('ui.back'));
   press(back, () => opts.onBack());
-  col.appendChild(saveB); col.appendChild(clearB); col.appendChild(back);
+  // ANIM TEST (src/ui/animTest.js): every animation of Nate on buttons, slow motion, the foot contacts
+  const animB = button(t('dbg.anim'));
+  press(animB, () => { if (opts.onAnimTest) opts.onAnimTest(); });
+  col.appendChild(saveB); col.appendChild(clearB); if (opts.onAnimTest) col.appendChild(animB); col.appendChild(back);
   node.appendChild(col);
 
   // what a value looks like on its button

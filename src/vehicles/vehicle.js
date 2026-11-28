@@ -555,6 +555,11 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // a boat in the harbor of the docks (there is no beach there: he gets out at the slip or the pier)
   function inHarbor(v) { return !!DK && v.x < L.docks.maxX + 6 && v.x > L.docks.minX - 60 && v.z < L.docks.maxZ; }
   // where the driver stands next to the vehicle (left side first)
+  // where the handle of the driver's door is (in the world): between the door spot and the car, at hip height
+  function doorHandle(v) {
+    const s = doorSpot(v), dx = v.x - s.x, dz = v.z - s.z, d = Math.hypot(dx, dz) || 1;
+    return [s.x + (dx / d) * 0.42, (v.y || 0) + 0.95, s.z + (dz / d) * 0.42];
+  }
   function doorSpot(v) {
     if (v.role === 'boat') {
       // a dock of The Sunk next to the boat (the story may take him out anywhere: then the nearest one), else the beach
@@ -1207,6 +1212,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       stateTime += dt;
       const v = active;
       v.doorOpen = stateTime < 0.3 ? stateTime / 0.3 : Math.max(0, 1 - (stateTime - 0.45) / 0.3);
+      // (the hand goes to the door, the body folds into the seat: src/characters/animStates.js)
+      if (stateTime === dt && player.actions && v.isCar && !v.info.bike) player.actions.play('enterCar', { at: doorHandle(v) });
       if (stateTime > 0.38) player.setHidden(true);
       else { const s = v.role === 'boat' ? { x: player.position.x, z: player.position.z } : doorSpot(v); player.glideTo(s.x, s.z, v.heading, dt); }
       if (stateTime > 0.75) {
@@ -1223,6 +1230,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         const s = doorSpot(v);
         player.place(s.x, s.z, v.heading);
         player.setHidden(false);
+        // (out of the seat: folded, then up, the hand leaves the door)
+        if (player.actions && v.isCar && !v.info.bike) player.actions.play('exitCar', { at: doorHandle(v) });
       }
       if (stateTime > 0.8) { state = 'none'; v.doorOpen = 0; v.siren = false; active = null; if (v.isCar) sound.doorClick('close'); }
     }

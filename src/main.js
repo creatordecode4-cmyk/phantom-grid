@@ -41,6 +41,8 @@ import { createConstruction } from './world/construction.js';
 import { createPlaces, PLACE_INFO } from './world/places.js';
 import { createWeapons } from './world/weapons.js';
 import { createOnline } from './net/online.js';
+import { createPickups } from './world/pickups.js';
+import { createAnimTest } from './ui/animTest.js';
 import { CAR_TYPES, carInfo } from './vehicles/carModels.js';
 import { loadVehicles } from './vehicles/vehicleLoader.js';
 import { createEffects } from './vehicles/effects.js';
@@ -320,6 +322,10 @@ async function boot() {
   // a bat and two guns for free roam (src/world/weapons.js)
   const weapons = createWeapons({ scene, player, city, vehicles, police, loose, site, sound, hud, effects, t });
   world2.armed = () => weapons.armed;
+  // lost wallets on the sidewalks that Nate can pick up (src/world/pickups.js)
+  const pickups = createPickups({ scene, player, ui, hud, sound, places, t, layout });
+  // the hidden ANIM TEST screen (DEBUG FLAGS > ANIM TEST): every animation on a button, slow motion, foot contacts
+  const animTest = createAnimTest({ player, vehicles, weapons, onClose: () => {} });
   // online free roam: the other players of a world (src/net/online.js, server/server.js)
   const online = createOnline({ scene, player, vehicles, materials, hud, sound, t });
   weapons.onEvent = (kind, data) => online.event(kind, data);
@@ -476,6 +482,7 @@ async function boot() {
     time += dt;
     shared.uPgTime.value = time;
     const input = controls.update();
+    animTest.input(input);
     const S = story.active ? story : null;
     // (a menu on the screen - pause, settings, an end card: the panels of the mini-games step back under it)
     { const mo = ui.menuOpen; if (mo !== menuWas) { menuWas = mo; document.body.classList.toggle('menu-open', mo); } }
@@ -498,6 +505,9 @@ async function boot() {
     const onFoot = vehicles.state === 'none';
     // (in a story scene the character can be posed somewhere: then it does not listen to the stick)
     if (onFoot) { if (player.staged) player.tick(dt); else player.update(dt, input, rig.yaw); }
+    // going into a car or out of it: his animation goes on (the hand on the door, the body folding)
+    else if ((vehicles.state === 'entering' || vehicles.state === 'exiting') && !player.hidden) player.tickAnim(dt);
+    if (input.setCrouchShown) input.setCrouchShown(!!(player.actions && player.actions.crouch));
     // inside a house the player is far away from the city: the street goes on living around the door
     const inside = interiors.inside;
     const AP = inside ? interiors.anchor : player.position;
@@ -575,6 +585,17 @@ async function boot() {
     // ---- the doors of the houses (ENTER / EXIT) ----
     places.update(dt, shared.uPgNight.value);
     online.update(dt, { car: car && !onFoot ? car : null, inside: interiors.inside ? interiors.anchor : null, weapon: weapons.current });
+    {
+      // free roam on foot: the wallets can be picked up, and the head turns to a wallet or another player close by
+      const freeFoot = gameMode === 'free' && !story.active && onFoot && !player.staged && !interiors.inside && !interiors.busy;
+      pickups.update(dt, { can: freeFoot && !player.swimming });
+      if (player.actions && freeFoot) {
+        const w = pickups.nearest(player.position.x, player.position.z, 6);
+        let look = w ? [w.x, w.y + 0.05, w.z] : null;
+        if (!look && online.on) { let bd = 8; for (const o of online.others) { const d = Math.hypot(o.x - player.position.x, o.z - player.position.z); if (d < bd && !o.car) { bd = d; look = [o.x, player.position.y + 1.6, o.z]; } } }
+        player.actions.lookAt(look);
+      } else if (player.actions) player.actions.lookAt(null);
+    }
     weapons.update(dt, { can: gameMode === 'free' && !story.active && onFoot && vehicles.state === 'none' && !player.staged && !player.swimming && !player.hidden && !ui.menuOpen && !interiors.busy, inside: interiors.inside });
     interiors.update(dt, {
       free: gameMode === 'free' && !story.active,
@@ -593,6 +614,8 @@ async function boot() {
     else if (races.cameraActive) races.applyCamera(dt);   // (the replay after the finish line)
     else if (driving && vehicles.active) rig.updateChase(dt, vehicles.active, vehicles.shake, view);
     else rig.update(dt, player);
+    // a landing after a jump: a short small shake of the camera (player.shake fades out by itself)
+    if (player.shake > 0.001 && !driving) camera.position.y += Math.sin(time * 47) * player.shake;
     // test tool: PG.freeCam = { pos: [x, y, z], look: [x, y, z] } puts the camera anywhere (before the rain, the
     // tunnel light and the haze look at where the camera is)
     const fc = window.PG && window.PG.freeCam;
@@ -1081,6 +1104,7 @@ async function boot() {
   }
   async function showTitle(opts = {}) {
     interiors.reset();
+    if (animTest.isOpen) animTest.close();
     if (online.state !== 'off') online.leave(true);
     story.stop(); missions.stop();
     gameMode = 'title'; paused = false;
@@ -1119,6 +1143,7 @@ async function boot() {
       onStart: (id, flags) => startStory(() => (id.key ? (save.replaceFlags(flags), story.playEnding(id.key)) : story.startAt(id.chapter, id.mission, flags))),
       onSave: (flags) => save.replaceFlags(flags),
       onBack: () => showTitle(),
+      onAnimTest: () => { startFree(false); animTest.open(); },
     });
   }
   function onTitle(action) {
@@ -1262,7 +1287,8 @@ async function boot() {
     // (slow motion: the world runs slower for a few real seconds; the menus and the subtitles do not)
     let k = 1;
     if (slow.left > 0) { slow.left -= dt; k = slow.scale; }
-    step(dt * k);
+    step(dt * k * animTest.timeScale);
+    animTest.update(dt);
     draw();
     ui.update(dt);
 
@@ -1334,7 +1360,7 @@ async function boot() {
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
     get frameCalls() { return frameCalls; },
-    guard, texBudget, gfx, setGfx, loose, site, places, weapons, online,
+    guard, texBudget, gfx, setGfx, loose, site, places, weapons, online, pickups, animTest,
     get qualityNow() { return { mode, active, label: quality.label, cap: texBudget.cap, fpsCap, pr: renderer.getPixelRatio() }; },
     get paused() { return frozen; },
     get waypoint() { return waypoint; },

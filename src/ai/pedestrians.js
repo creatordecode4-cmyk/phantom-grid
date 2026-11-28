@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import { blockEdges } from '../city/ground.js';
 import * as M from '../city/models.js';
-import { RNG } from '../utils/math.js';
+import { RNG, clamp } from '../utils/math.js';
 
 // clothes (screen colors); every person gets one
 const CLOTHES = [
@@ -336,6 +336,10 @@ export function createPedestrians(ctx) {
       if (p.fall > 0) {
         const t = (p.fallT || 3) - p.fall; lean = 1.45 * (t < 0.3 ? t / 0.3 : p.fall < 0.8 ? p.fall / 0.8 : 1); p.heading = p.fallDir;
         if (p.air > 0 && p.airT) hop = Math.sin((1 - p.air / p.airT) * Math.PI) * p.airH;
+      } else if ((p.stag || 0) > 0) {
+        // staggering back from a punch: the body leans back and comes up again, facing the one who hit
+        p.stag -= dt; p.heading = p.stagDir;
+        lean = Math.sin(Math.PI * clamp(1 - p.stag / 0.3, 0, 1)) * 0.32;
       } else if (p.jump > 0) hop = Math.sin((p.jump / 0.36) * Math.PI) * 0.28;
       const c = Math.cos(p.heading) * p.size, sn = Math.sin(p.heading) * p.size;
       const cl = Math.cos(lean), sl = Math.sin(lean);
@@ -368,6 +372,18 @@ export function createPedestrians(ctx) {
         p.fall = 3.4; p.fallT = p.fall; p.jump = 0; p.scare = 0;
         p.tx = dx; p.tz = dz; p.tv = power; p.airT = p.air = 0.3; p.airH = 0.25;
         p.fallDir = Math.atan2(-dx, -dz);
+        n++;
+      }
+      return n;
+    },
+    // a push or a punch (not a fall): everybody within r of (x, z) staggers back a step along (dx, dz) for 0.3 s,
+    // then walks on - and away. Returns how many.
+    staggerAt(x, z, r, dx, dz) {
+      let n = 0;
+      for (const p of people) {
+        if (!p.alive || p.fall > 0 || (p.stag || 0) > 0 || Math.hypot(p.x - x, p.z - z) > r) continue;
+        p.stag = 0.3; p.stagDir = Math.atan2(-dx, -dz);
+        p.tx = dx; p.tz = dz; p.tv = 1.8; p.air = 0;
         n++;
       }
       return n;

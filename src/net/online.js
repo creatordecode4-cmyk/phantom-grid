@@ -51,7 +51,13 @@ export function createOnline({ scene, player, vehicles, materials, hud, sound, t
   const phase = new THREE.InstancedBufferAttribute(new Float32Array(MAX), 1);
   phase.setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('aPhase', phase);
-  const mesh = new THREE.InstancedMesh(geo, materials.mats.ped, MAX);
+  // THE ANIMATION STATE of each other player: the crowd shader of the building site's workers ("PG_WORK" in
+  // materials.js) moves the arms and bends the body - 1 a strike, 2 bending down and reaching, 3 the arms held in
+  // front; the whole figure is lowered, leaned and lifted here (crouch, being hit, a jump)
+  const work = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 2), 2);
+  work.setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('aWork', work);
+  const mesh = new THREE.InstancedMesh(geo, materials.mats.worker || materials.mats.ped, MAX);
   mesh.name = 'onlinePlayers';
   mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false;
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -59,7 +65,7 @@ export function createOnline({ scene, player, vehicles, materials, hud, sound, t
   mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
   mesh.count = 0; mesh.visible = false;
   scene.add(mesh);
-  const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(1, 1, 1), _p = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _s = new THREE.Vector3(1, 1, 1), _p = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0), XV = new THREE.Vector3(1, 0, 0);
 
   // a name over a head: a small picture of the text that always faces the camera
   function tag(text, color = '#ffffff') {
@@ -125,7 +131,13 @@ export function createOnline({ scene, player, vehicles, materials, hud, sound, t
       for (const s of m.p) {
         const o = others.get(s[0]);
         if (!o) continue;
+        // (the speed between the last two messages: the figure keeps going between them instead of stopping and
+        //  starting ten times a second - it is drawn a little behind, where it already was, never where it jumps)
+        const now = performance.now() / 1000, gap = o.at ? Math.min(0.5, Math.max(0.05, now - o.at)) : 0.1;
+        if (o.at) { o.vx = (s[1] - o.tx) / gap; o.vz = (s[3] - o.tz) / gap; if (Math.hypot(o.vx, o.vz) > 40) o.vx = o.vz = 0; }
+        o.at = now;
         o.tx = s[1]; o.ty = s[2]; o.tz = s[3]; o.th = s[4]; o.k = s[5]; o.sp = s[6]; o.w = s[7];
+        if ((s[8] || '') !== o.a) { o.a = s[8] || ''; o.aT = 0; }
         // (first news of them, or a jump - they came out of a house far away: no gliding across the city)
         if (!o.seen || Math.hypot(o.tx - o.x, o.tz - o.z) > 30) { o.x = o.tx; o.y = o.ty; o.z = o.tz; o.h = o.th; o.seen = true; }
       }
@@ -136,7 +148,15 @@ export function createOnline({ scene, player, vehicles, materials, hud, sound, t
       if (!o) return;
       if (m.k === 'say') { o.sayT = 5; o.tag.redraw(m.m, true); hud.toast(`${o.name}: ${m.m}`, 4200); }
       else if (m.k === 'shot' && onShot) onShot(m, o);
-      else if (m.k === 'bat' && sound.batSwing) { const d = Math.hypot(m.x - player.position.x, m.z - player.position.z); if (d < 30) sound.batSwing(); }
+      else if (m.k === 'bat') {
+        const ex = player.position.x - m.x, ez = player.position.z - m.z, d = Math.hypot(ex, ez);
+        if (d < 30 && sound.batSwing) sound.batSwing();
+        // right in front of their swing: Nate is hit - he jerks back (nobody gets hurt; players cannot harm each other)
+        if (d < 1.5 && d > 0.05 && player.actions && (ex * (m.dx || 0) + ez * (m.dz || 0)) / d > 0.5) {
+          const side = Math.sign(-ex * Math.cos(player.heading) + ez * Math.sin(player.heading)) || 0;
+          player.actions.play('getHit', { side });
+        }
+      }
     }
   }
   // world: 'MAIN' | 'NEW' | a code. Answers { ok, world, own } or { ok: false, why }
@@ -287,7 +307,8 @@ export function createOnline({ scene, player, vehicles, materials, hud, sound, t
       const c = ctx.car;
       if (c) send({ t: 's', x: c.x, y: c.y, z: c.z, h: c.heading, k: c.kind || '', sp: c.forward || 0, w: '' });
       else if (ctx.inside) send({ t: 's', x: ctx.inside.x, y: 0, z: ctx.inside.z, h: 0, k: 'inside', sp: 0, w: '' });
-      else send({ t: 's', x: player.position.x, y: player.position.y, z: player.position.z, h: player.heading, k: '', sp: player.speed || 0, w: ctx.weapon || '' });
+      else send({ t: 's', x: player.position.x, y: player.position.y, z: player.position.z, h: player.heading, k: '', sp: player.speed || 0, w: ctx.weapon || '',
+        a: player.actions ? player.actions.stateName : '' });
     }
     // ---- the others ----
     let n = 0;
@@ -303,12 +324,29 @@ export function createOnline({ scene, player, vehicles, materials, hud, sound, t
       if (onFoot || (!hidden && !o.car)) {
         // glide to the place the network gave; the legs walk as fast as they move
         const ox = o.x, oz = o.z;
-        o.x += (o.tx - o.x) * k; o.y += (o.ty - o.y) * k; o.z += (o.tz - o.z) * k;
+        // INTERPOLATION: where the last message said, moved on by its speed for the time since (at most 0.15 s)
+        const ahead = o.at ? Math.min(0.15, performance.now() / 1000 - o.at) : 0;
+        const gx = o.tx + (o.vx || 0) * ahead, gz = o.tz + (o.vz || 0) * ahead;
+        o.x += (gx - o.x) * k; o.y += (o.ty - o.y) * k; o.z += (gz - o.z) * k;
         let dh = o.th - o.h; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); o.h += dh * k;
         const sp = Math.hypot(o.x - ox, o.z - oz) / Math.max(dt, 1e-4);
-        o.ph = sp > 0.35 ? o.ph + Math.max(sp, 1.2) * dt * 4.4 : 0;
+        o.ph = sp > 0.35 ? o.ph + Math.max(sp, 1.2) * dt * 4.4 * (sp > 3 ? 1.5 : 1) : 0;
         if (n < MAX) {
-          _m.compose(_p.set(o.x, o.y, o.z), _q.setFromAxisAngle(UP, o.h), _s);
+          // the animation state (the same names as src/characters/animStates.js), blended in over 0.15 s
+          o.aT = (o.aT || 0) + dt;
+          const a = o.a || '', bl = Math.min(1, o.aT / 0.15);
+          o.crouchK = (o.crouchK || 0) + (((a === 'crouch' || a === 'enterCar' || a === 'exitCar') ? 1 : 0) - (o.crouchK || 0)) * Math.min(1, dt * 12);
+          const hitBack = a === 'getHit' ? Math.sin(Math.PI * Math.min(1, o.aT / 0.45)) : 0;
+          // the arms and the bend (the worker shader): a strike, bending down to pick up, arms in front
+          const kind = a === 'attack' ? 1 : a === 'pickup' ? 2 : o.crouchK > 0.5 || a === 'getHit' ? 3 : 0;
+          work.setXY(n, bl > 0.3 || kind === 3 ? kind : 0, o.id * 1.3);
+          // the whole figure: lower and bent forward when crouching, leaned back when hit
+          _q.setFromAxisAngle(UP, o.h);
+          const pitch = 0.2 * o.crouchK - 0.28 * hitBack;
+          if (pitch) _q.multiply(_q2.setFromAxisAngle(XV, pitch));
+          _s.set(1, 1 - 0.14 * o.crouchK, 1);
+          _m.compose(_p.set(o.x, o.y, o.z), _q, _s);
+          _s.set(1, 1, 1);
           mesh.setMatrixAt(n, _m);
           mesh.instanceColor.setXYZ(n, o.shirt[0], o.shirt[1], o.shirt[2]);
           phase.array[n] = o.ph;
@@ -325,7 +363,7 @@ export function createOnline({ scene, player, vehicles, materials, hud, sound, t
       o.tag.sp.scale.set(1.9 * sc, 0.475 * sc, 1);
     }
     mesh.count = n; mesh.visible = n > 0;
-    if (n) { mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true; phase.needsUpdate = true; }
+    if (n) { mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true; phase.needsUpdate = true; work.needsUpdate = true; }
   }
 
   return {
@@ -335,7 +373,7 @@ export function createOnline({ scene, player, vehicles, materials, hud, sound, t
     get world() { return world; },
     get own() { return own; },
     get count() { return others.size + (state === 'on' ? 1 : 0); },
-    get others() { return [...others.values()].map((o) => ({ id: o.id, name: o.name, x: +o.x.toFixed(2), z: +o.z.toFixed(2), k: o.k, w: o.w, car: !!o.car })); },
+    get others() { return [...others.values()].map((o) => ({ id: o.id, name: o.name, x: +o.x.toFixed(2), y: +o.y.toFixed(2), z: +o.z.toFixed(2), k: o.k, w: o.w, a: o.a || '', car: !!o.car })); },
     get serverAddress() { return serverAddress(); },
     set serverAddress(v) { saved.server = v; store(); },
     // something that happened here and the others should see (a shot, a swing)

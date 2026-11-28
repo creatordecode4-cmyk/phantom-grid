@@ -21,6 +21,7 @@ import { clamp, damp, angleDelta, DEG } from '../utils/math.js';
 import { makeMannequin } from '../city/models.js';
 import { autoRig } from '../characters/autoRig.js';
 import { createAnimator } from '../characters/proceduralAnim.js';
+import { createActionLayer } from '../characters/animStates.js';
 import { SWIM, WADE } from '../world/water.js';
 
 // Load the character file. Returns a three.js object, or null if it is missing.
@@ -73,11 +74,14 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     if (!anim.idle && !anim.walk && !anim.run) mixer = null; // no clip with a name we know
   }
   // ---- no skeleton in the file: build one from the shape of the mesh ----
-  let rig = null, mover = null;
+  let rig = null, mover = null, actions = null;
   if (model && !mixer && P.autoRig !== false) {
     try {
       rig = await autoRig(THREE, model, { height: P.height, name: 'player', faceClean: P.faceClean, onProgress });
       mover = createAnimator(THREE, rig);
+      // the actions on top of walking: pick up, hit, get hit, the car door, jump, crouch, look (animStates.js)
+      actions = createActionLayer({ anim: mover });
+      mover.overlay = actions.overlay;
       body.add(rig.root);
     } catch (e) {
       console.warn('[player] the automatic skeleton failed, the model is shown without animation.', e);
@@ -128,6 +132,11 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   heading = compassToAngle(layout.spawn.facingDeg);
   let speed = 0;
   let burden = 0;          // 0..1: something heavy in the arms
+  // JUMPING: the height over the ground (meters) and how fast it changes; "baseY" is where the feet would stand
+  let jumpH = 0, jumpV = 0, baseY = null, shake = 0;
+  let hitCool = 0;
+  let autoWalk = null, faceAt = null;
+  let animMs = 0;   // walking up to something by himself; turning toward it during an action         // (a car that pushes him does not make him jerk back every frame)
   let stepPhase = 0;
   let stepDist = 0, steps = 0;
   const vel = new THREE.Vector2();
@@ -189,6 +198,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
 
   // Push the player out of anything solid. Returns nothing, changes x/z in "p".
   const p = { x: 0, z: 0 };
+  let pushed = 0, pushedFrom = null;
   function collide() {
     const r = P.radius;
     for (let pass = 0; pass < 3; pass++) {
@@ -216,7 +226,8 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
         }
       }
       // (fixed things first, then the moving cars close to the player)
-      for (const c of room ? NO_CIRCLES : city.colliders.dynamic && city.colliders.dynamic.length ? cell.circles.concat(city.colliders.dynamic) : cell.circles) {
+      const dyn = room ? null : city.colliders.dynamic;
+      for (const c of room ? NO_CIRCLES : dyn && dyn.length ? cell.circles.concat(dyn) : cell.circles) {
         const dx = p.x - c.x, dz = p.z - c.z;
         const min = r + c.r;
         const d2 = dx * dx + dz * dz;
@@ -225,6 +236,10 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
         const d = Math.sqrt(d2) || 0.0001;
         p.x += (dx / d) * (min - d);
         p.z += (dz / d) * (min - d);
+        // (pushed hard by a moving car: he is hit - he jerks back; nobody gets hurt)
+        // (only a car - a big circle; a person standing in the way is no hit -
+        //  and the car must be moving: walking into a car that stands is no hit either)
+        if (dyn && c.r > 0.7 && c.car && (c.car.v || 0) > 1.5 && min - d > 0.06 && dyn.includes(c)) pushed = Math.max(pushed, min - d), pushedFrom = [c.x, c.z];
       }
       if (!hit) break;
     }
@@ -243,10 +258,39 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     let mz = fz * input.moveY + rz * input.moveX;
     let amount = Math.hypot(mx, mz);
     if (amount > 1) { mx /= amount; mz /= amount; amount = 1; }
+    // ---- WALK UP TO SOMETHING by himself (to pick it up): the stick is ignored, he walks there ----
+    if (autoWalk) {
+      if (Math.hypot(input.moveX, input.moveY) > 0.5 || autoWalk.t > 3) autoWalk = null;          // (the player takes over)
+      else {
+        autoWalk.t += dt;
+        const dx = autoWalk.x - pos.x, dz = autoWalk.z - pos.z, d = Math.hypot(dx, dz);
+        if (d < 0.16) { const f = autoWalk.done; autoWalk = null; if (f) f(); }
+        else { mx = dx / d; mz = dz / d; amount = 0.3 + 0.35 * Math.min(1, d / 0.6); mx *= amount; mz *= amount; }
+      }
+    }
+    // ---- ACTIONS (animStates.js): one that holds him stops the walk; moving stops one after its minimum time ----
+    if (actions) {
+      actions.update(dt);
+      if (amount > 0.3 && actions.busy) actions.tryCancel();
+      if (actions.locked) {
+        mx = mz = 0; amount = 0;
+        // (turned toward what the action is about: the object, the target)
+        if (faceAt) heading += angleDelta(heading, Math.atan2(faceAt[0] - pos.x, faceAt[1] - pos.z)) * (1 - Math.exp(-9 * dt));
+      } else faceAt = null;
+      // crouching: a button switches it; running stands him up
+      if (input.crouch) actions.crouch = !actions.crouch;
+      if (input.run && actions.crouch && amount > 0.3) actions.crouch = false;
+      // a jump: only from the ground, not in the water, not with a crate in the arms
+      if (input.jump && jumpH === 0 && !swimming && burden < 0.5 && !room && !actions.busy) {
+        actions.play('jump', { onTakeoff: () => { jumpV = 3.3 + Math.min(1, speed / 5) * 0.4; jumpH = 0.001; } });
+      }
+      hitCool = Math.max(0, hitCool - dt);
+    }
     // swimming is slow (and slow to speed up and to turn); deep water at the beach slows the walk
     // (carrying something heavy - the crate of Chapter 5 - he walks slower and cannot run)
     const top = swimming ? (input.run ? P.swimFast ?? 2 : P.swimSpeed ?? 1.2)
-      : (input.run && burden < 0.5 ? P.runSpeed : P.walkSpeed) * (1 - 0.6 * clamp((wade - WADE) / (SWIM - WADE), 0, 1)) * (1 - 0.4 * burden);
+      : (input.run && burden < 0.5 ? P.runSpeed : P.walkSpeed) * (1 - 0.6 * clamp((wade - WADE) / (SWIM - WADE), 0, 1)) * (1 - 0.4 * burden)
+        * (actions ? 1 - 0.55 * actions.crouchAmount : 1);
     const acc = swimming ? 2.4 : P.acceleration;
     vel.x = damp(vel.x, mx * top, acc, dt);
     vel.y = damp(vel.y, mz * top, acc, dt);
@@ -261,7 +305,13 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     // move, then fix collisions
     p.x = pos.x + vel.x * dt;
     p.z = pos.z + vel.y * dt;
+    pushed = 0;
     collide();
+    if (actions && pushed > 0 && hitCool <= 0 && !swimming) {
+      // which side the push came from (for the way the head turns)
+      const ax = pushedFrom[0] - pos.x, az = pushedFrom[1] - pos.z, side = Math.sign(-ax * Math.cos(heading) + az * Math.sin(heading)) || 0;
+      if (actions.play('getHit', { side })) hitCool = 1.2;
+    }
     // The Sunk: no deck there = water or a drop. From a low deck he steps into the water; swimming, he goes on
     // in the water or climbs onto a deck that is low enough. Anything else (a roof edge, a quay wall): slide along it.
     if (!room && (inSunk(p.x, p.z) || inSunk(pos.x, pos.z))) {
@@ -288,8 +338,22 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     else if (swimming && (!w || depth < SWIM - 0.15)) { swimming = false; splashes++; }
     wade = !swimming && w ? Math.max(0, w.surface - pos.y) : 0;
     // follow the ground (curbs, the sloping beach) - or float at the surface (going in from a pontoon: a small drop)
-    if (swimming) pos.y = damp(pos.y, surface, 9, dt);
-    else pos.y = damp(pos.y, groundAt(pos.x, pos.z), 14, dt);
+    // (baseY: where the feet stand; a jump lifts him over it)
+    if (jumpH === 0 || baseY === null) baseY = pos.y;
+    if (swimming) baseY = damp(baseY, surface, 9, dt);
+    else baseY = damp(baseY, groundAt(pos.x, pos.z), 14, dt);
+    if (jumpH > 0) {
+      jumpV -= 9.81 * dt; jumpH += jumpV * dt;
+      if (jumpH <= 0 || swimming) {
+        // down again: the knees give, the camera shakes a little (more after a long fall)
+        const hard = clamp(-jumpV / 5, 0, 1);
+        jumpH = 0; jumpV = 0; shake = 0.03 + 0.04 * hard;
+        if (actions) actions.land(hard);
+        steps++;
+      }
+    }
+    pos.y = baseY + jumpH;
+    shake = Math.max(0, shake - dt * 0.16);
     root.rotation.y = heading;
 
     if (mixer) { animate(dt); body.position.y = swimming ? -1.25 : 0; }
@@ -297,7 +361,10 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
       // the procedural animation: it needs the speed along the walking direction and the ground under the feet
       const forward = vel.x * Math.sin(heading) + vel.y * Math.cos(heading);
       handsTarget();
+      const t0 = performance.now();
       mover.update(dt, { speed: forward, x: pos.x, z: pos.z, y: pos.y, heading, groundAt, swim: swimming });
+      // (how long the animation took, averaged: the ANIM TEST screen and the tests read it)
+      animMs += (performance.now() - t0 - animMs) * 0.05;
       placeHeld();
     } else {
       // no skeleton: a tiny up-down bob and a forward lean, so it does not look like sliding
@@ -382,6 +449,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   // y (optional): about how high the place is. In The Sunk a roof and the room under it share x and z:
   // the deck nearest to this height is the one he stands on (without it: the one nearest to where he is now).
   function place(x, z, angle, y) {
+    jumpH = 0; jumpV = 0; baseY = null;
     if (mover && Math.hypot(pos.x - x, pos.z - z) > 0.5) mover.reset();
     if (typeof y === 'number' && isFinite(y)) pos.y = y;
     pos.set(x, groundAt(x, z), z);
@@ -390,6 +458,18 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     heading = angle;
     root.rotation.y = heading;
     blob.position.set(pos.x, pos.y + 0.02, pos.z);
+  }
+  // (while he goes into a car or comes out of it, main.js keeps his animation running: the hand on the door,
+  //  the body folding; the speed is worked out from how far he moved since the last frame)
+  const lastAt = { x: 0, z: 0, ok: false };
+  function tickAnim(dt) {
+    if (!mover || hidden || staged || sitting || dt <= 0) { lastAt.ok = false; return; }
+    const sp = lastAt.ok ? Math.hypot(pos.x - lastAt.x, pos.z - lastAt.z) / dt : 0;
+    lastAt.x = pos.x; lastAt.z = pos.z; lastAt.ok = true;
+    if (actions) actions.update(dt);
+    // (he is moved sideways to the door, not forward: the feet follow with small standing steps, no walk cycle)
+    mover.update(dt, { speed: sp > 1.2 ? Math.min(sp, 1.5) : 0, x: pos.x, z: pos.z, y: pos.y, heading, groundAt, swim: false });
+    placeHeld();
   }
   function glideTo(x, z, angle, dt) {
     pos.x = damp(pos.x, x, 12, dt); pos.z = damp(pos.z, z, 12, dt);
@@ -434,7 +514,8 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   let staged = false;
   //   floorBelow: for the pose 'sitEdge' - how far the floor is under the seat (meters)
   function stage(x, y, z, angle, pose = 'idle', floorBelow = 0.45) {
-    staged = true; swimming = false;
+    staged = true; swimming = false; jumpH = 0; jumpV = 0; baseY = null;
+    if (actions) { actions.stop(); actions.crouch = false; }
     if (mover) mover.floorBelow = floorBelow;
     pos.set(x, y, z); vel.set(0, 0); speed = 0;
     heading = angle; root.rotation.y = heading;
@@ -449,7 +530,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     if (mover) { mover.setPose(held && heldSize ? 'carry' : 'idle', 0); mover.look = null; mover.talk = 0; mover.reset(); }
   }
   // a staged character still breathes, speaks and looks around
-  function tick(dt) { if (mover) { handsTarget(); mover.update(dt, { speed: 0, x: pos.x, z: pos.z, y: pos.y, heading, groundAt: null }); placeHeld(); } }
+  function tick(dt) { if (actions) actions.update(dt); if (mover) { handsTarget(); mover.update(dt, { speed: 0, x: pos.x, z: pos.z, y: pos.y, heading, groundAt: null }); placeHeld(); } }
   // where the hands work: a point in the world the story gives (poses work, spanner, putDown, roof, lean, give),
   // turned into the body's own space every frame
   let workAt = null;
@@ -478,6 +559,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
   }
 
   function teleport(x, z, compassDeg = null) {
+    jumpH = 0; jumpV = 0; baseY = null;
     if (mover) mover.reset();
     pos.set(x, groundAt(x, z), z);
     settle();
@@ -494,7 +576,18 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     teleport,
     usingMannequin,
     rigged, animated: !!mixer || !!mover, autoRigged: !!rig, rig, anim: mover,
-    setHidden, place, glideTo, sit,
+    setHidden, place, glideTo, sit, tickAnim,
+    // walk up to (x, z) by himself, then done() (the stick takes over at any time)
+    walkTo(x, z, done) { autoWalk = { x, z, done, t: 0 }; },
+    // during an action he turns toward (x, z)
+    faceTo(x, z) { faceAt = [x, z]; },
+    // the actions (src/characters/animStates.js): actions.play('pickup', { at, onGrab, onEnd }) ... null without a skeleton
+    get actions() { return actions; },
+    // the camera shake of a landing (meters, it fades out)
+    get shake() { return shake; },
+    // the time the animation of Nate takes in a frame (milliseconds, averaged)
+    get animMs() { return animMs; },
+    get jumping() { return jumpH > 0 || (!!actions && actions.current === 'jump'); },
     setBurden(b) { burden = clamp(b || 0, 0, 1); },
     stage, unstage, tick, setPose, hold,
     // walking inside a house: its floor, its walls and furniture (null = back in the city)
@@ -508,7 +601,7 @@ export async function createPlayer(scene, city, materials, onProgress = () => {}
     say(text, seconds) { if (mover) mover.say(text, seconds); },
     // someone near is talking for "seconds": Nate listens (small nods now and then, the weight shifts)
     listen(seconds) { if (mover && mover.listen) mover.listen(seconds); },
-    set look(v) { if (mover) mover.look = v; },
+    set look(v) { if (mover) mover.look = v; if (actions) actions.storyLook = !!v; },
     set workAt(v) { workAt = v || null; },
     get workAt() { return workAt; },
     // the expression of the face ('smile', 'sad' ... see src/characters/faceAnim.js)

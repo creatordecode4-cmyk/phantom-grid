@@ -415,7 +415,14 @@ export function createActors({ scene, city, materials, player, vehicles, camera 
         const dx = a.workAt[0] - a.x, dy = a.workAt[1] - a.y, dz = a.workAt[2] - a.z, c = Math.cos(a.heading), sn = Math.sin(a.heading), sc = a.scale || 1;
         a.anim.workAt = (a.workLocal = a.workLocal || new THREE.Vector3()).set((dx * c - dz * sn) / sc, dy / sc, (dx * sn + dz * c) / sc);
       } else a.anim.workAt = null;
-      a.anim.update(step, { speed, x: a.x, z: a.z, y: a.y, heading: a.heading, groundAt: a.keepY ? null : city.groundHeight, swim: a.swim });
+      // FAR AWAY (more than 25 m from the player and the camera, not speaking): the skeleton is worked out only every third frame, with the time of
+      // the three frames together - a body that small on the screen does not need more (it saves time on a phone)
+      a.animDt = (a.animDt || 0) + step;
+      const farAnim = Math.min(dist, camD) > 25 && !a.talking;
+      a.animTick = ((a.animTick || 0) + 1) % 3;
+      if (farAnim && a.animTick !== (a.animSlot ?? (a.animSlot = Math.floor(Math.random() * 3)))) continue;
+      a.anim.update(a.animDt, { speed, x: a.x, z: a.z, y: a.y, heading: a.heading, groundAt: a.keepY ? null : city.groundHeight, swim: a.swim });
+      a.animDt = 0;
       if (a.carried) {
         const at = a.anim.carryAt, C = a.carried;
         C.object.visible = !!at;
