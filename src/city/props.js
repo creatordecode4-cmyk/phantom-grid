@@ -522,10 +522,11 @@ export function buildProps(ctx) {
       const s = rng.chance(0.5) ? 5.6 : len - 5.6;
       if (free(s, 0.5)) {
         const p = P(s, 0.5);
-        sets.hydrant.add(p[0], ground, p[1], toStreet, 1, lin(rng.pick(HYDRANT_COLORS)));
+        const hy = sets.hydrant.add(p[0], ground, p[1], toStreet, 1, lin(rng.pick(HYDRANT_COLORS)));
         take(s, 0.6);
         noPark.push([s - 3.6, s + 3.6]);
-        circles.push({ x: p[0], z: p[1], r: 0.22 });
+        // (loose: a car that hits it fast enough knocks it away - src/world/looseProps.js)
+        circles.push({ x: p[0], z: p[1], r: 0.22, loose: { set: 'hydrant', list: [hy] } });
         blob(p[0], p[1], 0.7, 0.7, 0, ground + 0.012, 0.75);
       }
     }
@@ -549,9 +550,9 @@ export function buildProps(ctx) {
       if (s < 0) continue;
       if (free(s, 0.45)) {
         const p = P(s, 0.55);
-        sets.bin.add(p[0], ground, p[1], rng.range(0, 6.28));
+        const bi = sets.bin.add(p[0], ground, p[1], rng.range(0, 6.28));
         take(s, 0.5);
-        circles.push({ x: p[0], z: p[1], r: 0.32 });
+        circles.push({ x: p[0], z: p[1], r: 0.32, loose: { set: 'bin', list: [bi] } });
         blob(p[0], p[1], 0.9, 0.9, 0, ground + 0.012, 0.7);
       }
     }
@@ -573,9 +574,9 @@ export function buildProps(ctx) {
     // ---- street sign near the corner ----
     if (len > 20 && free(4.0, 0.3)) {
       const p = P(4.0, 0.5);
-      sets.streetSign.add(p[0], ground, p[1], toStreet + rng.range(-0.06, 0.06));
+      const si = sets.streetSign.add(p[0], ground, p[1], toStreet + rng.range(-0.06, 0.06));
       take(4.0, 0.35);
-      circles.push({ x: p[0], z: p[1], r: 0.14 });
+      circles.push({ x: p[0], z: p[1], r: 0.14, loose: { set: 'streetSign', list: [si] } });
     }
 
     // ---- planters with bushes ----
@@ -609,9 +610,9 @@ export function buildProps(ctx) {
       const s = len * rng.range(0.35, 0.65);
       if (free(s, 0.3)) {
         const p = P(s, 0.5);
-        sets.streetSign.add(p[0], ground, p[1], toStreet + Math.PI / 2 + rng.range(-0.06, 0.06));
+        const sj = sets.streetSign.add(p[0], ground, p[1], toStreet + Math.PI / 2 + rng.range(-0.06, 0.06));
         take(s, 0.35);
-        circles.push({ x: p[0], z: p[1], r: 0.14 });
+        circles.push({ x: p[0], z: p[1], r: 0.14, loose: { set: 'streetSign', list: [sj] } });
       }
     }
 
@@ -620,12 +621,13 @@ export function buildProps(ctx) {
       const s0 = rng.chance(0.5) ? rng.range(6.5, 9) : len - rng.range(6.5, 9);
       const n = rng.int(1, 3);
       if (free(s0, 0.4 + n * 0.3)) {
+        const row = [];
         for (let i = 0; i < n; i++) {
           const p = P(s0 + (i - (n - 1) / 2) * 0.56, 0.55);
-          sets.newsBox.add(p[0], ground, p[1], toHouse + rng.range(-0.05, 0.05), 1, lin(rng.pick(NEWSBOX_COLORS)));
+          row.push(sets.newsBox.add(p[0], ground, p[1], toHouse + rng.range(-0.05, 0.05), 1, lin(rng.pick(NEWSBOX_COLORS))));
         }
         const c = P(s0, 0.55);
-        circles.push({ x: c[0], z: c[1], r: 0.3 + n * 0.14 });
+        circles.push({ x: c[0], z: c[1], r: 0.3 + n * 0.14, loose: { set: 'newsBox', list: row } });
         take(s0, 0.4 + n * 0.3);
         blob(c[0], c[1], 0.9, 0.6 + n * 0.5, toStreet + Math.PI / 2, ground + 0.012, 0.6);
       }
@@ -640,9 +642,9 @@ export function buildProps(ctx) {
       const sc = s + 2.8;
       if (metered && free(s, 0.25)) {
         const q = P(s, 0.42);
-        sets.meter.add(q[0], ground, q[1], toHouse);
+        const mi = sets.meter.add(q[0], ground, q[1], toHouse);
         take(s, 0.25);
-        circles.push({ x: q[0], z: q[1], r: 0.12 });
+        circles.push({ x: q[0], z: q[1], r: 0.12, loose: { set: 'meter', list: [mi] } });
       }
       if (noPark.some(([a, b]) => sc > a && sc < b)) continue;
       if (rng.chance(fill)) {
@@ -777,8 +779,8 @@ export function buildProps(ctx) {
       sets.bench.add(x, curb, pz + 0.9, Math.PI);
       circles.push({ x: x - 0.5, z: pz + 0.9, r: 0.4 }, { x: x + 0.5, z: pz + 0.9, r: 0.4 });
       if (rng.chance(0.5)) {
-        sets.bin.add(x + 2.2, curb, pz + 0.9, 0);
-        circles.push({ x: x + 2.2, z: pz + 0.9, r: 0.32 });
+        const bi = sets.bin.add(x + 2.2, curb, pz + 0.9, 0);
+        circles.push({ x: x + 2.2, z: pz + 0.9, r: 0.32, loose: { set: 'bin', list: [bi] } });
       }
     }
     for (const x of [-270, 40, 330]) {

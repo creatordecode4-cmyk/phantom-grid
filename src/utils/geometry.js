@@ -295,6 +295,12 @@ export class InstancedSet {
     return mesh;
   }
 
+  // Take one copy away, or put it back (the next cull shows the change).
+  hide(i, on = true) {
+    if (!this.hidden) this.hidden = new Uint8Array(this.total);
+    this.hidden[i] = on ? 1 : 0;
+  }
+
   // Keep only the copies near (cx, cz). distMul comes from the quality preset.
   cull(cx, cz, distMul = 1, force = false) {
     const mesh = this.mesh;
@@ -310,7 +316,9 @@ export class InstancedSet {
     } else {
       const max2 = (this.maxDistance * distMul) ** 2;
       const colOut = this.useColor ? mesh.instanceColor.array : null;
+      const hid = this.hidden;
       for (let i = 0; i < this.total; i++) {
+        if (hid && hid[i]) continue;                 // (a copy that was taken away: knocked over by a car)
         const o = i * 16;
         const dx = all[o + 12] - cx;
         const dz = all[o + 14] - cz;

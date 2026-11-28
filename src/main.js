@@ -36,6 +36,7 @@ import { createHUD } from './ui/hud.js';
 import { createGPS } from './ui/gps.js';
 import { createSound } from './audio/sound.js';
 import { createVehicles } from './vehicles/vehicle.js';
+import { createLooseProps } from './world/looseProps.js';
 import { CAR_TYPES, carInfo } from './vehicles/carModels.js';
 import { loadVehicles } from './vehicles/vehicleLoader.js';
 import { createEffects } from './vehicles/effects.js';
@@ -183,6 +184,9 @@ async function boot() {
   const effects = createEffects(scene);                 // smoke, sparks, skid marks, lamp glow
   const vehicles = createVehicles({ scene, city, materials, sound, weather, carLib, effects, settings });
   vehicles.riggedDriver = player.autoRigged;
+  // street things a car can knock over (bins, news boxes, meters, signs, hydrants): src/world/looseProps.js
+  const loose = createLooseProps({ scene, city, sound });
+  vehicles.onKnock = (c, v) => loose.knock(c, v.vx, v.vz);
   const garage = vehicles.buildGarage();                // one of each vehicle, parked next to the start point
   const gps = createGPS(layout);
   const storyProps = createProps();
@@ -522,6 +526,7 @@ async function boot() {
     // ---- the player's vehicle and the other real vehicles (after the traffic, so they can bump into it) ----
     races.preVehicles(dt, input);                       // (the cars of a race see each other; the countdown holds them)
     vehicles.update(dt, input, player, night, time);
+    loose.update(dt, px, pz);
     races.update(dt, time, input);
     zero.update(dt, { free: gameMode === 'free' && !story.active, car: vehicles.state === 'driving' ? vehicles.active : null });
     world.nightRun.update(dt, time);
@@ -1107,6 +1112,7 @@ async function boot() {
   }
   async function startStory(go) {
     interiors.reset();
+    loose.reset();
     ui.hideMenus();
     document.body.classList.remove('title');
     gameMode = 'story';
@@ -1151,6 +1157,7 @@ async function boot() {
   // fromBoot: the game was opened with ?story=0 (tests): the world stays exactly as the address options made it
   function startFree(fromBoot) {
     interiors.reset();
+    loose.reset();
     story.stop();
     ui.hideMenus();
     document.body.classList.remove('title');
@@ -1298,7 +1305,7 @@ async function boot() {
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
     get frameCalls() { return frameCalls; },
-    guard, texBudget, gfx, setGfx,
+    guard, texBudget, gfx, setGfx, loose,
     get qualityNow() { return { mode, active, label: quality.label, cap: texBudget.cap, fpsCap, pr: renderer.getPixelRatio() }; },
     get paused() { return frozen; },
     get waypoint() { return waypoint; },

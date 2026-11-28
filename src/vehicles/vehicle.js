@@ -610,6 +610,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // Push the vehicle out of walls, props and other cars. Returns what it hit:
   //   { impact (m/s into the obstacle), lever (how much the hit wants to spin the car) }
   const hitOut = { impact: 0, lever: 0 };
+  const hooks = { onKnock: null };      // onKnock(collider, vehicle): a loose street thing was hit (main.js sets it)
   const NO_CELL = { boxes: [], circles: [] };
   let cur = null;           // the vehicle whose physics step is running (the world functions below look at it)
   // ways into an arena: [{ arena, test(v) -> true when the car is in the gate }] (src/race adds the highway ramp)
@@ -638,9 +639,15 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
         }
         const hitCircle = (c) => {
           // (cars are not here: the traffic and the real vehicles are pushed apart below, both of them)
-          if (c.veh || c.car) return;
+          if (c.veh || c.car || c.gone) return;
           const dx = cx + px - c.x, dz = cz + pz - c.z, min = R + c.r, d2 = dx * dx + dz * dz;
           if (d2 >= min * min) return;
+          // A LOOSE STREET THING (a trash bin, a news box, a parking meter, a sign, a hydrant): hit fast enough, it
+          // is knocked away and tumbles (src/world/looseProps.js); the car only loses a little speed
+          if (c.loose && hooks.onKnock) {
+            const sp = Math.hypot(v.vx, v.vz);
+            if (sp > (c.loose.min || 4)) { c.gone = true; hooks.onKnock(c, v); const k = c.loose.slow || 0.93; v.vx *= k; v.vz *= k; impact = Math.max(impact, sp * 0.12); return; }
+          }
           const d = Math.sqrt(d2) || 0.001;
           px += (dx / d) * (min - d); pz += (dz / d) * (min - d);
         };
@@ -1355,6 +1362,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   const cargo = createCargo({ scene, city, mats });
 
   return {
+    set onKnock(f) { hooks.onKnock = f; },
+    get onKnock() { return hooks.onKnock; },
     live, nearest, tryEnter, requestExit, update, prefetch, spawn, spawnInFront, buildGarage, repair, removeVehicle, world, events, flasher, seaWorld, arenaGates,
     enterNow, leaveNow, showDamage, clearParked, repaint, rescale, cargo,
     // story: only vehicles this function says yes to can be entered (null = all)

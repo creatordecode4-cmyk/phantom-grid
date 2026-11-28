@@ -182,6 +182,7 @@ export function createPedestrians(ctx) {
     return _at;
   }
 
+  const NONE = [];
   let nearLoops = [], nearX = 1e9, nearZ = 1e9;
   function placePerson(p, px, pz, minD, maxD) {
     if ((px - nearX) ** 2 + (pz - nearZ) ** 2 > 30 * 30) {
@@ -193,7 +194,7 @@ export function createPedestrians(ctx) {
       const loop = rng.pick(nearLoops), s = rng.range(0, loop.total);
       const a = loopAt(loop, s), d = Math.hypot(a.x - px, a.z - pz);
       if (d < minD || d > maxD) continue;
-      p.loop = loop; p.s = s; p.segIndex = a.index; p.x = a.x; p.z = a.z; p.heading = Math.atan2(a.dx, a.dz); p.alive = true; p.mode = 'walk'; p.ox = 0; p.oz = 0; p.fall = 0; p.jump = 0;
+      p.loop = loop; p.s = s; p.segIndex = a.index; p.x = a.x; p.z = a.z; p.heading = Math.atan2(a.dx, a.dz); p.alive = true; p.mode = 'walk'; p.ox = 0; p.oz = 0; p.fall = 0; p.jump = 0; p.tv = 0; p.air = 0; p.scare = 0;
       return true;
     }
     return false;
@@ -221,7 +222,7 @@ export function createPedestrians(ctx) {
       if (!p.alive) { for (let k = 0; k < 16; k++) m[o + k] = 0; continue; } // hidden: size zero
       top = i + 1;
 
-      let x, z, dirX, dirZ, walking = p.speed > 0;
+      let x, z, dirX, dirZ, walking = p.speed > 0, run = 1;
       if (p.mode === 'cross') {
         // straight over the crosswalk, a little faster than normal
         const K = p.link;
@@ -239,10 +240,14 @@ export function createPedestrians(ctx) {
         if (mayCross(p.link.group, tt)) { p.mode = 'cross'; p.crossT = 0; }
       } else {
         p.cool -= dt;
-        p.s += p.speed * dt * p.loop.dir;
+        // (scared - a shot, a fight: they run along their sidewalk, away from it)
+        const rev = p.scare > 0 ? p.rev || 1 : 1;
+        if (p.scare > 0) { p.scare -= dt; run = 2.5; walking = true; p.cool = 6; }
+        p.s += (run > 1 ? Math.max(p.speed, 1.4) * run : p.speed) * dt * p.loop.dir * rev;
         const a = loopAt(p.loop, p.s);
-        x = a.x; z = a.z; dirX = a.dx; dirZ = a.dz;
-        if (a.index !== p.segIndex) {
+        x = a.x; z = a.z; dirX = a.dx * rev; dirZ = a.dz * rev;
+        if (a.index !== p.segIndex && run > 1) p.segIndex = a.index;
+        else if (a.index !== p.segIndex) {
           // just walked around a corner: maybe cross the street here
           const corner = p.loop.dir > 0 ? a.index : p.segIndex;
           const piece = p.loop.seg[corner];
@@ -261,8 +266,14 @@ export function createPedestrians(ctx) {
       p.jump = Math.max(0, (p.jump || 0) - dt);
       p.fall = Math.max(0, (p.fall || 0) - dt);
       if (p.fall > 0) walking = false;
-      if (p.jump <= 0 && p.fall <= 0) { p.ox = (p.ox || 0) * Math.exp(-1.2 * dt); p.oz = (p.oz || 0) * Math.exp(-1.2 * dt); }
-      else if (p.jump > 0) { p.ox += p.jx * 5.5 * dt; p.oz += p.jz * 5.5 * dt; }
+      if (p.jump <= 0 && p.fall <= 0) {
+        // back to the path: fast for a small step aside, at a walk after being thrown far
+        const od = Math.hypot(p.ox || 0, p.oz || 0);
+        if (od > 0.001) { const k = Math.max(0, od - Math.min(od * 1.2, 1.5) * dt) / od; p.ox *= k; p.oz *= k; }
+      } else if (p.jump > 0) { p.ox += p.jx * 5.5 * dt; p.oz += p.jz * 5.5 * dt; }
+      // thrown by a hit: flies a short way along the push, then slides to a stop
+      p.air = Math.max(0, (p.air || 0) - dt);
+      if (p.tv > 0.05) { p.ox += p.tx * p.tv * dt; p.oz += p.tz * p.tv * dt; p.tv *= Math.exp(-(p.air > 0 ? 0.7 : 5) * dt); }
       x += p.ox || 0; z += p.oz || 0;
       for (const ob of avoid) {
         const ex = x - ob.x, ez = z - ob.z, min = ob.r + 0.6;
@@ -271,8 +282,12 @@ export function createPedestrians(ctx) {
           const along = ex * ob.dx + ez * ob.dz, side = -ex * ob.dz + ez * ob.dx;
           if (ed < ob.r + 0.7) {
             // hit by the car: fall on the back, get up again after a moment (nobody gets hurt)
-            p.fall = 3; p.jump = 0; knocked++;
-            p.ox += (ex / ed) * 0.9; p.oz += (ez / ed) * 0.9;
+            // (the faster the car, the further they are thrown: along the car's way and a little to their side)
+            p.fall = 3 + Math.min(1.5, ob.speed * 0.06); p.fallT = p.fall; p.jump = 0; knocked++;
+            p.ox += (ex / ed) * 0.5; p.oz += (ez / ed) * 0.5;
+            p.tx = ob.dx * 0.88 + (ex / ed) * 0.35; p.tz = ob.dz * 0.88 + (ez / ed) * 0.35;
+            p.tv = Math.min(12, ob.speed * 0.6);
+            p.airT = p.air = Math.min(0.75, 0.22 + ob.speed * 0.022); p.airH = Math.min(1.2, ob.speed * 0.05);
             p.fallDir = Math.atan2(-ob.dx, -ob.dz);
           } else if (p.jump <= 0 && along > -0.5 && along < 4 + ob.speed * 0.45 && Math.abs(side) < ob.r + 1.3) {
             // a fast car is coming straight at them: jump to the side
@@ -286,9 +301,10 @@ export function createPedestrians(ctx) {
       }
       // ---- poles, trees, benches, parked cars and walls in the way: walk AROUND them, not through them ----
       // (the person only moves sideways, so the path bends in a smooth curve around the thing)
-      if (grid && p.fall <= 0) {
+      if (grid) {
         const cell = grid.near(x, z);
-        for (const q of cell.circles) {
+        // (somebody lying on the ground is only kept out of the walls)
+        for (const q of p.fall > 0 ? NONE : cell.circles) {
           if (q.car || q.veh) continue;
           const ex = x - q.x, ez = z - q.z, min = q.r + 0.34;
           if (Math.abs(ex) > min || Math.abs(ez) > min) continue;
@@ -312,13 +328,15 @@ export function createPedestrians(ctx) {
       let turn = Math.atan2(dirX, dirZ) - p.heading;
       turn = Math.atan2(Math.sin(turn), Math.cos(turn));
       p.heading += turn * Math.min(1, dt * 7);
-      if (walking) p.phase += (Math.max(p.speed, 1.2) * dt * 4.4) / p.stepK; // one full leg swing every 1.4 m (x the step)
+      if (walking) p.phase += (Math.max(p.speed, 1.2) * (run > 1 ? 1.9 : 1) * dt * 4.4) / p.stepK; // one full leg swing every 1.4 m (x the step)
 
       p.y = L.groundHeight(x, z);
       // lean: 0 = standing .. 1.45 = lying on the back (falls fast, lies, gets up slowly)
       let lean = 0, hop = 0;
-      if (p.fall > 0) { const t = 3 - p.fall; lean = 1.45 * (t < 0.3 ? t / 0.3 : p.fall < 0.8 ? p.fall / 0.8 : 1); p.heading = p.fallDir; }
-      else if (p.jump > 0) hop = Math.sin((p.jump / 0.36) * Math.PI) * 0.28;
+      if (p.fall > 0) {
+        const t = (p.fallT || 3) - p.fall; lean = 1.45 * (t < 0.3 ? t / 0.3 : p.fall < 0.8 ? p.fall / 0.8 : 1); p.heading = p.fallDir;
+        if (p.air > 0 && p.airT) hop = Math.sin((1 - p.air / p.airT) * Math.PI) * p.airH;
+      } else if (p.jump > 0) hop = Math.sin((p.jump / 0.36) * Math.PI) * 0.28;
       const c = Math.cos(p.heading) * p.size, sn = Math.sin(p.heading) * p.size;
       const cl = Math.cos(lean), sl = Math.sin(lean);
       m[o] = c * p.wide; m[o + 1] = 0; m[o + 2] = -sn * p.wide; m[o + 3] = 0;
@@ -341,6 +359,31 @@ export function createPedestrians(ctx) {
     setColliders(g) { grid = g; },
     get wanted() { return wanted; },
     takeKnocked() { const k = knocked; knocked = 0; return k; },
+    // a hit that is not a car (a bat): everybody within r of (x, z) falls, pushed along (dx, dz). Nobody gets hurt:
+    // they lie for a moment and get up again. Returns how many were hit.
+    knockAt(x, z, r, dx, dz, power = 4) {
+      let n = 0;
+      for (const p of people) {
+        if (!p.alive || p.fall > 0 || Math.abs(p.x - x) > r || Math.abs(p.z - z) > r || Math.hypot(p.x - x, p.z - z) > r) continue;
+        p.fall = 3.4; p.fallT = p.fall; p.jump = 0; p.scare = 0;
+        p.tx = dx; p.tz = dz; p.tv = power; p.airT = p.air = 0.3; p.airH = 0.25;
+        p.fallDir = Math.atan2(-dx, -dz);
+        n++;
+      }
+      return n;
+    },
+    // a loud bang or a fight at (x, z): the people within r run away along their sidewalk. Returns how many ran.
+    scareAt(x, z, r) {
+      let n = 0;
+      for (const p of people) {
+        if (!p.alive || p.fall > 0 || p.mode !== 'walk' || Math.abs(p.x - x) > r || Math.abs(p.z - z) > r) continue;
+        const a = loopAt(p.loop, p.s);
+        p.rev = a.dx * (p.x - x) + a.dz * (p.z - z) < 0 ? -1 : 1;      // (turn round when they were walking toward it)
+        p.scare = 3.5 + (p.phase % 1) * 3;
+        n++;
+      }
+      return n;
+    },
     // story: at most n people (Infinity = as many as the quality level allows)
     setCap(n, now = false) { cap = n; capNow = now; },
     setQuality(q) {
