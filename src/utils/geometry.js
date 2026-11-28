@@ -534,6 +534,79 @@ export class DetailSet {
 
 // Turn a model made of several three.js geometries into one geometry.
 // Used for small props. parts = list of { geom, color:[r,g,b], rough, metal, paint, glow, pos, rot, scale }
+// ---------------------------------------------------------------------------
+// softBox - A BOX WITH SOFT EDGES, for very few triangles.
+// A real thing has no razor-sharp edges: a bench leg, a dumpster, a shelter's roof all catch a thin line of light
+// along their edges. softBox(w, h, d, r) is a box whose six faces are a little smaller (by r on every side); narrow
+// strips join neighbouring faces and a small triangle closes every corner. The points keep the direction of their
+// own face, so the light changes smoothly over a strip: the edge looks round. 44 triangles (a plain box has 12, a
+// box with truly round edges several hundred).
+//   r: the size of the soft edge in meters (left out: chosen from the size of the box). Very small boxes stay plain.
+// ---------------------------------------------------------------------------
+const _softCache = new Map();
+export function softBox(w, h, d, r) {
+  const small = Math.min(w, h, d);
+  if (r === undefined) r = Math.min(0.045, small * 0.22);
+  r = Math.min(r, small * 0.45);
+  if (!(r > 0.006)) return new THREE.BoxGeometry(w, h, d);      // (thinner than about 3 cm: a plain box)
+  const key = w + '|' + h + '|' + d + '|' + r;
+  if (_softCache.has(key)) return _softCache.get(key);
+  const H = [w / 2, h / 2, d / 2];
+  const pos = [], nor = [], uv = [], idx = [];
+  // vert[axis][sign][a][b]: the point of the face (axis, sign) at the corner (a, b) of its two other axes
+  const vert = [];
+  for (let ax = 0; ax < 3; ax++) {
+    vert.push([]);
+    const u = (ax + 1) % 3, v = (ax + 2) % 3;
+    for (let si = 0; si < 2; si++) {
+      const sg = si ? 1 : -1, face = [[0, 0], [0, 0]];
+      for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) {
+        const p = [0, 0, 0];
+        p[ax] = sg * H[ax]; p[u] = (a ? 1 : -1) * (H[u] - r); p[v] = (b ? 1 : -1) * (H[v] - r);
+        face[a][b] = pos.length / 3;
+        pos.push(p[0], p[1], p[2]);
+        const n = [0, 0, 0]; n[ax] = sg; nor.push(n[0], n[1], n[2]);
+        uv.push(a, b);
+      }
+      vert[ax].push(face);
+    }
+  }
+  // a triangle whose front looks away from the middle of the box
+  const P = (i) => [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
+  const tri = (a, b, c) => {
+    const A = P(a), B = P(b), C = P(c);
+    const nx = (B[1] - A[1]) * (C[2] - A[2]) - (B[2] - A[2]) * (C[1] - A[1]);
+    const ny = (B[2] - A[2]) * (C[0] - A[0]) - (B[0] - A[0]) * (C[2] - A[2]);
+    const nz = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+    const out = nx * (A[0] + B[0] + C[0]) + ny * (A[1] + B[1] + C[1]) + nz * (A[2] + B[2] + C[2]);
+    if (out >= 0) idx.push(a, b, c); else idx.push(a, c, b);
+  };
+  const quad = (a, b, c, e) => { tri(a, b, c); tri(a, c, e); };     // a-b-c-e go round the quad
+  // the six faces
+  for (let ax = 0; ax < 3; ax++) for (let si = 0; si < 2; si++) { const f = vert[ax][si]; quad(f[0][0], f[1][0], f[1][1], f[0][1]); }
+  // the twelve edges: between the face (ax, s1) and the face (u, s2), along the axis v
+  for (let ax = 0; ax < 3; ax++) {
+    const u = (ax + 1) % 3;
+    for (let s1 = 0; s1 < 2; s1++) for (let s2 = 0; s2 < 2; s2++) {
+      // on the face of "ax" its axes are (u, v): the edge is at a = s2, b runs along v
+      // on the face of "u" its axes are (v, ax): the edge is at b = s1, a runs along v
+      const fa = vert[ax][s1], fb = vert[u][s2];
+      quad(fa[s2][0], fa[s2][1], fb[1][s1], fb[0][s1]);
+    }
+  }
+  // the eight corners: one point of each of the three faces that meet there
+  for (let sx = 0; sx < 2; sx++) for (let sy = 0; sy < 2; sy++) for (let sz = 0; sz < 2; sz++) {
+    tri(vert[0][sx][sy][sz], vert[1][sy][sz][sx], vert[2][sz][sx][sy]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  _softCache.set(key, g);
+  return g;
+}
+
 export function mergeParts(parts) {
   const mb = new MeshBuilder();
   for (const p of parts) {

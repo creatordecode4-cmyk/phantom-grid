@@ -300,6 +300,7 @@ function buildRail(ctx) {
 
   // thin round pillars with a small head
   const pillar = new THREE.CylinderGeometry(0.5, 0.55, top - 1.7, 12);
+  const island = new THREE.CylinderGeometry(0.86, 1.0, 0.22, 18);
   const uvA = pillar.attributes.uv;
   for (let i = 0; i < uvA.count; i++) uvA.setXY(i, uvA.getX(i) * 0.95, (uvA.getY(i) * (top - 1.7)) / tile);
   for (let z = R.southEndZ + 6; z < R.northEndZ; z += R.pillarSpacing) {
@@ -311,7 +312,8 @@ function buildRail(ctx) {
     pm.box(x - 1.0, top - 2.1, zz - 0.9, x + 1.0, top - 1.7, zz + 0.9, tile, 'nsewb');
     // small raised island around the foot of the pillar
     con(1.05);
-    pm.box(x - 0.9, 0, zz - 1.6, x + 0.9, 0.22, zz + 1.6, tile, 'nsewt');
+    // (a long island with round ends and sloping sides, not a brick-shaped block)
+    pm.add(island, x, 0.11, zz, null, [1, 1, 1.7]);
     if (zz < L.bounds.maxZ + 10) ctx.colliders.circles.push({ x, z: zz, r: 0.75 });
   }
 

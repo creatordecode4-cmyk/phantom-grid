@@ -305,7 +305,7 @@ export function createTower({ scene, renderer, camera, lighting, props = null, c
       // (closed until the card or the hack opens it) and low glass walls to the side walls
       for (let x = -7.2; x <= 7.2; x += 1.2) {
         if (Math.abs(x) < 1.0) continue;
-        b.box('gloss', X(x), Y(0), Z(8), 0.24, 1.02, 1.3, C('#d6d9dc'), { r: 0.04 });
+        b.box('gloss', X(x), Y(0), Z(8), 0.24, 1.02, 1.3, C('#d6d9dc'), { r: 0.115 });      // (round all over: a pressed shell)
         b.box('screen', X(x), Y(1.02), Z(8), 0.2, 0.02, 1.0, [0.5, 1.4, 0.9], { r: 0 });
       }
       b.solid(X(-7.4), Z(7.35), X(-0.9), Z(8.65), 1.05);

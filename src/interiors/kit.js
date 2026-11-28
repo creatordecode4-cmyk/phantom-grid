@@ -369,7 +369,9 @@ export function createBuilder(origin = [0, 0, 0], seed = 1) {
   // a box with soft edges. (x, y, z) = the middle of its bottom face (furniture stands on things)
   // o: { r (edge radius), rot (turn about y), tilt (about x), roll (about z), uv: [u, v] (texture repeats) }
   function box(mat, x, y, z, sx, sy, sz, color, o = {}) {
-    put(mat, rounded(sx, sy, sz, o.r === undefined ? 0.012 : o.r), x, y + sy / 2, z, o.rot || 0, color, o.tilt || o.roll ? [o.tilt || 0, 0, o.roll || 0] : null, o.uv || null);
+    // (no roundness given: a soft edge that fits the size of the piece - a table top, a cupboard and a crate all
+    //  have visibly worn, rounded edges; very thin pieces stay crisp)
+    put(mat, rounded(sx, sy, sz, o.r === undefined ? Math.max(0.012, Math.min(0.028, Math.min(sx, sy, sz) * 0.14)) : o.r), x, y + sy / 2, z, o.rot || 0, color, o.tilt || o.roll ? [o.tilt || 0, 0, o.roll || 0] : null, o.uv || null);
   }
   // any geometry made by the caller (curtains with folds, a bent rail): it is used once, then thrown away
   function geo(mat, g, x, y, z, rotY = 0, color = [1, 1, 1], rot = null) { put(mat, g, x, y, z, rotY, color, rot); cache.set('G' + cache.size, g); }

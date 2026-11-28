@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three';
-import { MeshBuilder, mergeParts } from '../utils/geometry.js';
+import { MeshBuilder, mergeParts, softBox } from '../utils/geometry.js';
 import { RNG } from '../utils/math.js';
 import { RAIL } from './textures.js';
 
@@ -29,7 +29,89 @@ export function lin(c) {
 function P(geom, pos, color, rough, metal, more = {}) {
   return { geom, pos, color: lin(color), rough, metal, ...more };
 }
-const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+// box: a box with SOFT EDGES (softBox in utils/geometry.js) - every street thing is made of these, so nothing in the
+// street has razor-sharp corners. hbox: a plain box, for the building parts whose one model is stretched to many
+// sizes by the shader (a soft edge would be stretched with it).
+const box = (w, h, d) => softBox(w, h, d);
+const hbox = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+// pill: an upright block whose four upright edges are ROUND (seen from above: a rectangle with round corners), with
+// a soft edge round its top. For posts, machines, boxes on legs - things that are pressed or cast, not folded.
+//   w, h, d: size (the middle of the shape is its origin, like a box);  r: corner radius;  seg: steps per corner
+//   top: the size of the soft top edge (0 = flat top with a sharp edge);  bottom: also close it underneath
+function pill(w, h, d, r, seg = 3, top = 0.03, bottom = false) {
+  r = Math.min(r, w / 2 - 0.001, d / 2 - 0.001);
+  top = Math.min(top, r * 0.9, h * 0.4);
+  const ring = [];                                  // points going round: [x, z, nx, nz]
+  const corners = [[w / 2 - r, d / 2 - r, 0], [-(w / 2 - r), d / 2 - r, 1], [-(w / 2 - r), -(d / 2 - r), 2], [w / 2 - r, -(d / 2 - r), 3]];
+  for (const [cx, cz, q] of corners) for (let i = 0; i <= seg; i++) {
+    const a = (q + i / seg) * HALF_PI, nx = Math.cos(a), nz = Math.sin(a);
+    ring.push([cx + nx * r, cz + nz * r, nx, nz]);
+  }
+  const n = ring.length, pos = [], nor = [], uv = [], idx = [];
+  const y0 = -h / 2, y1 = h / 2 - top, y2 = h / 2;
+  for (const [x, z, nx, nz] of ring) { pos.push(x, y0, z); nor.push(nx, 0, nz); uv.push(0, 0); }                       // 0 .. n-1: the foot
+  for (const [x, z, nx, nz] of ring) { pos.push(x, y1, z); nor.push(nx, 0, nz); uv.push(0, 1); }                       // n .. 2n-1: under the soft edge
+  for (const [x, z, nx, nz] of ring) { pos.push(x - nx * top, y2, z - nz * top); nor.push(0, 1, 0); uv.push(0, 1); }   // 2n .. 3n-1: the top's rim
+  const c = pos.length / 3; pos.push(0, y2, 0); nor.push(0, 1, 0); uv.push(0.5, 0.5);
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    idx.push(i, n + i, j, j, n + i, n + j);                       // the side (outside: going round against the clock from above)
+    idx.push(n + i, 2 * n + i, n + j, n + j, 2 * n + i, 2 * n + j); // the soft edge
+    idx.push(2 * n + i, c, 2 * n + j);                             // the top
+  }
+  if (bottom) {
+    const b = pos.length / 3; pos.push(0, y0, 0); nor.push(0, -1, 0); uv.push(0.5, 0.5);
+    for (let i = 0; i < n; i++) idx.push(i, (i + 1) % n, b);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+// a shape cut from a flat outline and pushed out sideways (along x, the middle at x = 0), with soft edges:
+// outline = [[z, y], ...] going round against the clock (seen from +x)
+function profile(outline, length, bevel = 0.02) {
+  const sh = new THREE.Shape();
+  outline.forEach(([z, y], i) => (i ? sh.lineTo(z, y) : sh.moveTo(z, y)));
+  const g = new THREE.ExtrudeGeometry(sh, { depth: length - 2 * bevel, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 1, curveSegments: 4 });
+  g.rotateY(-HALF_PI);                     // the outline's "x" becomes the world's z, the push goes along x
+  g.translate(length / 2 - bevel, 0, 0);
+  return g;
+}
+// a curved sheet (a piece of a tube lying along x): the arched roof of a shelter, the lid of a bin
+//   radius, length, from/to: the angles of the arc (0 = straight up, in radians, toward +z), thick: its thickness
+function arcSheet(radius, length, from, to, thick = 0.04, seg = 8) {
+  const pos = [], nor = [], uv = [], idx = [];
+  for (let side = 0; side < 2; side++) {
+    const r = radius - side * thick, sgn = side ? -1 : 1;
+    for (let i = 0; i <= seg; i++) {
+      const a = from + (to - from) * (i / seg), ny = Math.cos(a), nz = Math.sin(a);
+      for (const x of [-length / 2, length / 2]) { pos.push(x, ny * r, nz * r); nor.push(0, ny * sgn, nz * sgn); uv.push(x > 0 ? 1 : 0, i / seg); }
+    }
+  }
+  const row = (seg + 1) * 2;
+  for (let i = 0; i < seg; i++) {
+    const a = i * 2, b = a + 2;
+    idx.push(a, a + 1, b, b, a + 1, b + 1);                        // outside (seen from above)
+    idx.push(row + a, row + b, row + a + 1, row + b, row + b + 1, row + a + 1);   // inside
+  }
+  // the two long edges and the two ends are thin: closed with plain strips
+  for (const i of [0, seg]) { const a = i * 2, flip = i === 0; const q = [a, a + 1, row + a + 1, row + a]; idx.push(...(flip ? [q[0], q[3], q[1], q[1], q[3], q[2]] : [q[0], q[1], q[3], q[1], q[2], q[3]])); }
+  for (let i = 0; i < seg; i++) for (const e of [0, 1]) {
+    const a = i * 2 + e, b = a + 2;
+    idx.push(...(e ? [a, row + a, b, b, row + a, row + b] : [a, b, row + a, b, row + b, row + a]));
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+// a turned shape (a pot, a bollard): points = [[radius, height], ...] from the bottom up
+const lathe = (points, seg = 14) => new THREE.LatheGeometry(points.map((q) => new THREE.Vector2(q[0], q[1])), seg);
 const cyl = (rTop, rBot, h, seg = 8) => new THREE.CylinderGeometry(rTop, rBot, h, seg, 1);
 const sph = (r, ws = 8, hs = 6) => new THREE.SphereGeometry(r, ws, hs);
 // tube without end caps (for poles: the ends are never seen)
@@ -155,26 +237,31 @@ export function makeBench() {
   return mergeParts(parts);
 }
 
-// Bus stop shelter: open toward +z. 3.6 m wide.
+// Bus stop shelter: open toward +z. 3.6 m wide. An arched roof on round posts, glass at the back and one side.
 export function makeBusStop() {
   const frame = [0.13, 0.14, 0.15], glass = [0.07, 0.09, 0.1];
   const parts = [
-    P(box(3.7, 0.07, 1.55), [0, 2.48, 0.05], frame, 0.4, 0.7),          // roof
-    P(box(3.5, 0.03, 1.4), [0, 2.44, 0.05], [0.5, 0.5, 0.48], 0.6, 0),   // light ceiling
+    // the roof: a shallow arch (higher in the middle, it drips front and back), a light strip under its ridge
+    P(arcSheet(2.4, 3.7, -0.34, 0.34, 0.05, 6), [0, 0.2, 0.05], frame, 0.4, 0.7),
+    P(box(3.3, 0.03, 0.16), [0, 2.5, 0.05], [0.9, 0.88, 0.8], 0.4, 0, { glow: 0.35 }),
     P(box(3.4, 1.75, 0.02), [0, 1.32, -0.66], glass, 0.07, 0.9),         // back glass
     P(box(0.03, 1.75, 1.15), [-1.78, 1.32, -0.08], glass, 0.07, 0.9),    // side glass
-    P(box(2.4, 0.05, 0.36), [-0.3, 0.48, -0.4], [0.3, 0.2, 0.12], 0.7, 0), // seat
-    P(box(0.06, 0.48, 0.3), [-1.3, 0.24, -0.4], frame, 0.4, 0.7),
-    P(box(0.06, 0.48, 0.3), [0.7, 0.24, -0.4], frame, 0.4, 0.7),
-    // lit advert box at the right end
-    P(box(0.14, 1.85, 1.2), [1.76, 1.25, -0.06], frame, 0.4, 0.7),
+    // the seat: a wooden plank with a round front edge on two cast legs
+    P(box(2.4, 0.05, 0.36), [-0.3, 0.48, -0.4], [0.3, 0.2, 0.12], 0.7, 0),
+    P(cyl(0.035, 0.035, 2.4, 8), [-0.3, 0.48, -0.22], [0.3, 0.2, 0.12], 0.7, 0, { rot: [0, 0, HALF_PI] }),
+    P(pill(0.07, 0.46, 0.3, 0.03, 2, 0.01), [-1.3, 0.23, -0.4], frame, 0.4, 0.7),
+    P(pill(0.07, 0.46, 0.3, 0.03, 2, 0.01), [0.7, 0.23, -0.4], frame, 0.4, 0.7),
+    // lit advert box at the right end (round corners)
+    P(pill(0.14, 1.85, 1.2, 0.06, 3, 0.04), [1.76, 1.25, -0.06], frame, 0.4, 0.7),
     P(box(0.02, 1.6, 1.0), [1.68, 1.28, -0.06], [0.55, 0.62, 0.66], 0.25, 0, { glow: 0.55 }),
     P(box(0.02, 1.6, 1.0), [1.84, 1.28, -0.06], [0.66, 0.58, 0.5], 0.25, 0, { glow: 0.55 }),
-    // the stop sign on its own pole
-    P(cyl(0.03, 0.03, 2.9, 6), [2.5, 1.45, 0.5], GALV, 0.5, 0.85),
-    P(box(0.42, 0.42, 0.03), [2.5, 2.7, 0.5], [0.1, 0.24, 0.42], 0.5, 0.2),
+    // the stop sign on its own pole: a round sign
+    P(cyl(0.03, 0.03, 2.9, 8), [2.5, 1.45, 0.5], GALV, 0.5, 0.85),
+    P(cyl(0.24, 0.24, 0.03, 16), [2.5, 2.7, 0.5], [0.1, 0.24, 0.42], 0.5, 0.2, { rot: [HALF_PI, 0, 0] }),
   ];
-  for (const x of [-1.78, 0, 1.7]) parts.push(P(box(0.07, 2.45, 0.07), [x, 1.225, -0.67], frame, 0.4, 0.7));
+  // round posts at the back, and two at the front corners that carry the roof's edge
+  for (const x of [-1.78, 0, 1.7]) parts.push(P(cyl(0.04, 0.04, 2.5, 8), [x, 1.25, -0.67], frame, 0.4, 0.7));
+  for (const x of [-1.78, 1.7]) parts.push(P(cyl(0.04, 0.04, 2.46, 8), [x, 1.23, 0.72], frame, 0.4, 0.7));
   return mergeParts(parts);
 }
 
@@ -202,13 +289,12 @@ export function makePowerPole() {
 export function makeEvPost() {
   const shell = [0.13, 0.14, 0.15];
   return mergeParts([
-    P(box(0.3, 0.06, 0.24), [0, 0.03, 0], [0.2, 0.2, 0.2], 0.7, 0.3),
-    P(box(0.26, 1.34, 0.19), [0, 0.73, 0], shell, 0.35, 0.6),
-    P(box(0.28, 0.05, 0.21), [0, 1.42, 0], [0.3, 0.31, 0.32], 0.3, 0.8),
+    P(pill(0.32, 0.06, 0.26, 0.08, 3, 0.02), [0, 0.03, 0], [0.2, 0.2, 0.2], 0.7, 0.3),
+    P(pill(0.26, 1.4, 0.19, 0.075, 3, 0.06), [0, 0.76, 0], shell, 0.35, 0.6),                    // a slim pillar, round all over
     P(box(0.18, 0.13, 0.012), [0, 1.2, 0.097], [0.25, 0.75, 0.9], 0.15, 0, { glow: 1.25 }),   // screen (always on)
     P(box(0.2, 0.02, 0.012), [0, 1.05, 0.097], [0.2, 0.95, 0.65], 0.2, 0, { glow: 1.6 }),     // status strip
-    P(cyl(0.035, 0.035, 0.14, 6), [0.16, 0.85, 0.02], [0.03, 0.03, 0.03], 0.6, 0.2, { rot: [0, 0, HALF_PI] }),
-    P(cyl(0.02, 0.02, 0.5, 5), [0.2, 0.6, 0.02], [0.03, 0.03, 0.03], 0.7, 0),                 // cable
+    P(cyl(0.035, 0.035, 0.14, 8), [0.16, 0.85, 0.02], [0.03, 0.03, 0.03], 0.6, 0.2, { rot: [0, 0, HALF_PI] }),
+    P(cyl(0.02, 0.02, 0.5, 6), [0.2, 0.6, 0.02], [0.03, 0.03, 0.03], 0.7, 0),                 // cable
   ]);
 }
 
@@ -712,18 +798,26 @@ export function makeMannequin() {
 // Big wheeled trash container for alleys (1.9 m wide, lid slopes to the front +z).
 export function makeDumpster() {
   const col = [1, 1, 1]; // painted: the color comes from each copy
-  const o = { paint: 1 };
-  return mergeParts([
-    P(box(1.9, 1.0, 1.1), [0, 0.68, 0], col, 0.6, 0.4, o),
-    P(box(1.96, 0.07, 1.16), [0, 1.2, 0], col, 0.6, 0.4, o),
-    P(box(1.94, 0.05, 1.18), [0, 1.3, -0.02], [0.05, 0.05, 0.05], 0.55, 0.1, { rot: [0.14, 0, 0] }),  // black lid
-    P(box(0.08, 0.5, 0.12), [-1.0, 0.8, 0], [0.1, 0.1, 0.1], 0.6, 0.6),                                // lifting pockets
-    P(box(0.08, 0.5, 0.12), [1.0, 0.8, 0], [0.1, 0.1, 0.1], 0.6, 0.6),
-    P(cyl(0.09, 0.09, 0.07, 8), [-0.8, 0.09, 0.4], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }),
-    P(cyl(0.09, 0.09, 0.07, 8), [0.8, 0.09, 0.4], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }),
-    P(cyl(0.09, 0.09, 0.07, 8), [-0.8, 0.09, -0.4], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }),
-    P(cyl(0.09, 0.09, 0.07, 8), [0.8, 0.09, -0.4], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }),
-  ]);
+  const o = { paint: 1 }, dark = [0.05, 0.05, 0.05];
+  // the body, seen from its end: the front (+z) leans out toward the top, the back stands straight; a rolled rim
+  const body = profile([[-0.5, 0.2], [0.44, 0.2], [0.6, 1.14], [0.6, 1.22], [-0.56, 1.22], [-0.56, 1.14], [-0.5, 1.1]], 1.9, 0.03);
+  const parts = [
+    P(body, [0, 0, 0], col, 0.6, 0.4, o),
+    // two curved lids, hinged at the back: the left one is a little open
+    P(arcSheet(1.25, 0.93, -0.5, 0.5, 0.035, 5), [-0.48, 0.14, 0.02], dark, 0.55, 0.1),
+    P(arcSheet(1.25, 0.93, -0.5, 0.5, 0.035, 5), [0.48, 0.2, -0.04], dark, 0.55, 0.1, { rot: [0.1, 0, 0] }),
+    // the lifting pockets on the sides (round tubes) and the bar the truck's forks hold
+    P(cyl(0.05, 0.05, 0.6, 8), [-0.99, 0.9, 0.05], [0.1, 0.1, 0.1], 0.6, 0.6, { rot: [HALF_PI, 0, 0] }),
+    P(cyl(0.05, 0.05, 0.6, 8), [0.99, 0.9, 0.05], [0.1, 0.1, 0.1], 0.6, 0.6, { rot: [HALF_PI, 0, 0] }),
+    P(cyl(0.025, 0.025, 1.7, 6), [0, 1.0, 0.64], [0.12, 0.12, 0.12], 0.5, 0.7, { rot: [0, 0, HALF_PI] }),
+  ];
+  // pressed ribs on the front (they follow its lean)
+  for (const x of [-0.62, 0, 0.62]) parts.push(P(box(0.07, 0.9, 0.05), [x, 0.68, 0.535], col, 0.6, 0.4, { ...o, rot: [-0.168, 0, 0] }));
+  for (const [x, z] of [[-0.8, 0.36], [0.8, 0.36], [-0.8, -0.4], [0.8, -0.4]]) {
+    parts.push(P(cyl(0.09, 0.09, 0.07, 10), [x, 0.09, z], RUBBER, 0.9, 0, { rot: [0, 0, HALF_PI] }));
+    parts.push(P(box(0.05, 0.14, 0.05), [x, 0.16, z], [0.1, 0.1, 0.1], 0.6, 0.6));
+  }
+  return mergeParts(parts);
 }
 
 
@@ -792,7 +886,7 @@ export function makeWindowModule() {
 // y = 0..1 up, z = 0..1 out. Stretched per copy into ledges, fins, pipes,
 // steps ... The color comes from each copy.
 export function makeTrimBox() {
-  const g = box(1, 1, 1);
+  const g = hbox(1, 1, 1);
   g.translate(0, 0.5, 0.5);
   return mergeParts([P(g, [0, 0, 0], [1, 1, 1], 0.86, 0, { paint: 1 })]);
 }
@@ -801,9 +895,9 @@ export function makeTrimBox() {
 //   slab: concrete floor + two brackets,  rail: see-through railing picture
 export function makeBalcony() {
   const slab = mergeParts([
-    P(box(3.0, 0.14, 1.15), [0, -0.07, 0.575], [1, 1, 1], 0.85, 0, { paint: 1 }),
-    P(box(0.12, 0.2, 0.9), [-1.2, -0.24, 0.45], [1, 1, 1], 0.85, 0, { paint: 1 }),
-    P(box(0.12, 0.2, 0.9), [1.2, -0.24, 0.45], [1, 1, 1], 0.85, 0, { paint: 1 }),
+    P(hbox(3.0, 0.14, 1.15), [0, -0.07, 0.575], [1, 1, 1], 0.85, 0, { paint: 1 }),
+    P(hbox(0.12, 0.2, 0.9), [-1.2, -0.24, 0.45], [1, 1, 1], 0.85, 0, { paint: 1 }),
+    P(hbox(0.12, 0.2, 0.9), [1.2, -0.24, 0.45], [1, 1, 1], 0.85, 0, { paint: 1 }),
   ]);
   const mb = new MeshBuilder();
   const R = RAIL.bars, H = 1.05;
@@ -822,11 +916,11 @@ export function makeBalcony() {
 export function makeBalconySolid() {
   const c = [1, 1, 1], o = { paint: 1 };
   return mergeParts([
-    P(box(3.0, 0.14, 1.15), [0, -0.07, 0.575], c, 0.85, 0, o),
-    P(box(3.0, 0.98, 0.1), [0, 0.49, 1.1], c, 0.88, 0, o),
-    P(box(0.1, 0.98, 1.05), [-1.45, 0.49, 0.525], c, 0.88, 0, o),
-    P(box(0.1, 0.98, 1.05), [1.45, 0.49, 0.525], c, 0.88, 0, o),
-    P(box(3.06, 0.05, 0.16), [0, 1.0, 1.1], [0.5, 0.5, 0.48], 0.8, 0),
+    P(hbox(3.0, 0.14, 1.15), [0, -0.07, 0.575], c, 0.85, 0, o),
+    P(hbox(3.0, 0.98, 0.1), [0, 0.49, 1.1], c, 0.88, 0, o),
+    P(hbox(0.1, 0.98, 1.05), [-1.45, 0.49, 0.525], c, 0.88, 0, o),
+    P(hbox(0.1, 0.98, 1.05), [1.45, 0.49, 0.525], c, 0.88, 0, o),
+    P(hbox(3.06, 0.05, 0.16), [0, 1.0, 1.1], [0.5, 0.5, 0.48], 0.8, 0),
   ]);
 }
 
@@ -834,21 +928,21 @@ export function makeBalconySolid() {
 // the ground. The wall is at z = 0, the stairs go down toward +z.
 export function makeStoop() {
   const c = [1, 1, 1], o = { paint: 1 }, iron = [0.045, 0.045, 0.05];
-  const parts = [P(box(1.7, 0.9, 0.95), [0, 0.45, 0.475], c, 0.9, 0, o)];
+  const parts = [P(hbox(1.7, 0.9, 0.95), [0, 0.45, 0.475], c, 0.9, 0, o)];
   for (let i = 1; i <= 4; i++) {
     const h = 0.9 - i * 0.18;
-    parts.push(P(box(1.7, h, 0.28), [0, h / 2, 0.95 + (i - 0.5) * 0.28], c, 0.9, 0, o));
+    parts.push(P(hbox(1.7, h, 0.28), [0, h / 2, 0.95 + (i - 0.5) * 0.28], c, 0.9, 0, o));
   }
   for (const s of [-1, 1]) {
     // low side walls, with iron hand rails on top
-    parts.push(P(box(0.2, 1.25, 1.0), [s * 0.95, 0.625, 0.5], c, 0.9, 0, o));
-    parts.push(P(box(0.2, 0.55, 1.12), [s * 0.95, 0.275, 1.56], c, 0.9, 0, o));
-    parts.push(P(box(0.24, 0.05, 1.04), [s * 0.95, 1.275, 0.5], [0.5, 0.49, 0.46], 0.85, 0));
-    parts.push(P(box(0.04, 0.04, 0.9), [s * 0.95, 1.8, 0.52], iron, 0.6, 0.75));
-    parts.push(P(box(0.04, 0.04, 1.33), [s * 0.95, 1.44, 1.51], iron, 0.6, 0.75, { rot: [0.571, 0, 0] }));
-    parts.push(P(box(0.035, 0.52, 0.035), [s * 0.95, 1.54, 0.1], iron, 0.6, 0.75));
-    parts.push(P(box(0.035, 0.52, 0.035), [s * 0.95, 1.54, 0.95], iron, 0.6, 0.75));
-    parts.push(P(box(0.035, 0.54, 0.035), [s * 0.95, 0.81, 2.06], iron, 0.6, 0.75));
+    parts.push(P(hbox(0.2, 1.25, 1.0), [s * 0.95, 0.625, 0.5], c, 0.9, 0, o));
+    parts.push(P(hbox(0.2, 0.55, 1.12), [s * 0.95, 0.275, 1.56], c, 0.9, 0, o));
+    parts.push(P(hbox(0.24, 0.05, 1.04), [s * 0.95, 1.275, 0.5], [0.5, 0.49, 0.46], 0.85, 0));
+    parts.push(P(hbox(0.04, 0.04, 0.9), [s * 0.95, 1.8, 0.52], iron, 0.6, 0.75));
+    parts.push(P(hbox(0.04, 0.04, 1.33), [s * 0.95, 1.44, 1.51], iron, 0.6, 0.75, { rot: [0.571, 0, 0] }));
+    parts.push(P(hbox(0.035, 0.52, 0.035), [s * 0.95, 1.54, 0.1], iron, 0.6, 0.75));
+    parts.push(P(hbox(0.035, 0.52, 0.035), [s * 0.95, 1.54, 0.95], iron, 0.6, 0.75));
+    parts.push(P(hbox(0.035, 0.54, 0.035), [s * 0.95, 0.81, 2.06], iron, 0.6, 0.75));
   }
   return mergeParts(parts);
 }
@@ -858,7 +952,7 @@ export function makeRoofVent() {
   return mergeParts([
     P(cyl(0.19, 0.19, 0.5, 7), [0, 0.25, 0], GALV, 0.5, 0.8),
     P(sph(0.3, 7, 4), [0, 0.6, 0], GALV, 0.45, 0.8, { scale: [1, 0.55, 1] }),
-    P(box(0.5, 0.04, 0.5), [0, 0.02, 0], [0.12, 0.12, 0.12], 0.8, 0.2),
+    P(hbox(0.5, 0.04, 0.5), [0, 0.02, 0], [0.12, 0.12, 0.12], 0.8, 0.2),
   ]);
 }
 // Satellite dish on a short pole. It looks up toward -z (south).
@@ -868,25 +962,28 @@ export function makeDish() {
   return mergeParts([
     P(cyl(0.03, 0.03, 0.9, 5), [0, 0.45, 0], GALV, 0.5, 0.8),
     P(dish, [0, 1.12, 0.12], [0.72, 0.72, 0.7], 0.55, 0.15, { rot: [2.25, 0, 0] }),
-    P(box(0.03, 0.03, 0.5), [0, 1.05, -0.2], GALV, 0.5, 0.8, { rot: [-0.7, 0, 0] }),
-    P(box(0.08, 0.08, 0.12), [0, 1.22, -0.4], [0.1, 0.1, 0.1], 0.5, 0.3),
+    P(hbox(0.03, 0.03, 0.5), [0, 1.05, -0.2], GALV, 0.5, 0.8, { rot: [-0.7, 0, 0] }),
+    P(hbox(0.08, 0.08, 0.12), [0, 1.22, -0.4], [0.1, 0.1, 0.1], 0.5, 0.3),
   ]);
 }
 // Old roof aerial: a mast with a row of thin cross bars.
 export function makeAntenna() {
-  const parts = [P(openCyl(0.022, 0.03, 3.4, 5), [0, 1.7, 0], GALV, 0.5, 0.8), P(box(0.03, 0.03, 1.5), [0, 3.25, 0], GALV, 0.5, 0.8)];
-  for (let i = 0; i < 5; i++) parts.push(P(box(1.0 - i * 0.12, 0.02, 0.02), [0, 3.25, -0.65 + i * 0.32], GALV, 0.5, 0.8));
-  parts.push(P(box(0.7, 0.02, 0.02), [0, 2.6, 0], GALV, 0.5, 0.8));
+  const parts = [P(openCyl(0.022, 0.03, 3.4, 5), [0, 1.7, 0], GALV, 0.5, 0.8), P(hbox(0.03, 0.03, 1.5), [0, 3.25, 0], GALV, 0.5, 0.8)];
+  for (let i = 0; i < 5; i++) parts.push(P(hbox(1.0 - i * 0.12, 0.02, 0.02), [0, 3.25, -0.65 + i * 0.32], GALV, 0.5, 0.8));
+  parts.push(P(hbox(0.7, 0.02, 0.02), [0, 2.6, 0], GALV, 0.5, 0.8));
   return mergeParts(parts);
 }
 
 // ---- sidewalk furniture ----
-// Concrete planter box (1.3 m long). A shrub is placed on top of it.
+// Planter (1.3 m long): a long round-ended pot of cast stone, wider at the top, with a rolled lip. A shrub is placed
+// on top of it.
 export function makePlanter() {
+  const stone = [0.5, 0.49, 0.46];
+  // (a round pot, turned, then made 2.3 times as long: its ends stay round)
+  const pot = lathe([[0.2, 0], [0.235, 0.02], [0.265, 0.42], [0.295, 0.5], [0.3, 0.54], [0.28, 0.56], [0.255, 0.54]], 16);
   return mergeParts([
-    P(box(1.3, 0.5, 0.56), [0, 0.25, 0], [0.5, 0.49, 0.46], 0.92, 0),
-    P(box(1.36, 0.06, 0.62), [0, 0.5, 0], [0.56, 0.55, 0.52], 0.9, 0),
-    P(box(1.18, 0.03, 0.44), [0, 0.535, 0], [0.09, 0.07, 0.05], 0.95, 0),
+    P(pot, [0, 0, 0], stone, 0.92, 0, { scale: [2.25, 1, 1] }),
+    P(cyl(0.25, 0.25, 0.02, 16), [0, 0.525, 0], [0.09, 0.07, 0.05], 0.95, 0, { scale: [2.25, 1, 1] }),   // the earth
   ]);
 }
 // A small round bush made of leaf cards (uses the same leaf picture as the trees).
@@ -939,11 +1036,11 @@ export function makeWeed(seed = 6) {
 export function makeNewsBox() {
   const o = { paint: 1 };
   return mergeParts([
-    P(box(0.4, 0.3, 0.3), [0, 0.15, 0], [0.07, 0.07, 0.075], 0.6, 0.5),
-    P(box(0.48, 0.86, 0.42), [0, 0.73, 0], [1, 1, 1], 0.5, 0.35, o),
-    P(box(0.5, 0.04, 0.44), [0, 1.18, 0], [1, 1, 1], 0.5, 0.35, o),
-    P(box(0.36, 0.34, 0.015), [0, 0.86, 0.213], [0.05, 0.06, 0.07], 0.1, 0.6),
-    P(box(0.3, 0.07, 0.02), [0, 0.52, 0.213], [0.75, 0.74, 0.7], 0.6, 0),
+    P(pill(0.34, 0.3, 0.26, 0.05, 2, 0.02), [0, 0.15, 0], [0.07, 0.07, 0.075], 0.6, 0.5),          // the foot
+    P(pill(0.48, 0.9, 0.42, 0.07, 3, 0.05), [0, 0.75, 0], [1, 1, 1], 0.5, 0.35, o),                // the box, round corners
+    P(box(0.36, 0.34, 0.015), [0, 0.88, 0.213], [0.05, 0.06, 0.07], 0.1, 0.6),                     // the window
+    P(box(0.3, 0.07, 0.02), [0, 0.52, 0.213], [0.75, 0.74, 0.7], 0.6, 0),                          // the coin plate
+    P(cyl(0.012, 0.012, 0.22, 6), [0, 1.08, 0.225], [0.6, 0.6, 0.6], 0.35, 0.9, { rot: [0, 0, HALF_PI] }),   // the handle
   ]);
 }
 // Parking meter with a small screen (near-future touch). The screen faces +z.
@@ -987,13 +1084,13 @@ export function makeRubble() {
 // Fast charger / fuel pump for the station. The screen faces +z.
 export function makeCharger() {
   return mergeParts([
-    P(box(0.9, 0.12, 0.6), [0, 0.06, 0], [0.4, 0.4, 0.38], 0.9, 0),
-    P(box(0.72, 1.85, 0.42), [0, 1.04, 0], [0.82, 0.83, 0.82], 0.35, 0.3),
-    P(box(0.74, 0.3, 0.44), [0, 1.85, 0], [1, 1, 1], 0.4, 0.3, { paint: 1 }),
+    P(pill(0.9, 0.12, 0.6, 0.12, 3, 0.03), [0, 0.06, 0], [0.4, 0.4, 0.38], 0.9, 0),
+    P(pill(0.72, 1.6, 0.42, 0.12, 4, 0.02), [0, 0.92, 0], [0.82, 0.83, 0.82], 0.35, 0.3),
+    P(pill(0.76, 0.34, 0.46, 0.14, 4, 0.1), [0, 1.87, 0], [1, 1, 1], 0.4, 0.3, { paint: 1 }),      // the colored head, round
     P(box(0.44, 0.34, 0.012), [0, 1.4, 0.216], [0.25, 0.8, 0.9], 0.15, 0, { glow: 1.3 }),
     P(box(0.5, 0.03, 0.012), [0, 1.12, 0.216], [0.2, 0.95, 0.6], 0.2, 0, { glow: 1.6 }),
-    P(cyl(0.035, 0.035, 0.16, 6), [0.4, 1.0, 0.05], [0.03, 0.03, 0.03], 0.6, 0.2, { rot: [0, 0, HALF_PI] }),
-    P(cyl(0.022, 0.022, 0.7, 5), [0.46, 0.66, 0.05], [0.03, 0.03, 0.03], 0.7, 0),
+    P(cyl(0.035, 0.035, 0.16, 8), [0.4, 1.0, 0.05], [0.03, 0.03, 0.03], 0.6, 0.2, { rot: [0, 0, HALF_PI] }),
+    P(cyl(0.022, 0.022, 0.7, 6), [0.46, 0.66, 0.05], [0.03, 0.03, 0.03], 0.7, 0),
   ]);
 }
 
