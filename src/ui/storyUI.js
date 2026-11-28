@@ -408,7 +408,15 @@ export function createStoryUI() {
       col.appendChild(r);
     };
     const set = (key, value) => { if (key in settings) { settings[key] = value; saveSettings(); applyLook(); } onChange(key, value); };
-    row(t('ui.quality'), [['auto', t('ui.auto')], ['low', t('ui.low')], ['medium', t('ui.med')], ['high', t('ui.high')]], values.quality, 'quality');
+    // GRAPHICS: one button that opens its own screen (the level, and the single options over it)
+    {
+      const r = document.createElement('div'); r.className = 'set-row'; r.innerHTML = '<span></span><span class="opts"></span>';
+      r.firstElementChild.textContent = t('ui.quality');
+      const b = button(t('ui.gfx.open'));
+      press(b, () => graphicsScreen(values, onChange, () => settingsScreen(values, onChange, onBack)));
+      r.lastElementChild.appendChild(b);
+      col.appendChild(r);
+    }
     row(t('ui.control_size'), [['s', t('ui.small')], ['m', t('ui.medium')], ['l', t('ui.large')]], settings.ctl, 'ctl');
     row(t('ui.tilt'), [[false, t('ui.off')], [true, t('ui.on')]], settings.tilt, 'tilt');
     row(t('ui.difficulty'), [['e', t('ui.easy')], ['n', t('ui.normal')], ['h', t('ui.hard')]], settings.difficulty, 'difficulty');
@@ -431,6 +439,48 @@ export function createStoryUI() {
     slider.addEventListener('input', () => set('volume', Number(slider.value) / 100));
     slider.addEventListener('pointerdown', (e) => e.stopPropagation());
     col.appendChild(vr);
+    const back = button(t('ui.back'), 'btn main'); press(back, onBack); col.appendChild(back);
+  }
+  // THE GRAPHICS SCREEN: the level (AUTO looks at the phone and goes down when the game runs slowly) and the player's
+  // own options over it. Every row: 'auto' = as the level says. A line at the bottom says what is running now.
+  // values: { quality, gfx: { sharp, shadows, effects, distance, people, traffic, fps }, label(), cap() }
+  function graphicsScreen(values, onChange, onBack) {
+    hideMenus();
+    const n = screen(el.settings, `<h2>${t('ui.gfx.title')}</h2><div class="menu-col gfx-col" style="width:min(430px,94vw)"></div>`), col = n.querySelector('.menu-col');
+    const g = values.gfx || {};
+    const note = document.createElement('div'); note.className = 'gfx-note';
+    const say = () => { note.textContent = t('ui.gfx.now').replace('{level}', values.label ? values.label() : '').replace('{cap}', values.cap ? String(values.cap()) : ''); };
+    const row = (label, opts, current, key, hint) => {
+      const r = document.createElement('div'); r.className = 'set-row'; r.innerHTML = '<span></span><span class="opts"></span>';
+      r.firstElementChild.textContent = label;
+      if (hint) { const h = document.createElement('small'); h.textContent = hint; r.firstElementChild.appendChild(h); }
+      for (const [value, text] of opts) {
+        const b = button(text); b.classList.toggle('on', value === current);
+        press(b, () => {
+          for (const o of r.querySelectorAll('.btn')) o.classList.remove('on');
+          b.classList.add('on');
+          if (key === 'quality') values.quality = value; else g[key.slice(4)] = value;
+          onChange(key, value);
+          // (the level is applied a frame later: the line at the bottom follows by itself, see below)
+        });
+        r.lastElementChild.appendChild(b);
+      }
+      col.appendChild(r);
+    };
+    const A = ['auto', t('ui.auto')];
+    row(t('ui.gfx.level'), [A, ['verylow', t('ui.gfx.verylow')], ['low', t('ui.low')], ['medium', t('ui.med')], ['high', t('ui.high')]], values.quality, 'quality');
+    row(t('ui.gfx.sharp'), [A, ['low', t('ui.gfx.soft')], ['medium', t('ui.med')], ['high', t('ui.gfx.sharp_hi')]], g.sharp, 'gfx.sharp', t('ui.gfx.sharp_hint'));
+    row(t('ui.gfx.shadows'), [A, ['off', t('ui.off')], ['on', t('ui.on')]], g.shadows, 'gfx.shadows');
+    row(t('ui.gfx.effects'), [A, ['off', t('ui.off')], ['on', t('ui.on')]], g.effects, 'gfx.effects', t('ui.gfx.effects_hint'));
+    row(t('ui.gfx.distance'), [A, ['near', t('ui.gfx.near')], ['far', t('ui.gfx.far')]], g.distance, 'gfx.distance');
+    row(t('ui.gfx.people'), [A, ['few', t('ui.gfx.few')], ['normal', t('ui.normal')], ['many', t('ui.gfx.many')]], g.people, 'gfx.people');
+    row(t('ui.gfx.traffic'), [A, ['few', t('ui.gfx.few')], ['normal', t('ui.normal')], ['many', t('ui.gfx.many')]], g.traffic, 'gfx.traffic');
+    row(t('ui.gfx.fps'), [[60, '60'], [30, t('ui.gfx.fps30')]], g.fps === 30 ? 30 : 60, 'gfx.fps', t('ui.gfx.fps_hint'));
+    say();
+    // (the line follows what is really running, while this screen is open)
+    const timer = setInterval(() => { if (!note.isConnected || el.settings.hidden) clearInterval(timer); else say(); }, 400);
+    col.appendChild(note);
+    const tip = document.createElement('div'); tip.className = 'gfx-note'; tip.textContent = t('ui.gfx.tip'); col.appendChild(tip);
     const back = button(t('ui.back'), 'btn main'); press(back, onBack); col.appendChild(back);
   }
   // list: [{ head: text } | { label, id }], cb(id) (id null = back)

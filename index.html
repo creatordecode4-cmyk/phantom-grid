@@ -575,6 +575,15 @@
     .set-row .opts { display: flex; gap: 5px; }
     .set-row .opts .btn { width: auto; min-width: 52px; height: 40px; padding: 0 9px; font-size: 10px; letter-spacing: 0.1em; }
     .set-row input[type=range] { width: 150px; height: 40px; accent-color: #ffc94a; }
+    /* the graphics screen: many rows - they may scroll, the buttons wrap on a narrow phone */
+    .gfx-col { max-height: 82vh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
+    .gfx-col .set-row { align-items: flex-start; }
+    .gfx-col .set-row > span:first-child { padding-top: 12px; min-width: 96px; }
+    .gfx-col .set-row small { display: block; margin-top: 4px; font-size: 9px; letter-spacing: 0.04em; opacity: 0.55; text-transform: none; }
+    .gfx-col .set-row .opts { flex-wrap: wrap; justify-content: flex-end; }
+    .gfx-col .set-row .opts .btn { min-width: 46px; padding: 0 8px; }
+    .gfx-col .btn.main { position: sticky; bottom: 0; flex: none; box-shadow: 0 -14px 18px 6px rgba(7, 9, 12, 0.9); }
+    .gfx-note { width: 100%; font-size: 11px; line-height: 1.5; letter-spacing: 0.03em; opacity: 0.7; text-align: left; }
     #select .list { margin-top: 18px; width: min(420px, 90vw); display: flex; flex-direction: column; gap: 6px; }
     #select .list .head { margin-top: 10px; font-size: 9px; letter-spacing: 0.34em; color: #ffc94a; text-align: left; }
     #select .list .btn { width: 100%; height: 44px; text-align: left; padding: 0 14px; font-size: 11px; letter-spacing: 0.1em; }
@@ -736,6 +745,7 @@
       <div class="menu-title">QUALITY</div>
       <div class="menu-row">
         <button class="btn" data-quality="auto">AUTO</button>
+        <button class="btn" data-quality="verylow">VERY LOW</button>
         <button class="btn" data-quality="low">LOW</button>
         <button class="btn" data-quality="medium">MEDIUM</button>
         <button class="btn" data-quality="high">HIGH</button>

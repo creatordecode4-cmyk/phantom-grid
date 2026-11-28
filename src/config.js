@@ -93,9 +93,46 @@ export const CONFIG = {
   // ----- QUALITY PRESETS -------------------------------------------------------
   // pixelRatio: how many screen pixels we render per CSS pixel.
   //   "scale" multiplies the phone's own pixel ratio, then min/max clamp it.
+  //   textureCap: the largest picture (in points along a side) that is sent to the graphics chip. Bigger pictures
+  //   are made smaller on the way (src/world/stability.js). This is most of the memory a phone needs for the game:
+  //   512 uses about a quarter of the memory of 1024.
   quality: {
+    // VERY LOW: for phones that close the game because it needs too much memory, or get hot. Small pictures, a
+    // soft image, few people and cars, a short view in thick haze. It still is the whole game.
+    verylow: {
+      label: 'VERY LOW',
+      textureCap: 384,
+      cityCells: true,      // the big city meshes are drawn square by square: only what the camera sees
+      spectators: 0.3,
+      pixelRatio: { scale: 0, min: 0.6, max: 0.6, dynMax: 0.8 },
+      film: { pixelRatio: 0.8, msaa: 0, sharpen: 0 },
+      post: false,
+      vignette: false,
+      grain: false,
+      msaa: 0,
+      shadows: false,
+      shadowMapSize: 512,
+      shadowRange: 40,
+      farShadows: false,
+      farShadowMapSize: 512,
+      normalMaps: false,
+      anisotropy: 1,
+      envMapSize: 32,
+      propDistance: 0.4,
+      people: 8, traffic: 6,
+      buildingDetail: false,
+      fogMultiplier: 2.1,
+      cameraFar: 1700,
+      rainStreaks: 350,
+      wetReflections: 0.3,
+      skyClouds: true,
+      water: 'simple',
+      sunkMist: false,
+    },
     low: {
       label: 'LOW',
+      textureCap: 512,
+      cityCells: true,
       spectators: 0.5,      // races: half of the crowd
       pixelRatio: { scale: 0, min: 0.75, max: 0.75, dynMax: 1.25 },  // dynMax: how sharp it may get when the phone keeps up
       // film scenes: the people are close to the camera - more pixels, finer edges, less sharpening (main.js)
@@ -125,6 +162,7 @@ export const CONFIG = {
     },
     medium: {
       label: 'MEDIUM',
+      textureCap: 1024,
       pixelRatio: { scale: 0.5, min: 1.0, max: 1.3, dynMax: 2.0 },
       film: { pixelRatio: 1.65, msaa: 4, sharpen: 0.3 },
       post: true,           // bloom + film-like color grade
@@ -150,6 +188,7 @@ export const CONFIG = {
     },
     high: {
       label: 'HIGH',
+      textureCap: 2048,
       pixelRatio: { scale: 0.75, min: 1.25, max: 2.0, dynMax: 2.4 },
       film: { pixelRatio: 2.3, msaa: 4, sharpen: 0.2 },
       post: true,

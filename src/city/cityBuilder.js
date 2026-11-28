@@ -29,6 +29,51 @@ function dropArray() {
   this.array = null;
 }
 
+// CELLS of a big city mesh (LOW and VERY LOW): the mesh's triangles are put in order by the square of the city they
+// lie in (CITY_CELL meters wide), and every square becomes a "view" of the same mesh that draws only its own part. The
+// graphics chip keeps one copy of the points; a square behind the camera is not drawn at all. The whole mesh in one
+// draw is kept for MEDIUM and HIGH (fewer draw calls). Returns the list of the squares' meshes.
+const CITY_CELL = 220;
+function splitIntoCells(geo, mat, name, opts) {
+  const pos = geo.attributes.position.array, idx = geo.index.array, tris = idx.length / 3;
+  const keyOf = new Int32Array(tris), cells = new Map();
+  for (let t = 0; t < tris; t++) {
+    const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+    const cx = Math.floor((pos[a] + pos[b] + pos[c]) / 3 / CITY_CELL), cz = Math.floor((pos[a + 2] + pos[b + 2] + pos[c + 2]) / 3 / CITY_CELL);
+    const key = (cx + 512) * 1024 + (cz + 512);
+    keyOf[t] = key;
+    let e = cells.get(key);
+    if (!e) { e = { n: 0, at: 0, box: new THREE.Box3() }; cells.set(key, e); }
+    e.n++;
+  }
+  let at = 0;
+  for (const e of cells.values()) { e.at = at; e.fill = at; at += e.n; }
+  const sorted = new idx.constructor(idx.length), v = new THREE.Vector3();
+  for (let t = 0; t < tris; t++) {
+    const e = cells.get(keyOf[t]), o = e.fill++ * 3;
+    for (let k = 0; k < 3; k++) { const i = idx[t * 3 + k]; sorted[o + k] = i; e.box.expandByPoint(v.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2])); }
+  }
+  idx.set(sorted);
+  const out = [];
+  for (const e of cells.values()) {
+    const g = new THREE.BufferGeometry();
+    for (const k of Object.keys(geo.attributes)) g.setAttribute(k, geo.attributes[k]);
+    g.setIndex(geo.index);
+    g.setDrawRange(e.at * 3, e.n * 3);
+    g.boundingBox = e.box;
+    g.boundingSphere = e.box.getBoundingSphere(new THREE.Sphere());
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.name = name;
+    mesh.castShadow = !!opts.cast;
+    mesh.receiveShadow = opts.receive !== false;
+    mesh.matrixAutoUpdate = false;
+    mesh.renderOrder = opts.order;
+    mesh.visible = false;
+    out.push(mesh);
+  }
+  return out;
+}
+
 // Let the browser draw the loading bar between heavy steps.
 const pause = () => new Promise((r) => setTimeout(r, 0));
 
@@ -284,10 +329,14 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
   //   order: lower numbers are drawn first. Buildings first, ground after,
   //   because pixels hidden behind buildings are then skipped (faster).
   const meshes = {};
+  const cellMeshes = [];        // { whole, cells }: the big meshes that can also be drawn square by square
   const make = (name, mat, opts) => {
     const mb = ctx.mb[name];
     if (mb.count === 0) return null;
     const geo = mb.build(opts.data !== false);
+    // (the biggest ones also get their squares, for LOW and VERY LOW - see splitIntoCells)
+    const cells = opts.cells && mb.count > 20000 ? splitIntoCells(geo, mat, name, opts) : null;
+    if (cells) { for (const c of cells) group.add(c); cellMeshes.push({ whole: null, cells, name }); }
     // the big meshes never change: free their copy in normal memory once the
     // graphics card has them (saves a lot of memory on phones)
     if (mb.count > 20000) {
@@ -303,6 +352,7 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
     mesh.renderOrder = opts.order;
     group.add(mesh);
     meshes[name] = mesh;
+    if (cells) cellMeshes[cellMeshes.length - 1].whole = mesh;
     ctx.mb[name] = null; // free the memory
     return mesh;
   };
@@ -310,14 +360,15 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
   make('brick', m.brick, { cast: true, order: 0 });
   make('plaster', m.plaster, { cast: true, order: 0 });
   make('metal', m.metal, { cast: true, order: 0 });
-  make('glass', m.glass, { cast: true, order: 0 });
-  make('panel', m.panel, { cast: true, order: 0 });
+  // (cells: the three meshes with the most triangles - see splitIntoCells)
+  make('glass', m.glass, { cast: true, order: 0, cells: true });
+  make('panel', m.panel, { cast: true, order: 0, cells: true });
   make('green', m.greenWall, { order: 1, data: false });
   make('hedge', m.leaf, { order: 1 });
   make('shop', m.shop, { order: 1 });
   make('sign', m.sign, { order: 1 });
   make('awning', m.awning, { cast: true, order: 1 });
-  make('propStatic', m.prop, { cast: true, order: 1 });
+  make('propStatic', m.prop, { cast: true, order: 1, cells: true });
   make('tower', m.tower, { order: 2, receive: false, data: false });
   make('sidewalk', m.sidewalk, { order: 3, data: false });
   make('asphalt', m.asphalt, { order: 4, data: false });
@@ -375,6 +426,12 @@ export async function buildCity(scene, layout, materials, onProgress = () => {},
       traffic.setQuality(q);
       people.setQuality(q);
       if (meshes.hedge) meshes.hedge.visible = on; // LOW: no plants on the facades
+      // LOW and VERY LOW: the big meshes are drawn square by square (only what is in front of the camera)
+      for (const cm of cellMeshes) {
+        const use = !!q.cityCells;
+        cm.whole.visible = !use;
+        for (const c of cm.cells) c.visible = use;
+      }
       // LOW: the simple canal water (no rain rings, no boat waves), no mist
       sunk.water.material = q.water === 'simple' ? ctx.mats.canalLow : ctx.mats.canal;
       sunk.quality = q;

@@ -25,6 +25,7 @@ import { createMaterials, installGlobalShaderPatches, shared, setTunnelLight, tu
 import { tunnelInfo } from './city/tunnel.js';
 import { buildCity } from './city/cityBuilder.js';
 import { createLighting } from './world/lighting.js';
+import { LEVELS, lowerLevel, loadGfx, saveGfx, makeQuality, createTextureBudget, createCrashGuard } from './world/stability.js';
 import { createWeather } from './world/weather.js';
 import { createPostFX } from './world/postfx.js';
 import { createPlayer } from './player/player.js';
@@ -84,6 +85,7 @@ function guessQuality(renderer) {
   if (/swiftshader|llvmpipe|software/.test(gpu)) return 'low';   // no real graphics chip
   if (!mobile) return /rtx|gtx|radeon rx|apple m\d|arc|rx \d{4}/.test(gpu) ? 'high' : 'medium';
   if (/apple/.test(gpu)) return 'medium';              // iPhones and iPads: fast chips, but they do not tell us more
+  if (memory <= 2 || /mali-4|adreno \(tm\) [23]\d\d|powervr sgx/.test(gpu)) return 'verylow';   // very little memory, or a very old chip
   if (memory <= 3 || cores <= 4 || /mali-4|mali-t|adreno \(tm\) [2-5]\d\d|powervr (sgx|rogue g)/.test(gpu)) return 'low';
   if (memory >= 8 && /adreno \(tm\) (7[3-9]\d|8\d\d)|immortalis|mali-g7[1-9]\d|mali-g[89]\d\d|apple/.test(gpu)) return 'high';
   return 'medium';
@@ -102,11 +104,44 @@ async function boot() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;   // film-like handling of bright light
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.info.autoReset = false;                      // we count the draw calls of a whole frame ourselves
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); hud.toast('GRAPHICS WERE RESET - PLEASE RELOAD', 60000); });
+  // THE CRASH GUARD and THE TEXTURE BUDGET (src/world/stability.js): if the last session died on the screen, this one
+  // starts one graphics level lower; and every level sends smaller pictures to the graphics chip than the one above.
+  const guard = createCrashGuard();
+  let savedMode = 'auto';
+  try { savedMode = localStorage.getItem('pg-quality') || 'auto'; } catch (e) { /* private mode */ }
+  const urlMode = urlOption('quality');
+  if (urlMode && (urlMode === 'auto' || CONFIG.quality[urlMode])) savedMode = urlMode;
+  if (savedMode !== 'auto' && !CONFIG.quality[savedMode]) savedMode = 'auto';
+  const guessed = guessQuality(renderer);
+  // (the level this session starts with; after a crash: one under the level that died, and AUTO may not go above it)
+  const startLevel = urlMode ? (savedMode === 'auto' ? guessed : savedMode) : guard.startLevel(savedMode === 'auto' ? guessed : savedMode);
+  const autoTop = guard.crashed && !urlMode ? startLevel : 'high';
+  if (guard.crashed && !urlMode && savedMode !== 'auto' && savedMode !== startLevel) {
+    savedMode = startLevel;
+    try { localStorage.setItem('pg-quality', savedMode); } catch (e) { /* private mode */ }
+  }
+  const texBudget = createTextureBudget(renderer);
+  texBudget.set(CONFIG.quality[startLevel].textureCap, false);
+  // the phone took the graphics chip away (too little memory, or another app needed it): nothing can be drawn any
+  // more. Say so, remember it as a crash, and start again (one level lower) when the player taps or after a moment.
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    guard.markBroken();
+    // (a plain screen over everything: the game's own menus cannot be drawn on a dead picture)
+    const box = document.createElement('div');
+    box.id = 'gfx-lost';
+    box.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#07090c;color:#e8edf2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;font:300 15px/1.6 system-ui,sans-serif;letter-spacing:0.04em';
+    box.innerHTML = '<div style="font-size:12px;letter-spacing:0.4em;opacity:0.6">PHANTOM GRID</div><div style="max-width:420px">The phone stopped the graphics - it ran out of memory.<br>The game starts again with lower graphics.</div><div style="font-size:11px;letter-spacing:0.3em;color:#ffc94a">TAP TO RESTART NOW</div>';
+    document.body.appendChild(box);
+    const again = () => { try { location.reload(); } catch (err) { /* nothing to do */ } };
+    box.addEventListener('pointerdown', again, { once: true });
+    setTimeout(again, 6000);
+  });
 
   installGlobalShaderPatches();
 
   const scene = new THREE.Scene();
+  texBudget.setScene(scene);
   const camera = new THREE.PerspectiveCamera(CONFIG.camera.fov, 1, CONFIG.camera.near, CONFIG.camera.far);
 
   // ------------------------------------------------------------- load and build
@@ -289,15 +324,13 @@ async function boot() {
   const _mark = new THREE.Vector3();
 
   // -------------------------------------------------------------------- quality
-  let mode = 'auto';            // what the player picked: auto / low / medium / high
+  let mode = savedMode;         // what the player picked: auto / verylow / low / medium / high
   let active = 'medium';        // the preset that is running now
   let quality = CONFIG.quality.medium;
   let usePost = false;
   let sinceChange = 0, slowTime = 0;
-  try { mode = localStorage.getItem('pg-quality') || 'auto'; } catch (e) { /* private mode */ }
-  const urlQ = urlOption('quality');
-  if (urlQ && (urlQ === 'auto' || CONFIG.quality[urlQ])) mode = urlQ;
-  if (mode !== 'auto' && !CONFIG.quality[mode]) mode = 'auto';
+  const gfx = loadGfx();        // the player's own graphics options over the level (SETTINGS > GRAPHICS)
+  let fpsCap = 0;               // 30 = only every second picture is drawn (a cooler phone, a longer battery)
 
   // DYNAMIC RESOLUTION: a phone that keeps 60 frames per second easily gets a sharper picture (more pixels, up to
   // pixelRatio.dynMax of the quality level); when it gets slow, the picture gets a little softer again before the
@@ -316,7 +349,7 @@ async function boot() {
     const base = clamp(dpr * quality.pixelRatio.scale, quality.pixelRatio.min, quality.pixelRatio.max);
     const top = Math.max(base, Math.min(quality.pixelRatio.dynMax || base, dpr));
     const F = filmLook && quality.film;
-    let pr = clamp(base * resK, Math.max(0.6, base * 0.8), top);
+    let pr = clamp(base * resK, Math.max(0.5, base * 0.8), top);
     if (F) pr = Math.max(pr, Math.min(dpr, F.pixelRatio));
     renderer.setPixelRatio(pr);
     renderer.setSize(w, h, false);
@@ -348,7 +381,12 @@ async function boot() {
 
   function applyQuality(name) {
     active = name;
-    quality = CONFIG.quality[name];
+    // (the level's numbers with the player's own options over them)
+    quality = makeQuality(CONFIG.quality[name], gfx);
+    fpsCap = quality.fpsCap || 0;
+    guard.setLevel(name);
+    // (smaller or bigger pictures on the graphics chip: the ones already there are sent again in the new size)
+    texBudget.set(quality.textureCap, true);
     usePost = quality.post && postfx.supported;
     materials.setQuality(quality);
     lighting.setQuality(quality);
@@ -873,7 +911,9 @@ async function boot() {
   let statsOn = CONFIG.showStats || urlOption('stats') === '1';
   hud.showStats(statsOn);
 
-  applyQuality(mode === 'auto' ? guessQuality(renderer) : mode);
+  applyQuality(startLevel);
+  // (the last session closed by itself: tell the player what was done about it)
+  if (guard.crashed && !urlMode) setTimeout(() => hud.toast(`THE GAME CLOSED LAST TIME · GRAPHICS: ${quality.label}`, 7000), 2500);
 
   // -------------------------------------------- make the GPU prepare all shaders
   // Day and night use different shader programs (night has the street lamps as
@@ -910,8 +950,16 @@ async function boot() {
     try { localStorage.setItem('pg-quality', m); } catch (e) { /* private mode */ }
     hud.toast('APPLYING…', 900);
     // wait one frame so the message is visible before the short pause
-    requestAnimationFrame(() => applyQuality(m === 'auto' ? guessQuality(renderer) : m));
+    requestAnimationFrame(() => applyQuality(m === 'auto' ? autoLevel() : m));
   };
+  // AUTO: the level guessed from the phone - but after a crash never above the level this session started with
+  function autoLevel() { return LEVELS.indexOf(guessed) > LEVELS.indexOf(autoTop) ? autoTop : guessed; }
+  // one of the player's own graphics options changed (SETTINGS > GRAPHICS)
+  function setGfx(key, value) {
+    gfx[key] = value;
+    saveGfx(gfx);
+    applyQuality(active);
+  }
   hud.actions.stats = () => {
     statsOn = !statsOn;
     hud.showStats(statsOn);
@@ -1132,8 +1180,9 @@ async function boot() {
   }
   function closePause() { paused = false; ui.hideMenus(); last = performance.now(); }
   function openSettings(back) {
-    ui.settingsScreen({ quality: mode }, (key, value) => {
+    ui.settingsScreen({ quality: mode, gfx, label: () => quality.label, cap: () => texBudget.cap }, (key, value) => {
       if (key === 'quality') hud.actions.quality(value);
+      else if (key.startsWith('gfx.')) setGfx(key.slice(4), value);
       else if (key === 'tilt') controls.setTilt(value);
       else if (key === 'volume') sound.setVolume(value);
       else if (key === 'muted') { sound.setMuted(value); hud.setSoundButton(!value); }
@@ -1158,8 +1207,11 @@ async function boot() {
 
   function loop(now) {
     requestAnimationFrame(loop);
+    // (30 pictures a second, when the player asked for it: the screen's other pictures are left out)
+    if (fpsCap && now - last < 1000 / fpsCap - 3) return;
     const dt = Math.min(0.1, Math.max(0.0001, (now - last) / 1000)); // never jump more than 1/10 s
     last = now;
+    guard.update(dt);
     // a menu is open (pause, settings, mission failed, chapter end): the game and its sound stand still
     const hold = gameMode !== 'title' && (paused || ui.menuOpen);
     if (hold !== frozen) { frozen = hold; sound.pause(frozen); }
@@ -1213,8 +1265,8 @@ async function boot() {
       if (dynRes && resTime >= 2.5 && !document.hidden && gameMode !== 'title' && !filmNow && resHold <= 0) {
         const rf = resFrames / resTime, prNow = renderer.getPixelRatio();
         resFrames = 0; resTime = 0;
-        if (rf < 47) { resGood = 0; const k = Math.max(0.8, resK - 0.12); if (k !== resK) { resK = k; resize(); resHold = 8; } }
-        else if (rf >= 57) {
+        if (rf < (fpsCap === 30 ? 26 : 47)) { resGood = 0; const k = Math.max(0.8, resK - 0.12); if (k !== resK) { resK = k; resize(); resHold = 8; } }
+        else if (rf >= (fpsCap === 30 ? 29.5 : 57)) {
           resGood++;
           // (two calm windows in a row before it gets sharper: no back and forth)
           if (resGood >= 2) { resGood = 0; const k = Math.min(2.2, resK + 0.08); if (k !== resK) { resK = k; resize(); resHold = 8; if (renderer.getPixelRatio() === prNow) resK -= 0.08; } }
@@ -1223,9 +1275,9 @@ async function boot() {
       // AUTO quality: if the game runs slowly for a while, go one level down
       // (not during a film scene: changing the quality rebuilds the shaders, the scene would freeze for a moment)
       if (mode === 'auto' && sinceChange > 5 && !document.hidden && !(story && story.cameraActive)) {
-        slowTime = fps < 42 ? slowTime + 0.5 : Math.max(0, slowTime - 0.25);
-        if (slowTime >= 3 && active !== 'low') {
-          applyQuality(active === 'high' ? 'medium' : 'low');
+        slowTime = fps < (fpsCap === 30 ? 24 : 42) ? slowTime + 0.5 : Math.max(0, slowTime - 0.25);
+        if (slowTime >= 3 && active !== 'verylow') {
+          applyQuality(lowerLevel(active));
           hud.toast(`QUALITY: ${quality.label}`);
         }
       }
@@ -1246,6 +1298,8 @@ async function boot() {
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
     get frameCalls() { return frameCalls; },
+    guard, texBudget, gfx, setGfx,
+    get qualityNow() { return { mode, active, label: quality.label, cap: texBudget.cap, fpsCap, pr: renderer.getPixelRatio() }; },
     get paused() { return frozen; },
     get waypoint() { return waypoint; },
     set waypoint(w) { waypoint = w; routeTimer = 0; },
