@@ -39,6 +39,7 @@ import { createVehicles } from './vehicles/vehicle.js';
 import { createLooseProps } from './world/looseProps.js';
 import { createConstruction } from './world/construction.js';
 import { createPlaces, PLACE_INFO } from './world/places.js';
+import { createWeapons } from './world/weapons.js';
 import { CAR_TYPES, carInfo } from './vehicles/carModels.js';
 import { loadVehicles } from './vehicles/vehicleLoader.js';
 import { createEffects } from './vehicles/effects.js';
@@ -315,6 +316,9 @@ async function boot() {
   // banks and police stations: which doors, their signs, what can be done inside (src/world/places.js)
   const world2 = { armed: () => false };          // (the weapons fill this in)
   const places = createPlaces({ scene, interiors, hud, sound, police, t, armed: () => world2.armed(), canAct: () => gameMode === 'free' && !story.active });
+  // a bat and two guns for free roam (src/world/weapons.js)
+  const weapons = createWeapons({ scene, player, city, vehicles, police, loose, site, sound, hud, effects, t });
+  world2.armed = () => weapons.armed;
   // NATE'S FACE for the WANTED posters and the news (a picture of the player character's own head, taken once)
   let portraitURL = null;
   if (player.rig && player.rig.bones && player.rig.bones.head) {
@@ -565,6 +569,7 @@ async function boot() {
     streetLife.update(dt, time, gameMode === 'free' && !inside);
     // ---- the doors of the houses (ENTER / EXIT) ----
     places.update(dt, shared.uPgNight.value);
+    weapons.update(dt, { can: gameMode === 'free' && !story.active && onFoot && vehicles.state === 'none' && !player.staged && !player.swimming && !player.hidden && !ui.menuOpen && !interiors.busy, inside: interiors.inside });
     interiors.update(dt, {
       free: gameMode === 'free' && !story.active,
       can: gameMode !== 'title' && vehicles.state === 'none' && !player.staged && !(S && (S.locks.move || S.cameraActive)),
@@ -1127,6 +1132,7 @@ async function boot() {
   async function startStory(go) {
     interiors.reset();
     loose.reset();
+    weapons.reset();
     ui.hideMenus();
     document.body.classList.remove('title');
     gameMode = 'story';
@@ -1319,7 +1325,7 @@ async function boot() {
     fillOverride: null, characterFill: () => characterLight.uPgCharFill.value,      // (tests: the characters' fill light)
     get mode() { return gameMode; },
     get frameCalls() { return frameCalls; },
-    guard, texBudget, gfx, setGfx, loose, site, places,
+    guard, texBudget, gfx, setGfx, loose, site, places, weapons,
     get qualityNow() { return { mode, active, label: quality.label, cap: texBudget.cap, fpsCap, pr: renderer.getPixelRatio() }; },
     get paused() { return frozen; },
     get waypoint() { return waypoint; },

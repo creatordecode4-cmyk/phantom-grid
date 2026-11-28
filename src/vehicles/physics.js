@@ -76,7 +76,7 @@ export function stepCar(v, input, dt, world) {
   if (v.shiftT > 0) v.shiftT -= dt;
   const gearTop = (g) => top * GEAR_TOP[g - 1];
   let n = clamp(Math.abs(fwd) / gearTop(v.gear), 0, 1.02);      // 0..1 engine speed in this gear
-  if (!v.reverse && v.shiftT <= 0) {
+  if (!v.reverse && v.shiftT <= 0 && !v.info.cycle) {
     if (n > 0.9 && v.gear < 6) { v.gear++; v.shiftT = 0.2; fx.shifted = true; }
     else if (v.gear > 1 && Math.abs(fwd) / gearTop(v.gear - 1) < (input.gas > 0.6 ? 0.72 : 0.5)) { v.gear--; v.shiftT = 0.14; fx.shifted = true; }
     n = clamp(Math.abs(fwd) / gearTop(v.gear), 0, 1.02);
@@ -105,6 +105,12 @@ export function stepCar(v, input, dt, world) {
     if (v.reverse) drive = -T.accel * 0.55 * gas * clamp(1 + fwd / 11, 0, 1);
     else if (n < 1.0) drive = T.accel * gas * torque(n) * gearPush(v.gear) * (v.nitroOn ? 1.75 : 1) * (1 + 0.55 * (v.boost || 0)) * (1 - 0.35 * v.damage);
   }
+  // A BICYCLE (bicycle.js) has no motor and no gearbox to work out: the legs push hard from a stop and less
+  // and less the faster it goes; backward it is only pushed with the feet
+  if (v.info.cycle) {
+    v.gear = 1;
+    drive = gas <= 0.02 ? 0 : v.reverse ? -1.3 * gas * clamp(1 + fwd / 2.5, 0, 1) : T.accel * gas * clamp(1 - (fwd / top) ** 2, 0, 1);
+  }
   // A HEAVY LOAD (Chapter 5: a crate, a trailer with a container; v.heavy 0..1): the engine pulls less
   if (v.heavy) drive *= 1 - 0.45 * v.heavy;
   // SPEED LIMITER (story: Nate's van): at v.limit (m/s) the engine simply stops pulling
@@ -118,7 +124,7 @@ export function stepCar(v, input, dt, world) {
   const cD = Math.max(0, (T.accel * gearPush(6) * torque(0.97) - roll) / ((T.topSpeed / 3.6) ** 2));
   let resist = cD * fwd * Math.abs(fwd) + Math.sign(fwd) * Math.min(Math.abs(fwd) / dt, roll + surf.drag * (0.4 + 0.06 * Math.abs(fwd)));
   // engine braking: stronger in a low gear and at high engine speed
-  if (gas < 0.02 && !v.reverse && Math.abs(fwd) > 0.5) resist += Math.sign(fwd) * (0.5 + 1.9 * n) * (GEAR_TOP[0] / GEAR_TOP[v.gear - 1]) ** 0.5;
+  if (gas < 0.02 && !v.reverse && Math.abs(fwd) > 0.5 && !v.info.cycle) resist += Math.sign(fwd) * (0.5 + 1.9 * n) * (GEAR_TOP[0] / GEAR_TOP[v.gear - 1]) ** 0.5;
   if (v.limit > 0 && fwd > v.limit + 0.4) resist += (fwd - v.limit) * 1.6;     // (rolling faster than the limiter allows: it holds the car back)
   let brakeAcc = brake > 0.02 ? brake * 13.5 : 0;
   if (input.handbrake) brakeAcc = Math.max(brakeAcc, 5.5);

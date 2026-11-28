@@ -31,6 +31,8 @@ const TONES = {
   // Mace's old boat (Chapter 3): a rough, knocking outboard motor
   rusty: { f0: 27, f1: 58, w1: 'square', w2: 'sawtooth', mix: 0.9, lp: 760, vol: 1.4, rough: 0.07 },
   drone: { f0: 150, f1: 210, w1: 'triangle', w2: 'sawtooth', mix: 0.3, lp: 2200, vol: 0.55 },
+  // a bicycle: no motor at all
+  none: { f0: 40, f1: 60, w1: 'sine', w2: 'sine', mix: 0, lp: 200, vol: 0 },
 };
 
 export function createSound() {
@@ -244,6 +246,20 @@ export function createSound() {
     // ---- the open world: a construction site, weapons, a bicycle, a bank ----
     // one hammer blow on steel or wood
     hammer(vol = 0.5) { burst(1700 + Math.random() * 900, 7, 0.16 * vol, 0.001, 0.05); blip('triangle', 820 + Math.random() * 200, 420, 0.05 * vol, 0.05); },
+    // a shot: a short hard crack and a low thump (the rifle is sharper and shorter)
+    gunshot(kind = 'pistol') {
+      const r = kind === 'rifle';
+      burst(r ? 2600 : 1700, 0.7, r ? 0.5 : 0.62, 0.001, r ? 0.09 : 0.14);
+      burst(240, 0.8, r ? 0.45 : 0.6, 0.002, r ? 0.12 : 0.2, 'lowpass');
+      blip('square', r ? 190 : 150, 48, 0.2, 0.08);
+    },
+    // the bat through the air, and landing: on somebody (soft), on a street thing, on the metal of a car
+    batSwing() { burst(900, 0.9, 0.16, 0.05, 0.16, 'bandpass'); },
+    batHit(on = 'soft') {
+      if (on === 'metal') { burst(1500, 4, 0.4, 0.001, 0.12); blip('triangle', 420, 180, 0.3, 0.16); }
+      else if (on === 'thing') { burst(900, 2, 0.4, 0.001, 0.1); blip('sine', 180, 80, 0.3, 0.12); }
+      else { burst(320, 1, 0.5, 0.002, 0.12, 'lowpass'); blip('sine', 120, 60, 0.35, 0.12); }
+    },
     // coins and notes: a cash machine pays, a fine is paid
     cash() { blip('sine', 1320, 1320, 0.07, 0.07); setTimeout(() => blip('sine', 1760, 1760, 0.07, 0.12), 70); burst(5200, 3, 0.05, 0.002, 0.12, 'highpass'); },
     // the alarm bell of a bank: rings for some seconds

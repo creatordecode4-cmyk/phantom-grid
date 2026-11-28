@@ -25,6 +25,9 @@ import { initCarState, stepCar, initBoatState, stepBoat, initDroneState, stepDro
 import { makeDrone, lin } from '../city/models.js';
 import { mountDetailedWheel, addBrake } from './wheelDetail.js';
 import { BIKE_INFO, BIKE_SPEC, BIKE_HEAD, BIKE_RAKE, BIKE_BAR, BIKE_GRIP, BIKE_PEG, BIKE_EYE, BIKE_R, BIKE_PARK_LEAN, bikeBodyIn } from './bike.js';
+import { CYCLE_INFO, CYCLE_SPEC, CYCLE_KIT, cycleBodyIn } from './bicycle.js';
+// what the two-wheelers have in common, by kind: the street bike (a motor) and the bicycle (pedals)
+const MOTO_KIT = { info: BIKE_INFO, r: BIKE_R, head: BIKE_HEAD, rake: BIKE_RAKE, bar: BIKE_BAR, grip: BIKE_GRIP, peg: BIKE_PEG, eye: BIKE_EYE, parkLean: BIKE_PARK_LEAN };
 import { clamp, damp } from '../utils/math.js';
 import { createCargo } from './cargo.js';
 import { makeTheoCar, THEO_INFO, THEO_SPOTS } from './theoCar.js';
@@ -260,14 +263,16 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   // THE STREET BIKE (bike.js): the body, a front that turns about the raked steering head, two detailed wheels.
   // Both wheels sit inside "tilt", so the whole bike leans into a corner.
   function partsBike(v) {
-    const g = bikeBodyIn(v.color || [0.45, 0.025, 0.02]);
+    const cycle = !!v.info.cycle, K = cycle ? CYCLE_KIT : MOTO_KIT;
+    v.kit = K;
+    const g = cycle ? cycleBodyIn(v.color || [0.1, 0.32, 0.55]) : bikeBodyIn(v.color || [0.45, 0.025, 0.02]);
     const body = new THREE.Mesh(g.body, mats.carPaint);
     body.castShadow = true; body.receiveShadow = true;
     v.tilt.add(body);
     // the front: a head that leans back by the rake, the turning part inside it, the wheel at the bottom of the fork
     const head = new THREE.Group();
-    head.position.set(BIKE_HEAD[0], BIKE_HEAD[1], BIKE_HEAD[2]);
-    head.rotation.x = -BIKE_RAKE;
+    head.position.set(K.head[0], K.head[1], K.head[2]);
+    head.rotation.x = -K.rake;
     const steer = new THREE.Group();
     head.add(steer);
     const front = new THREE.Mesh(g.front, mats.carPaint);
@@ -275,25 +280,27 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     steer.add(front);
     const axle = new THREE.Group();
     axle.position.set(0, -g.forkLen, 0);
-    axle.rotation.x = BIKE_RAKE;                        // (the wheel itself stands upright again)
+    axle.rotation.x = K.rake;                           // (the wheel itself stands upright again)
     steer.add(axle);
-    const fw = mountDetailedWheel(axle, BIKE_R, 0.12, 'bikeF', -1, mats.carPaint, 0.72);
+    // (a bicycle has its own thin wheels with spokes: one small mesh each)
+    const thin = () => { const m = new THREE.Mesh(g.wheel, mats.carPaint); m.castShadow = true; return m; };
+    const fw = cycle ? axle.add(thin()).children[axle.children.length - 1] : mountDetailedWheel(axle, BIKE_R, 0.12, 'bikeF', -1, mats.carPaint, 0.72);
     v.tilt.add(head);
     v.wheels.push({ steerNode: steer, mesh: fw, front: true, spin: -1 });
     const rearNode = new THREE.Group();
-    rearNode.position.set(0, BIKE_R, BIKE_INFO.wheelZ[0]);
-    const rw = mountDetailedWheel(rearNode, BIKE_R, 0.18, 'bikeR', -1, mats.carPaint, 0.72);
+    rearNode.position.set(0, K.r, K.info.wheelZ[0]);
+    const rw = cycle ? rearNode.add(thin()).children[rearNode.children.length - 1] : mountDetailedWheel(rearNode, BIKE_R, 0.18, 'bikeR', -1, mats.carPaint, 0.72);
     v.tilt.add(rearNode);
     v.wheels.push({ steerNode: rearNode, mesh: rw, front: false, spin: -1 });
     // (no seats or dashboard inside: the rider sits on the bike; the cockpit view is the rider's eyes)
     v.driver = new THREE.Object3D();
     v.tilt.add(v.driver);
-    v.eye = BIKE_EYE;
+    v.eye = K.eye;
     v.paintMeshes = [];
     // the kickstand: out while nobody rides the bike (then the bike leans on it)
     v.kick = new THREE.Mesh(g.kick, mats.carPaint);
     v.tilt.add(v.kick);
-    v.lean = BIKE_PARK_LEAN;
+    v.lean = K.parkLean;
   }
 
   // model files bring their own picture; we add a clear coat and the street lamp light at night
@@ -360,6 +367,9 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
   }
   // the street bike is made in code (bike.js)
   registerCar('street_bike', BIKE_INFO, BIKE_SPEC);
+  // the bicycle is made in code too (bicycle.js)
+  registerCar('bicycle', CYCLE_INFO, CYCLE_SPEC);
+  { const ci = carInfo('bicycle'); ci.noseY = 0.98; ci.tailY = 0.9; ci.lampW = 0.01; }
   // THEO'S CAR (theoCar.js), whole again after Chapter 6: made in code, it drives like the chrome supercar
   registerCar('theo_coupe', { ...THEO_INFO, theo: true, plateY: 0.4 }, { ...VEHICLE_SPECS.chrome_supercar, label: "THEO'S CAR", length: THEO_INFO.length });
   { const bi = carInfo('street_bike'); bi.noseY = 0.95; bi.tailY = 0.98; bi.lampW = 0.025; }
@@ -1028,9 +1038,10 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       // Nobody on it and standing still: it leans on its kickstand.
       const ridden = v === active && state !== 'none';
       const parked = !ridden && Math.abs(v.forward || 0) < 0.5 && !v.npc;
-      const want = v.dead ? 0 : parked ? BIKE_PARK_LEAN : clamp(-Math.atan(((v.fx && v.fx.ay) || 0) / 9.81), -0.72, 0.72);
+      const park = (v.kit || MOTO_KIT).parkLean;
+      const want = v.dead ? 0 : parked ? park : clamp(-Math.atan(((v.fx && v.fx.ay) || 0) / 9.81), -0.72, 0.72);
       v.lean += (want - v.lean) * (parked ? 0.06 : 0.16);
-      if (v.kick) v.kick.visible = parked && Math.abs(v.lean - BIKE_PARK_LEAN) < 0.05;
+      if (v.kick) v.kick.visible = parked && Math.abs(v.lean - park) < 0.05;
       v.tilt.rotation.set(v.pitch * 0.4 + shakeStart, 0, v.lean);
     } else v.tilt.rotation.set(v.pitch + shakeStart, 0, v.roll + shakeStart);
     // (a bad number must never reach a wheel: it would vanish)
@@ -1199,7 +1210,8 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       else { const s = v.role === 'boat' ? { x: player.position.x, z: player.position.z } : doorSpot(v); player.glideTo(s.x, s.z, v.heading, dt); }
       if (stateTime > 0.75) {
         state = 'driving'; v.doorOpen = 0; exitWanted = false; v.startT = 0.7;
-        if (v.isCar) { sound.doorClick('close'); sound.startEngine(); effects.emit('exhaust', v.x + Math.sin(v.heading) * v.info.backZ, v.y + 0.35, v.z + Math.cos(v.heading) * v.info.backZ, 0, 0.5, 0, 1.5); }
+        if (v.info.cycle) { /* a bicycle: no door, no motor */ }
+        else if (v.isCar) { sound.doorClick('close'); sound.startEngine(); effects.emit('exhaust', v.x + Math.sin(v.heading) * v.info.backZ, v.y + 0.35, v.z + Math.cos(v.heading) * v.info.backZ, 0, 0.5, 0, 1.5); }
         if (v.type.role === 'police') message = 'POLICE CAR: HORN BUTTON = SIREN';
       }
     } else if (state === 'exiting') {
@@ -1311,13 +1323,13 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
     const gx = L.spawn.x + 3.1, z0 = L.spawn.z + 20, rot = 0;            // at the east curb, noses to the north
     clearParked((rec) => Math.abs(rec.x - gx) < 3 && rec.z > z0 - 62 && rec.z < z0 + 8);
     const paint = { sedan: [0.3, 0.31, 0.33], coupe: [0.08, 0.13, 0.26] };
-    const list = ['street_bike', 'small_city_car', 'tech_patrol_car', 'police_coupe', 'chrome_supercar', 'armored_van'].filter((k) => CAR_TYPES[k]);
+    const list = ['street_bike', 'small_city_car', 'tech_patrol_car', 'police_coupe', 'chrome_supercar', 'armored_van', 'bicycle'].filter((k) => CAR_TYPES[k]);
     let z = z0;
     const made = [];
     for (const kind of list) {
       const len = carInfo(kind).length;
       z -= len / 2 + 1.4;
-      made.push(spawn(kind, gx, z, rot, kind === 'street_bike' ? [0.45, 0.025, 0.02] : [1, 1, 1], { keep: true, tag: true }));
+      made.push(spawn(kind, gx, z, rot, kind === 'street_bike' ? [0.45, 0.025, 0.02] : kind === 'bicycle' ? [0.1, 0.32, 0.55] : [1, 1, 1], { keep: true, tag: true }));
       z -= len / 2 + 1.4;
     }
     // the drone waits on the sidewalk, the boat at the coast
@@ -1408,7 +1420,7 @@ export function createVehicles({ scene, city, materials, sound, weather, carLib 
       if (!(state === 'driving' || (state === 'entering' && stateTime > 0.38) || (state === 'exiting' && stateTime < 0.3))) return null;
       const s = seatOf(v.info);
       // low cars: a smaller driver, so the head stays under the roof
-      if (v.info.bike) return { node: v.tilt, x: s.x, y: s.y, z: s.z, scale: 1, wheel: BIKE_BAR, steer: v.steer, radius: 0.3, tilt: 0.25, bike: { grip: BIKE_GRIP, peg: BIKE_PEG, turn: -v.steer * 0.8 } };
+      if (v.info.bike) { const K = v.kit || MOTO_KIT; return { node: v.tilt, x: s.x, y: s.y, z: s.z, scale: 1, wheel: K.bar, steer: v.steer, radius: 0.3, tilt: 0.25, bike: { grip: K.grip, peg: K.peg, turn: -v.steer * 0.8 } }; }
       return { node: v.tilt, x: s.x, y: s.y + 0.02, z: s.z - 0.05, scale: clamp((v.info.roof - 0.1 - (s.y + 0.12)) / 0.93, 0.62, 1), wheel: interiors[v.kind].userData.wheel, steer: v.steer };
     },
     set riggedDriver(on) { riggedDriver = !!on; },

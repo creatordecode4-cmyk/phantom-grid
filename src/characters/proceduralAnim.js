@@ -828,6 +828,20 @@ export function createAnimator(THREE, rig, opts = {}) {
       armAngles(1, 76, 6, -10, 36, 0); armAngles(0, 68, -6, 18, 60, 0);
       for (let q = 0; q < 2; q++) fingers(q, 62);
       setDelta('spine1', 4 * DEG, -14 * DEG, 0); setDelta('chest', 4 * DEG, -10 * DEG, 0); setDelta('neck', 8 * DEG, 16 * DEG, -6 * DEG); setDelta('head', 4 * DEG, 8 * DEG, -8 * DEG);
+    } else if (pose === 'pistol') {
+      // a pistol in the right hand: the arm straight out in front, the other arm loose (src/world/weapons.js)
+      armAngles(1, 84, 3, -6, 6, 0); fingers(1, 72);
+      armAngles(0, 10, 6, 0, 16);
+      setDelta('chest', 0, -6 * DEG, 0);
+    } else if (pose === 'bat') {
+      // a bat ready on the right shoulder: the upper arm a little forward, the elbow bent hard
+      armAngles(1, 36, 16, 10, 126, 0); fingers(1, 80);
+      armAngles(0, 6, 6, 0, 14);
+    } else if (pose === 'batSwing') {
+      // the end of a swing: the right arm across the body, forward and low, the body turned with it
+      armAngles(1, 64, -30, -20, 22, 10); fingers(1, 80);
+      armAngles(0, 14, 10, 0, 30);
+      setDelta('spine1', 6 * DEG, 22 * DEG, 0); setDelta('chest', 4 * DEG, 18 * DEG, 0);
     } else gestureArms(1 - st.moving * 0.85);                  // speaking: the hands move with the words (gesture.js)
   }
   // ---------------------------------------------------------------- hands at work (Chapter 6)

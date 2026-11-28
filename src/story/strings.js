@@ -82,6 +82,7 @@ export const STRINGS = {
     'ui.busted': 'BUSTED', 'ui.fine': 'FINE', 'ui.money_left': 'CREDITS LEFT', 'ui.open': 'OPEN', 'ui.sit': 'SIT',
     'ui.enter': 'ENTER', 'ui.exit': 'EXIT',
     // ---- the open world: banks and police stations (src/world/places.js) ----
+    'ui.weapon.notHere': 'NOT IN HERE.',
     'ui.place.atm': 'TAKE OUT 200', 'ui.place.rob': 'ROB THE BANK', 'ui.place.askDesk': 'ASK AT THE DESK', 'ui.place.fine': 'PAY THE FINE · {n}',
     'ui.place.atmPaid': 'PAY DAY · YOU HAVE {n} CREDITS', 'ui.place.atmWait': 'THE MACHINE IS EMPTY · COME BACK IN {n} MIN',
     'ui.place.robNoGun': 'THE TELLER SMILES. (TAKE A GUN IN YOUR HAND TO ROB THE BANK.)', 'ui.place.robEmpty': 'THE TILLS ARE EMPTY. THE GUARD IS ON ITS WAY.',
